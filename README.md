@@ -70,6 +70,24 @@ At roughly 1.04M tokens, that community run measured 1,904 tok/s prefill, about 
 
 Do not compare these rows as a leaderboard. The models, prompts, context lengths, concurrency, and runtime patches differ. Decode rates above use generated-token counts from the final usage result or a fixed output count; they do not count streaming events as tokens.
 
+### Model, quant, and runtime strategy
+
+| Lane | Evidence | Current guidance |
+|---|---|---|
+| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Measured by PixelML:** 83.3 tok/s on 3 cards | Best published large-model lane on this node. Start with pipeline parallelism, `15,15,13` layer placement, DSpark `k=5`, and FP8 KV. |
+| Qwen3.8-27B W4A16 AutoRound + W4A16 DFlash2 | **Measured by PixelML:** 136.4 tok/s mean across 3 independently tested cards | Best published single-card speed lane. This is W4A16, not NVFP4; correct usage-token counting and the prepared fast variant both matter. |
+| GLM-5.2 symmetric Int4/Int8 mix with an unquantized MTP head | **Community-reported:** 28.47 tok/s baseline on 8 CMP 170HX cards; MTP serving initialization verified | Useful SM80 reference for future DSA models, but not a four-card recipe. The [pinned vLLM composition](https://github.com/allover326/vllm-dsa-mtp-sm80/blob/56bba6097b06b3c0d981de3a6cef63ed394d2626/README.md) combines a Triton sparse-MLA backend with MTP under pipeline parallelism. |
+| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/a2f22cc9641c3a95c841c6b06d58c6dcabb0f92e/README.md):** no completed serving result | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
+| W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. This does not rule out FP8 KV: the DeepSeek-V4 run above used FP8 KV successfully on SM80. |
+
+Three rules keep repeating across our attempts and the community work:
+
+1. Start with pipeline parallelism, not tensor parallelism, when cards communicate over slow PCIe without P2P.
+2. Rebalance the final pipeline rank when it also holds the LM head or speculative draft; default equal splits can fail even when total VRAM is sufficient.
+3. Check the quant details, not only the bit count. Symmetric versus asymmetric MoE weights, activation format, KV format, and whether the draft head is quantized can change compatibility.
+4. Match the build to the patch. Our DeepSeek-V4 run required compiled SM80 operators; a precompiled image that applied only Python overlays failed during graph capture.
+5. Verify composed patches with import and undefined-name checks, not only syntax compilation. The community composition includes this gate after a real missing-helper failure.
+
 ## Repository map
 
 ```text
