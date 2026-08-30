@@ -81,7 +81,7 @@ Do not compare these rows as a leaderboard. The models, prompts, context lengths
 |---|---|---|
 | DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Internal result, receipts pending** — no club-published claims | Untested proposals for the eventual run: pipeline parallelism, a rebalanced final-rank layer split such as `15,15,13`, DSpark `k=5`, and FP8 KV. SM80-safe operator builds are an open question this configuration must answer. |
 | GLM-5.2 symmetric Int4/Int8 mix with an unquantized MTP head | **Community-reported:** 28.47 tok/s baseline on 8 CMP 170HX cards; MTP serving initialization verified | Useful SM80 reference for future DSA models, but not a four-card recipe. The [pinned vLLM composition](https://github.com/allover326/vllm-dsa-mtp-sm80/blob/56bba6097b06b3c0d981de3a6cef63ed394d2626/README.md) combines a Triton sparse-MLA backend with MTP under pipeline parallelism. |
-| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/58eece6db097fb1d5e0a767b752fd1c040b3ac58/README.md):** no completed serving result at pin `58eece6` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
+| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/0eab34e173bee43d9cf8a48d546db609c8f469d3/README.md):** no completed serving result at pin `0eab34e` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
 | W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. Whether FP8 KV cache works on SM80 is an open question until the DeepSeek receipts land. |
 
 Five rules keep repeating across our attempts and the community work:
@@ -89,7 +89,7 @@ Five rules keep repeating across our attempts and the community work:
 1. Start with pipeline parallelism, not tensor parallelism, when cards communicate over slow PCIe without P2P.
 2. Rebalance the final pipeline rank when it also holds the LM head or speculative draft; default equal splits can fail even when total VRAM is sufficient.
 3. Check the quant details, not only the bit count. Symmetric versus asymmetric MoE weights, activation format, KV format, and whether the draft head is quantized can change compatibility.
-4. Match the build to the patch: if compiled SM80 operators are required, a precompiled image that applies only Python overlays is a known failure mode (**untested proposal for this node**).
+4. Match the build to the patch: when compiled SM80 operators are required, verify before serving that they are present or buildable in the chosen image, because a precompiled image that applies only Python overlays would not provide them (**gap inferred; preflight untested on this node**).
 5. Verify composed patches with import and undefined-name checks, not only syntax compilation. The community composition includes this gate after a real missing-helper failure.
 
 ## Repository map

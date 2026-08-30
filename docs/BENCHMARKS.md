@@ -12,7 +12,7 @@ Results here are a publication-status registry for the tested CMP 170HX setup. E
 
 ### GLM-5.3-Flash (all quantizations)
 
-**Compatibility result, not a performance result.** As of the stable summary at [GLM-5.3-Flash-CMP-170HX @ `58eece6`](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/58eece6db097fb1d5e0a767b752fd1c040b3ac58/README.md), no completed serving run has been published:
+**Compatibility result, not a performance result.** As of the stable summary at [GLM-5.3-Flash-CMP-170HX @ `0eab34e`](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/0eab34e173bee43d9cf8a48d546db609c8f469d3/README.md), no completed serving run has been published:
 
 - NVFP4 targets an SM121 runtime path — incompatible with SM80 (**measured** registry check). Upstream vLLM support ([PR 53906](https://github.com/vllm-project/vllm/pull/53906)) is open and SM90+.
 - AWQ INT4 is 198.1 GiB — over the 192 GiB three-card total before KV (**measured** blob sizes).
