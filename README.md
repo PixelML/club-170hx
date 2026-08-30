@@ -51,16 +51,15 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 
 ### PixelML measurements
 
-| Workload | Topology and power | Decode | Prefill and latency | Evidence |
-|---|---|---:|---:|---|
-| Qwen3.8-27B W4A16 + DFlash2 | 1 card at a time, 3 cards tested, 180 W cap | **136.4 tok/s mean** (133.6–140.3) for 256-token generations | 1,926–1,957 tok/s at 6.6K context; 181–201 ms TTFT | [Pinned results](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/blob/41d2c414fe0f293d77087ef18cda5896664754d6/RESULTS.md) (1) |
-| DeepSeek-V4-Flash-0731 native weights + DSpark | 3 cards, pipeline parallel, 180 W/card | **83.3 tok/s aggregate** across three 400-token prompts | **2,965 tok/s** at 5.4K context | [Benchmark repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) (2) |
+Publication gate: a number appears in this section only with sanitized raw receipts and a stable evidence pin. Two internal results are currently withheld under that gate:
+
+| Workload | Status | Missing before numbers can be published |
+|---|---|---|
+| DeepSeek-V4-Flash-0731 native weights + DSpark, 3-card pipeline | Result exists; numbers withheld | redacted raw JSONL receipts and a complete run manifest at an exact revision |
+| Qwen3.8-27B W4A16 + DFlash2, three single-card runs | Result exists; numbers withheld | owner-approved repair of the evidence history (the current revision contains prohibited identifiers), then a sanitized re-pin |
 
 GLM-5.3-Flash remains a compatibility result rather than a speed result: no completed CMP 170HX serving run has been published. See the [negative-result notes](docs/BENCHMARKS.md#negative-results-matter).
 
-(1) The pinned Qwen revision summarizes the measured numbers, but its raw artifact files still contain prohibited infrastructure identifiers. Publishing a sanitized replacement revision requires an owner-approved history repair in that repository; this link will be re-pinned to the repaired revision. Until then, do not open the raw artifact files in that pin.
-
-(2) Claim not ready: the pinned DeepSeek revision (`5c5b5a4`) contains only a summary and launch scripts — no redacted raw JSON/JSONL receipts, run manifest, or complete environment metadata. The figures above are quoted from that summary; treat the row as unverified until a sanitized raw-evidence revision is published.
 
 ### Community reference
 
@@ -80,10 +79,9 @@ Do not compare these rows as a leaderboard. The models, prompts, context lengths
 
 | Lane | Evidence | Current guidance |
 |---|---|---|
-| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Measured by PixelML:** 83.3 tok/s on 3 cards (raw receipts pending; see note 2) | Fastest published PixelML large-model result on this node — throughput-only evidence, no quality or reliability floor yet. Start with pipeline parallelism, `15,15,13` layer placement, DSpark `k=5`, and FP8 KV. |
-| Qwen3.8-27B W4A16 AutoRound + W4A16 DFlash2 | **Measured by PixelML:** 136.4 tok/s mean across 3 independently tested cards | Fastest published PixelML single-card result in this table — throughput-only evidence. This is W4A16, not NVFP4; correct usage-token counting and the prepared fast variant both matter. |
+| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Internal result, receipts pending** — no club-published number | Start with pipeline parallelism, `15,15,13` layer placement, DSpark `k=5`, and FP8 KV. Source-build the SM80 operators; a precompiled image with only Python overlays failed during graph capture. |
 | GLM-5.2 symmetric Int4/Int8 mix with an unquantized MTP head | **Community-reported:** 28.47 tok/s baseline on 8 CMP 170HX cards; MTP serving initialization verified | Useful SM80 reference for future DSA models, but not a four-card recipe. The [pinned vLLM composition](https://github.com/allover326/vllm-dsa-mtp-sm80/blob/56bba6097b06b3c0d981de3a6cef63ed394d2626/README.md) combines a Triton sparse-MLA backend with MTP under pipeline parallelism. |
-| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/a2f22cc9641c3a95c841c6b06d58c6dcabb0f92e/README.md):** no completed serving result at pin `a2f22cc` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. A 146.05 GiB UD-IQ4_XS GGUF candidate and an SM80 llama.cpp-fork build exist but are **serving-untested**; live status is tracked in the model repository. |
+| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/07b28e6d8d3b9fe7cb8a69f37e36088ffa71cec8/README.md):** no completed serving result at pin `07b28e6` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
 | W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. This does not rule out FP8 KV: the DeepSeek-V4 run above used FP8 KV successfully on SM80. |
 
 Five rules keep repeating across our attempts and the community work:
