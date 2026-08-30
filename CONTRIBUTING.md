@@ -12,6 +12,13 @@ Contributions are welcome: reproducible benchmarks, card-validation data, coolin
 
 Small, evidence-backed changes are easier to review than broad claims. Negative results are welcome when the environment and failure mode are documented.
 
+## Where experiment results live
+
+One dedicated repository per model family or workload (see the map in
+[README](README.md#model-family-repositories)). Do not create per-quantization,
+per-runtime, or per-machine repositories; put every attempt for a model family in
+that family's repository and link it from the table above.
+
 ## Commit style
 
 Use a short Conventional Commit subject, for example:

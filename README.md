@@ -44,7 +44,7 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 |---|---:|---:|---|
 | Qwen3.8-27B NVFP4 | 1 card | 136.38 tok/s mean at 180 W across three cards | [Benchmark repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | 3 cards, pipeline parallel | 83.3 tok/s aggregate decode at 180 W/card | [Benchmark repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
-| GLM-5.3-Flash NVFP4 | 3 cards | Not compatible: SM121-format weights and runtime path | [Compatibility notes](docs/BENCHMARKS.md#negative-results-matter) |
+| GLM-5.3-Flash (all quants) | 3 cards | Not compatible as of 2026-08-30: no SM80 runtime; smallest checkpoint 198.1 GiB exceeds 192 GiB node total | [GLM attempt repository](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 
 These are measured application results, not theoretical peaks. The linked repositories contain commands, model/runtime pins, per-run outputs, and known caveats.
 
@@ -56,6 +56,14 @@ scripts/    Read-only inventory, model-fit, and card-validation helpers
 workloads/  LLM, image, and video workload recipes and status
 results/    Submission format for reproducible community results
 ```
+
+## Model-family repositories
+
+Experiments live in one dedicated repository per model family or workload —
+for example [GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX)
+holds every GLM-5.3-Flash attempt (NVFP4, AWQ, GPTQ, EXL3, FP8/BF16, all runtimes,
+successes, and failures). Never one repository per quantization, checkpoint, runtime,
+or machine; this repository indexes results and holds cross-workload guidance.
 
 ## Safety first
 
