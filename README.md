@@ -31,7 +31,7 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 
 I traded out three RTX 3090s and rebuilt this node around four CMP 170HXs. The reason was simple: the four cards expose 256 GiB of aggregate HBM in one box. The lab still has RTX 3090 cards and DGX Spark systems, giving us useful comparison points for consumer CUDA, low-cost SM80/HBM, and GB10. DGX Spark notes live in [club-dgx-spark](https://github.com/PixelML/club-dgx-spark).
 
-**Measured on 2026-08-30:** all four cards enumerated in one Ubuntu guest with driver 610.43.03 and reported 65,536 MiB each. With a 180 W cap, the idle snapshot showed 31–32 °C core temperatures, 35–45 °C memory temperatures, 32–36 W per card, zero memory use, and zero GPU utilization. This is a bring-up result, not a four-card performance benchmark.
+**Measured on 2026-08-30:** all four cards enumerated in one Ubuntu guest with driver 610.43.03 and reported 65,536 MiB each. This is a bring-up inventory, not a four-card performance benchmark. Under the current build (four cards in an open frame with one 80 mm blower on a printed duct), a later idle snapshot the same day showed 37–38 °C cores, 41–51 °C memory temperatures, and about 141 W for the group at zero utilization. Cooling and power details are in [Cooling and power](docs/COOLING-AND-POWER.md).
 
 ## Verified baseline
 
