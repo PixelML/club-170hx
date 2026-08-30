@@ -49,13 +49,26 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 
 ## Published workload results
 
-| Workload | Topology | Result | Evidence |
-|---|---:|---:|---|
-| Qwen3.8-27B NVFP4 | 1 card | 136.38 tok/s mean at 180 W across three cards | [Benchmark repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
-| DeepSeek-V4-Flash-0731 | 3 cards, pipeline parallel | 83.3 tok/s aggregate decode at 180 W/card | [Benchmark repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
-| GLM-5.3-Flash NVFP4 | 3 cards | Not compatible: SM121-format weights and runtime path | [Compatibility notes](docs/BENCHMARKS.md#negative-results-matter) |
+### PixelML measurements
 
-These are measured application results, not theoretical peaks. The linked repositories contain commands, model/runtime pins, per-run outputs, and known caveats.
+| Workload | Topology and power | Decode | Prefill and latency | Evidence |
+|---|---|---:|---:|---|
+| Qwen3.8-27B W4A16 + DFlash2 | 1 card at a time, 3 cards tested, 180 W cap | **136.4 tok/s mean** (133.6–140.3) for 256-token generations | 1,926–1,957 tok/s at 6.6K context; 181–201 ms TTFT | [Pinned results](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/blob/41d2c414fe0f293d77087ef18cda5896664754d6/RESULTS.md) |
+| DeepSeek-V4-Flash-0731 native weights + DSpark | 3 cards, pipeline parallel, 180 W/card | **83.3 tok/s aggregate** across three 400-token prompts | **2,965 tok/s** at 5.4K context | [Pinned results](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/blob/5c5b5a4b45e8def82ec027737df616c55f997963/RESULTS.md) |
+
+GLM-5.3-Flash remains a compatibility result rather than a speed result: no completed CMP 170HX serving run has been published. See the [negative-result notes](docs/BENCHMARKS.md#negative-results-matter).
+
+### Community reference
+
+**Community-reported, not independently reproduced by PixelML:** [allover326's four-card DeepSeek-V4-Flash run](https://github.com/allover326/deepseek-v4-cmp170hx/tree/3dd2d8817e7deae00d998edde0d227e7254ea71e) used pipeline parallelism and DSpark at 180 W/card.
+
+| Decode | Prefill and latency | Long context | Evidence |
+|---:|---:|---:|---|
+| **98.1 tok/s** single-stream aggregate; **712.8 tok/s** at 64 concurrent requests | **5,207 tok/s** at 77K context; 14.6 s TTFT at 100K in the PP/TP sweep | 1,047,736-token one-shot prefill; 1,002,852-token accumulated conversation with row chunk 64 | [Pinned results](https://github.com/allover326/deepseek-v4-cmp170hx/blob/3dd2d8817e7deae00d998edde0d227e7254ea71e/RESULTS.md) |
+
+At roughly 1.04M tokens, that community run measured 1,904 tok/s prefill, about 550 seconds to first token, and 35.6 tok/s decode. Retrieval accuracy also fell from about 100% at 150K to 30% at 900K, so the maximum window is a capacity result, not a claim that every token remains equally useful.
+
+Do not compare these rows as a leaderboard. The models, prompts, context lengths, concurrency, and runtime patches differ. Decode rates above use generated-token counts from the final usage result or a fixed output count; they do not count streaming events as tokens.
 
 ## Repository map
 
