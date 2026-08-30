@@ -1,8 +1,8 @@
 # Benchmarks
 
-Results here are application measurements on the tested CMP 170HX setup. They are not vendor specifications or theoretical estimates.
+Results here are a publication-status registry for the tested CMP 170HX setup. Entries are measured results, withheld results pending publication-safe evidence, or compatibility findings. They are not vendor specifications or theoretical estimates.
 
-## Withheld pending publication-safe evidence
+## Withheld pending publication-safe evidence (no club-published claims)
 
 **Qwen3.8-27B W4A16 + DFlash2, three single-card runs:** a three-card result exists, but its current evidence revision contains prohibited infrastructure identifiers and requires an owner-approved history repair before a sanitized re-pin. Numbers and evidence links return here only after that repair.
 
@@ -12,7 +12,7 @@ Results here are application measurements on the tested CMP 170HX setup. They ar
 
 ### GLM-5.3-Flash (all quantizations)
 
-**Compatibility result, not a performance result.** As of the stable summary at [GLM-5.3-Flash-CMP-170HX @ `07b28e6`](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/07b28e6d8d3b9fe7cb8a69f37e36088ffa71cec8/README.md), no completed serving run has been published:
+**Compatibility result, not a performance result.** As of the stable summary at [GLM-5.3-Flash-CMP-170HX @ `58eece6`](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/58eece6db097fb1d5e0a767b752fd1c040b3ac58/README.md), no completed serving run has been published:
 
 - NVFP4 targets an SM121 runtime path — incompatible with SM80 (**measured** registry check). Upstream vLLM support ([PR 53906](https://github.com/vllm-project/vllm/pull/53906)) is open and SM90+.
 - AWQ INT4 is 198.1 GiB — over the 192 GiB three-card total before KV (**measured** blob sizes).

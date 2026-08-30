@@ -49,7 +49,7 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 
 ## Published workload results
 
-### PixelML measurements
+### PixelML result registry
 
 Publication gate: a number appears in this section only with sanitized raw receipts and a stable evidence pin. Two internal results are currently withheld under that gate:
 
@@ -79,17 +79,17 @@ Do not compare these rows as a leaderboard. The models, prompts, context lengths
 
 | Lane | Evidence | Current guidance |
 |---|---|---|
-| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Internal result, receipts pending** — no club-published number | Start with pipeline parallelism, `15,15,13` layer placement, DSpark `k=5`, and FP8 KV. Source-build the SM80 operators; a precompiled image with only Python overlays failed during graph capture. |
+| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Internal result, receipts pending** — no club-published claims | Untested proposals for the eventual run: pipeline parallelism, a rebalanced final-rank layer split such as `15,15,13`, DSpark `k=5`, and FP8 KV. SM80-safe operator builds are an open question this configuration must answer. |
 | GLM-5.2 symmetric Int4/Int8 mix with an unquantized MTP head | **Community-reported:** 28.47 tok/s baseline on 8 CMP 170HX cards; MTP serving initialization verified | Useful SM80 reference for future DSA models, but not a four-card recipe. The [pinned vLLM composition](https://github.com/allover326/vllm-dsa-mtp-sm80/blob/56bba6097b06b3c0d981de3a6cef63ed394d2626/README.md) combines a Triton sparse-MLA backend with MTP under pipeline parallelism. |
-| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/07b28e6d8d3b9fe7cb8a69f37e36088ffa71cec8/README.md):** no completed serving result at pin `07b28e6` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
-| W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. This does not rule out FP8 KV: the DeepSeek-V4 run above used FP8 KV successfully on SM80. |
+| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/58eece6db097fb1d5e0a767b752fd1c040b3ac58/README.md):** no completed serving result at pin `58eece6` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
+| W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. Whether FP8 KV cache works on SM80 is an open question until the DeepSeek receipts land. |
 
 Five rules keep repeating across our attempts and the community work:
 
 1. Start with pipeline parallelism, not tensor parallelism, when cards communicate over slow PCIe without P2P.
 2. Rebalance the final pipeline rank when it also holds the LM head or speculative draft; default equal splits can fail even when total VRAM is sufficient.
 3. Check the quant details, not only the bit count. Symmetric versus asymmetric MoE weights, activation format, KV format, and whether the draft head is quantized can change compatibility.
-4. Match the build to the patch. Our DeepSeek-V4 run required compiled SM80 operators; a precompiled image that applied only Python overlays failed during graph capture.
+4. Match the build to the patch: if compiled SM80 operators are required, a precompiled image that applies only Python overlays is a known failure mode (**untested proposal for this node**).
 5. Verify composed patches with import and undefined-name checks, not only syntax compilation. The community composition includes this gate after a real missing-helper failure.
 
 ## Repository map
