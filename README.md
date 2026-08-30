@@ -53,14 +53,18 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 
 | Workload | Topology and power | Decode | Prefill and latency | Evidence |
 |---|---|---:|---:|---|
-| Qwen3.8-27B W4A16 + DFlash2 | 1 card at a time, 3 cards tested, 180 W cap | **136.4 tok/s mean** (133.6–140.3) for 256-token generations | 1,926–1,957 tok/s at 6.6K context; 181–201 ms TTFT | [Pinned results](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/blob/41d2c414fe0f293d77087ef18cda5896664754d6/RESULTS.md) |
-| DeepSeek-V4-Flash-0731 native weights + DSpark | 3 cards, pipeline parallel, 180 W/card | **83.3 tok/s aggregate** across three 400-token prompts | **2,965 tok/s** at 5.4K context | [Pinned results](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/blob/5c5b5a4b45e8def82ec027737df616c55f997963/RESULTS.md) |
+| Qwen3.8-27B W4A16 + DFlash2 | 1 card at a time, 3 cards tested, 180 W cap | **136.4 tok/s mean** (133.6–140.3) for 256-token generations | 1,926–1,957 tok/s at 6.6K context; 181–201 ms TTFT | [Pinned results](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/blob/41d2c414fe0f293d77087ef18cda5896664754d6/RESULTS.md) (1) |
+| DeepSeek-V4-Flash-0731 native weights + DSpark | 3 cards, pipeline parallel, 180 W/card | **83.3 tok/s aggregate** across three 400-token prompts | **2,965 tok/s** at 5.4K context | [Benchmark repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) (2) |
 
 GLM-5.3-Flash remains a compatibility result rather than a speed result: no completed CMP 170HX serving run has been published. See the [negative-result notes](docs/BENCHMARKS.md#negative-results-matter).
 
+(1) The pinned Qwen revision summarizes the measured numbers, but its raw artifact files still contain prohibited infrastructure identifiers. Publishing a sanitized replacement revision requires an owner-approved history repair in that repository; this link will be re-pinned to the repaired revision. Until then, do not open the raw artifact files in that pin.
+
+(2) Claim not ready: the pinned DeepSeek revision (`5c5b5a4`) contains only a summary and launch scripts — no redacted raw JSON/JSONL receipts, run manifest, or complete environment metadata. The figures above are quoted from that summary; treat the row as unverified until a sanitized raw-evidence revision is published.
+
 ### Community reference
 
-**Community-reported, not independently reproduced by PixelML:** [allover326's four-card DeepSeek-V4-Flash run](https://github.com/allover326/deepseek-v4-cmp170hx/tree/3dd2d8817e7deae00d998edde0d227e7254ea71e) used pipeline parallelism and DSpark at 180 W/card.
+**Community-reported, not independently reproduced by PixelML.** The pinned source history contains prohibited identifiers pending an owner-approved repair there, so treat its figures as reported-only: [allover326's four-card DeepSeek-V4-Flash run](https://github.com/allover326/deepseek-v4-cmp170hx/tree/3dd2d8817e7deae00d998edde0d227e7254ea71e) used pipeline parallelism and DSpark at 180 W/card.
 
 | Decode | Prefill and latency | Long context | Evidence |
 |---:|---:|---:|---|
@@ -68,19 +72,21 @@ GLM-5.3-Flash remains a compatibility result rather than a speed result: no comp
 
 At roughly 1.04M tokens, that community run measured 1,904 tok/s prefill, about 550 seconds to first token, and 35.6 tok/s decode. Retrieval accuracy also fell from about 100% at 150K to 30% at 900K, so the maximum window is a capacity result, not a claim that every token remains equally useful.
 
+The 98.1 tok/s decode figure is a single reported aggregate (n=1 per content class). The same source reports the unchanged server swinging 101.9–130.6 tok/s across runs and requires at least three aggregates, or many fixed-prompt runs, before treating a number as comparable. Read it as indicative, not as a controlled measurement.
+
 Do not compare these rows as a leaderboard. The models, prompts, context lengths, concurrency, and runtime patches differ. Decode rates above use generated-token counts from the final usage result or a fixed output count; they do not count streaming events as tokens.
 
 ### Model, quant, and runtime strategy
 
 | Lane | Evidence | Current guidance |
 |---|---|---|
-| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Measured by PixelML:** 83.3 tok/s on 3 cards | Best published large-model lane on this node. Start with pipeline parallelism, `15,15,13` layer placement, DSpark `k=5`, and FP8 KV. |
-| Qwen3.8-27B W4A16 AutoRound + W4A16 DFlash2 | **Measured by PixelML:** 136.4 tok/s mean across 3 independently tested cards | Best published single-card speed lane. This is W4A16, not NVFP4; correct usage-token counting and the prepared fast variant both matter. |
+| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Measured by PixelML:** 83.3 tok/s on 3 cards (raw receipts pending; see note 2) | Fastest published PixelML large-model result on this node — throughput-only evidence, no quality or reliability floor yet. Start with pipeline parallelism, `15,15,13` layer placement, DSpark `k=5`, and FP8 KV. |
+| Qwen3.8-27B W4A16 AutoRound + W4A16 DFlash2 | **Measured by PixelML:** 136.4 tok/s mean across 3 independently tested cards | Fastest published PixelML single-card result in this table — throughput-only evidence. This is W4A16, not NVFP4; correct usage-token counting and the prepared fast variant both matter. |
 | GLM-5.2 symmetric Int4/Int8 mix with an unquantized MTP head | **Community-reported:** 28.47 tok/s baseline on 8 CMP 170HX cards; MTP serving initialization verified | Useful SM80 reference for future DSA models, but not a four-card recipe. The [pinned vLLM composition](https://github.com/allover326/vllm-dsa-mtp-sm80/blob/56bba6097b06b3c0d981de3a6cef63ed394d2626/README.md) combines a Triton sparse-MLA backend with MTP under pipeline parallelism. |
-| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/a2f22cc9641c3a95c841c6b06d58c6dcabb0f92e/README.md):** no completed serving result | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
+| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/a2f22cc9641c3a95c841c6b06d58c6dcabb0f92e/README.md):** no completed serving result at pin `a2f22cc` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. A 146.05 GiB UD-IQ4_XS GGUF candidate and an SM80 llama.cpp-fork build exist but are **serving-untested**; live status is tracked in the model repository. |
 | W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. This does not rule out FP8 KV: the DeepSeek-V4 run above used FP8 KV successfully on SM80. |
 
-Three rules keep repeating across our attempts and the community work:
+Five rules keep repeating across our attempts and the community work:
 
 1. Start with pipeline parallelism, not tensor parallelism, when cards communicate over slow PCIe without P2P.
 2. Rebalance the final pipeline rank when it also holds the LM head or speculative draft; default equal splits can fail even when total VRAM is sufficient.
@@ -96,6 +102,14 @@ scripts/    Read-only inventory, model-fit, and card-validation helpers
 workloads/  LLM, image, and video workload recipes and status
 results/    Submission format for reproducible community results
 ```
+
+## Model-family repositories
+
+Experiments live in one dedicated repository per model family or workload —
+for example [GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX)
+holds every GLM-5.3-Flash attempt (NVFP4, AWQ, GPTQ, EXL3, FP8/BF16, all runtimes,
+successes, and failures). Never one repository per quantization, checkpoint, runtime,
+or machine; this repository indexes results and holds cross-workload guidance.
 
 ## Safety first
 
