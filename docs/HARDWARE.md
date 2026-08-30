@@ -41,6 +41,8 @@ Save a redacted baseline outside the public repository. A card missing from `lsp
 
 ## Known-good measured configuration
 
+**Measured inventory:** four cards enumerated in one Ubuntu guest on 2026-08-30 and exposed 65,536 MiB each, for 256 GiB aggregate. At idle with a 180 W cap, all four reported 31–32 °C core temperatures, 35–45 °C memory temperatures, 32–36 W power draw, and 0% GPU utilization. Four-card workload performance remains untested.
+
 **Measured:** three cards passed CUDA enumeration, a 16 GiB cross-window write/read smoke test, an SM kernel, and post-load health checks under Ubuntu 22.04, Linux 6.8, driver 610.43.03, and the pinned unlocker described in [Installation](INSTALLATION.md).
 
 This validates that exact configuration. Other card revisions and software versions remain untested until evidence is added.
