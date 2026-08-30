@@ -1,0 +1,19 @@
+# Per-repo overrides for PixelML pr-agent. See:
+# https://qodo-merge-docs.qodo.ai/usage-guide/configuration_options/
+
+[pr_reviewer]
+require_tests_review = false
+require_estimate_effort_to_review = true
+num_max_findings = 8
+extra_instructions = """
+This repository documents CMP 170HX (mining-card) experiments on DGX-class
+and custom hardware. Focus on factual accuracy of measured claims, safe
+power/thermal handling guidance, and reproducibility of benchmark recipes.
+Flag missing disclaimers on destructive memory tests or power-limit changes.
+"""
+
+[ignore]
+glob = [
+  "reports/**",
+  "**/*.lock",
+]
