@@ -2,6 +2,20 @@
 
 CMP 170HX cards are passive server accelerators. An open case and a room fan are not automatically enough: air must be forced through the heatsink fins, and exhaust must not recirculate into the intake.
 
+## Idle heat is real heat
+
+On 2026-08-30, after the build described in the [hardware guide](HARDWARE.md#our-four-card-rig) was finished, the four-card rig idled with a 180 W limit per card and the blower running:
+
+| Metric | Measured idle snapshot (n=1) |
+|---|---|
+| Core temperature | 37–38 °C |
+| Memory temperature | 41–51 °C |
+| Board power per card | 33.71–37.69 W |
+| Group power, four cards | about 141 W |
+| GPU utilization / VRAM used | 0% / 0 MiB on every card |
+
+This is one timestamped snapshot; check live values with the `nvidia-smi` query command under [practical policies](#practical-policies). Ambient temperature and blower RPM were not recorded, so treat these ranges as observations from this frame, not design limits. The plain lesson: four idle cards still turn roughly 141 W into heat, and one card's memory was already at 51 °C with no workload. An open frame alone does not cool these cards.
+
 ## Practical policies
 
 | Mode | Measured policy | Use |
@@ -21,6 +35,10 @@ nvidia-smi --query-gpu=index,power.draw,power.limit,temperature.gpu,temperature.
 ```
 
 An older service or startup script may overwrite the desired limit after boot. Always verify the live value rather than trusting a service's `active (exited)` state.
+
+## Workload peaks to compare against
+
+Sustained single-card load peaks are known from club measurements, but that evidence revision contains prohibited infrastructure identifiers, so the numbers and their links are withheld here pending the owner-approved history repair and sanitized re-pin already tracked in the benchmark registry. Four-card load peaks are untested; do not extrapolate one-card thermals to the full rig. Once a sanitized Qwen pin lands, this section gets the measured core/memory peaks back.
 
 ## Temperature policy
 
