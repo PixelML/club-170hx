@@ -1,0 +1,23 @@
+name: pr-review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+# Granted at the caller level because reusable workflows can only downscope.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  pr-review:
+    uses: PixelML/pr-agent/.github/workflows/pr-review-reusable.yml@5fe2fbb8cdb9253fa8b3cf560f74f81980262c6b
+    with:
+      auto_review: true
+      auto_describe: false
+      auto_improve: false
+    secrets:
+      CLIPROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}

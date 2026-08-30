@@ -6,14 +6,51 @@ require_tests_review = false
 require_estimate_effort_to_review = true
 num_max_findings = 8
 extra_instructions = """
-This repository documents CMP 170HX (mining-card) experiments on DGX-class
-and custom hardware. Focus on factual accuracy of measured claims, safe
-power/thermal handling guidance, and reproducibility of benchmark recipes.
-Flag missing disclaimers on destructive memory tests or power-limit changes.
+This public repository is the platform-wide knowledge base for CMP 170HX
+hardware, setup, safety, quality control, and workload results. AGENTS.md is
+the publication and evidence contract; detailed model-family experiments live
+in linked repositories rather than here.
+
+When reviewing, prioritize these repository-specific risks:
+
+1. Publication boundary. Treat exposure prohibited by AGENTS.md as a BLOCKER,
+including credentials, private infrastructure identifiers, raw logs, and
+redistribution-restricted artifacts. Review filenames and assets as well as
+text, especially assets/ and results/.
+
+2. Evidence labels and receipts. Claims in README.md and docs/BENCHMARKS.md
+must distinguish measured, inferred, community-reported, and untested results.
+Flag benchmark numbers without reproducible workload shape, revision, topology,
+card count, power limit, thermal data, or a redacted primary receipt.
+
+3. Hardware safety. Changes to docs/HARDWARE.md,
+docs/COOLING-AND-POWER.md, docs/QC.md, and scripts/qc/ must preserve forced
+airflow guidance and the 80 C core / 85 C memory stop limits. Flag advice that
+can load, flash, power-cycle, or destructively test cards without explicit
+preconditions and abort behavior.
+
+4. Reproducibility. Commands in docs/INSTALLATION.md,
+docs/TROUBLESHOOTING.md, scripts/, and workload READMEs must be copy-pasteable,
+revision-pinned where appropriate, and fail safely. Flag mutable dependencies,
+unchecked downloads, misleading defaults, and scripts that continue after a
+failed hardware or storage check.
+
+5. Repository routing. README.md, docs/WORKLOADS.md, and workload index pages
+should keep compact platform-level conclusions and link detailed experiments
+to the correct model-family repository. Flag copied private history, duplicate
+recipes, broken links, or conclusions that overreach the cited attempt.
+
+6. Code and documentation hygiene. For shell scripts, require strict error
+handling, safe quoting, bounded waits, and no secret-bearing command lines.
+For Python/CUDA helpers, flag silent failures, unsafe device assumptions, and
+results that could be mistaken for benchmark evidence without validation.
 """
 
-[ignore]
-glob = [
-  "reports/**",
-  "**/*.lock",
-]
+[pr_description]
+extra_instructions = """
+The PR description should state:
+- which platform guide, workload index, script, or evidence set changed;
+- whether each technical claim is measured, inferred, community-reported, or untested;
+- the exact public source/receipt for new numbers or compatibility claims;
+- the safety and publication-boundary checks run before publishing.
+"""
