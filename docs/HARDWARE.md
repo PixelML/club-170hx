@@ -27,6 +27,14 @@ Confirm these items first:
 
 Never mix modular PSU cables between PSU models, even when the connector fits. Keep each riser and its GPU power on a deliberate, documented power domain.
 
+## Our four-card rig
+
+The current test rig holds four CMP 170HX cards in an open-frame chassis with enough spacing between slots to reach every power connector. Each card gets its own cable; there are no splitters. Cables are dressed to the frame so they cannot sag into neighboring fans or block a heatsink face.
+
+Because the cards are passive, the frame depends on one 80 mm blower pushing air through a 3D-printed duct seated over the heatsink inlet at one end of the stack. The duct feeds the fin channels; air enters at the ducted end and exhausts out the opposite side of the frame, so keep a clear lane at both ends. Don't crowd either side; these cards heat quickly when airflow stalls.
+
+The blower speed is fixed; the cards provide no fan-speed control, so treat the blower as always-on hardware rather than something the driver manages. Its RPM is unmeasured and ambient temperature was not recorded during the idle snapshots below, which is one reason these numbers describe this frame and not a product.
+
 ## First inventory
 
 With no workload running:
