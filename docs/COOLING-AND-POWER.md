@@ -38,7 +38,7 @@ An older service or startup script may overwrite the desired limit after boot. A
 
 ## Workload peaks to compare against
 
-The single-card Qwen runs in the [benchmark registry](BENCHMARKS.md) give a reference point for what sustained load adds to these idle numbers. Those runs used a 180 W limit and peaked at 51 °C core and 61 °C memory; the evidence is pinned at [Qwen3.8-27B-CMP-170HX @ `41d2c41`](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/blob/41d2c414fe0f293d77087ef18cda5896664754d6/RESULTS.md). Four-card load peaks are untested; do not extrapolate one-card thermals to the full rig.
+Sustained single-card load peaks are known from club measurements, but that evidence revision contains prohibited infrastructure identifiers, so the numbers and their links are withheld here pending the owner-approved history repair and sanitized re-pin already tracked in the benchmark registry. Four-card load peaks are untested; do not extrapolate one-card thermals to the full rig. Once a sanitized Qwen pin lands, this section gets the measured core/memory peaks back.
 
 ## Temperature policy
 
