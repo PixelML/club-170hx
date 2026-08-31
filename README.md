@@ -26,6 +26,7 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 | Compare measured results | [Benchmarks](docs/BENCHMARKS.md) |
 | Avoid past operator mistakes | [Operator lessons](docs/OPERATOR-LESSONS.md) |
 | What the world knows about this card | [Unlock and mod research](docs/RESEARCH-CMP170HX-UNLOCKS.md) |
+| Reproduce a measured result | [Runnable notebooks](recipes/README.md) |
 | Choose an AI workload | [Workload matrix](docs/WORKLOADS.md) |
 | Read the consolidated lessons | [What we learned](docs/LESSONS.md) |
 | See every model tried on this card | [Model status](docs/MODEL-STATUS.md) |
@@ -115,6 +116,8 @@ Normalized metrics, methodology, and evidence tiers:
 the model repositories; small redacted snapshots may be retained here when the
 detailed ledger is not public.
 
+Every new measured recipe also ships under [`recipes/`](recipes/README.md) as a clean executed notebook with immutable pins, structured results, a generated chart, and an editable final `curl`. Start with [Qwen3.8-27B W4A16 + DFlash2](recipes/qwen3.8-27b-dflash2/reproduce.ipynb).
+
 | Workload | Quant / runtime | Topology | Decode | Aggregate | Quality / success | Status | Evidence |
 |---|---|---|---|---|---|---|---|
 | GLM-5.3-Flash | EXL3 4.05bpw · exllamav3 + TabbyAPI | 4 cards · manual `gpu_split` · 180 W cap (canonical) | 25.2 tok/s @ c=1 | 44.6 tok/s @ c=8 | 20/20 golden corpus | Publication-safe | [Result card](results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) · [Guide](docs/models/glm-5.3-flash.md) · [Benchmarks](docs/BENCHMARKS.md#glm-53-flash-exl3-405bpw-four-cards-exllamav3--tabbyapi-publication-safe) |
@@ -145,6 +148,7 @@ Curated, verified artifacts from this club: [PixelML/club-170hx: verified on CMP
 
 ```text
 docs/       Hardware, setup, QC, operations, troubleshooting, and results
+recipes/    Runnable published notebooks with clean outputs and charts
 scripts/    Read-only inventory, model-fit, and card-validation helpers
 workloads/  LLM, image, and video workload recipes and status
 results/    Submission format for reproducible community results

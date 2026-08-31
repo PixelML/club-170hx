@@ -1,6 +1,8 @@
 # Result submission format
 
-Create one Markdown file per result. Store small, redacted machine-readable evidence beside it when useful; do not commit model outputs containing private prompts or data.
+Create one Markdown file per result and one runnable publication folder under `recipes/<model-runtime>/`. Store small, redacted machine-readable evidence beside it; do not commit model outputs containing private prompts or data.
+
+The recipe folder must contain `recipe.json`, `reproduce.ipynb`, `results/summary.csv`, and a generated chart. The notebook must preserve clean output from the measured run, execute in order after one configuration cell, and finish with an editable `curl` that prints the response and final usage object.
 
 ```markdown
 # Workload — short result name
@@ -55,3 +57,5 @@ copy-pasteable redacted command
 ```
 
 Before committing, run the publication gate in [AGENTS.md](../AGENTS.md).
+
+Also run `python3 scripts/validate_recipe_notebooks.py` from the repository root.

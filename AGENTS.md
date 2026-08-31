@@ -24,6 +24,7 @@ If a value is not necessary for reproducing the result, omit it. If uncertain wh
 - For streaming APIs, derive generated tokens from the final usage object, not the number of stream events.
 - Preserve negative results. State what was tested and why it failed without overstating general compatibility.
 - Never invent a measurement, version, citation, or successful test.
+- Do not publish a new measured benchmark as prose alone. Add a runnable `recipes/<model-runtime>/reproduce.ipynb` with immutable pins, clean recorded outputs, structured source data, a generated chart, and an editable final `curl` request.
 
 ## Infrastructure safety
 
@@ -46,6 +47,7 @@ Before every commit, push, release, or pull request:
 3. Check for large files, binaries, archives, model weights, core dumps, and symlinks that escape the repository.
 4. Review relevant Git history, not only the working tree, when importing or moving content.
 5. Confirm benchmark claims have redacted evidence and source links.
+6. Run `python3 scripts/validate_recipe_notebooks.py` when a recipe or benchmark result changes.
 
 Suggested scans, adjusted to the change:
 
