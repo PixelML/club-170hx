@@ -14,8 +14,8 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 |---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
 | GLM-5.3-Flash | UD-IQ4_XS · llama.cpp (0069971) | 4 · layer split | 16,384 | c=1; ladder 1/2/4; soak c=2 | — | 17.73 tok/s median (c=1) | ~17.5–17.7 tok/s (c=2/4) | — | — | 21/26 local tasks · 41/41 soak reps | Snapshot only: 40.10–44.49 W, core 41–43 °C, mem 45–55 °C, VRAM 32,656–42,312 / 65,536 MiB; limit not queried | Snapshot proxy only, not integrated | Publication-safe | [Run manifest](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) · [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) |
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
-| Qwen3.8-27B | NVFP4 · vLLM | 1 (× 3 runs) | — | — | — | — | — | — | — | — | — | — | Pending evidence repair · [#58](https://github.com/seanphan/pixelml/issues/58) · [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
-| DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 | 16,384 | — | — | — | — | — | — | — | — | — | Pending evidence repair · [#65](https://github.com/seanphan/pixelml/issues/65) · [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
+| Qwen3.8-27B | NVFP4 · vLLM | 1 (× 3 runs) | — | — | — | — | — | — | — | — | — | — | Pending evidence repair · [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
+| DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 | 16,384 | — | — | — | — | — | — | — | — | — | Pending evidence repair · [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
 
 ## GLM-5.3-Flash UD-IQ4_XS, four cards (publication-safe)
 
@@ -39,7 +39,7 @@ Aggregate curve flatness beyond c=4 and at longer contexts is untested. Result c
 
 ## Qwen3.8-27B NVFP4, one card — pending evidence repair
 
-**Status:** the canonical sanitized receipts for the three-card runs are unmerged ([repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1); owning ticket [#58](https://github.com/seanphan/pixelml/issues/58)). The numbers below are platform context, not decision-grade, until that repair lands.
+**Status:** the canonical sanitized receipts for the three-card runs are unmerged ([repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1)). The numbers below are platform context, not decision-grade, until that repair lands.
 
 **Measured (context):** three separate CMP 170HX cards at a 180 W limit.
 
@@ -56,7 +56,7 @@ Reproduction and raw outputs: [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com
 
 ## DeepSeek-V4-Flash-0731, three cards — pending evidence repair
 
-**Status:** canonical sanitized receipts are unmerged ([repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1); owning ticket [#65](https://github.com/seanphan/pixelml/issues/65)). Numbers below are platform context until the repair lands.
+**Status:** canonical sanitized receipts are unmerged ([repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1)). Numbers below are platform context until the repair lands.
 
 **Measured (context):** 3 × 64 GiB cards, pipeline parallel size 3, 180 W/card, FP8 KV cache, 16,384 maximum sequence length, and speculative decoding with `k=5`.
 
