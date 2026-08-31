@@ -1,10 +1,47 @@
 # Benchmarks
 
-Results here are application measurements on the tested CMP 170HX setup. They are not vendor specifications or theoretical estimates.
+Results here are application measurements on the tested CMP 170HX setup. They are not vendor specifications or theoretical estimates. This page is the normalized comparison index; raw manifests, commands, and receipts stay in the model repositories.
 
-## Qwen3.8-27B NVFP4, one card
+## Evidence tiers
 
-**Measured:** three separate CMP 170HX cards at a 180 W limit.
+A row is **publication-safe** only when the full sanitized receipt chain (manifest, commands, redacted outputs, exact model/runtime pins) is merged in the owning model repository. Rows whose receipts are unmerged are **pending evidence repair**: their owning tickets repair the evidence chain, and the numbers are not decision-grade until then. The README scoreboard mirrors these statuses.
+
+## Normalized matrix
+
+`—` = not presented without sanitized stable evidence. Do not interpolate or compare unlike metrics.
+
+| Workload | Quant / runtime | Cards | Context | Concurrency | Prefill | Decode | Aggregate | TTFT | ITL | Quality / success | Power / thermals | Energy | Status | Evidence |
+|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| GLM-5.3-Flash | UD-IQ4_XS · llama.cpp (0069971) | 4 · layer split | 16,384 | c=1; ladder 1/2/4; soak c=2 | — | 17.73 tok/s median (c=1) | ~17.5–17.7 tok/s (c=2/4) | — | — | 21/26 local tasks · 41/41 soak reps | Snapshot only: 40.10–44.49 W, core 41–43 °C, mem 45–55 °C, VRAM 32,656–42,312 / 65,536 MiB; limit not queried | Snapshot proxy only, not integrated | Publication-safe | [Run manifest](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) · [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) |
+| GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
+| Qwen3.8-27B | NVFP4 · vLLM | 1 (× 3 runs) | — | — | — | — | — | — | — | — | — | — | Pending evidence repair · [#58](https://github.com/seanphan/pixelml/issues/58) · [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
+| DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 | 16,384 | — | — | — | — | — | — | — | — | — | Pending evidence repair · [#65](https://github.com/seanphan/pixelml/issues/65) · [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
+
+## GLM-5.3-Flash UD-IQ4_XS, four cards (publication-safe)
+
+**Measured:** 4 × 64 GiB CMP 170HX, layer split (`--tensor-split 1,1,1,1`), 16,384 context, unslothai/llama.cpp at commit 00699716c275498ff84d71e329178fe21cba56a6, driver 610.43.03, kernel 6.8, Ubuntu 22.04. Model: unsloth/GLM-5.3-Flash-GGUF at revision 2975ab414d30340466d8c51533c6e91f0cca64c1, 5-shard UD-IQ4_XS (~146 GiB).
+
+| Metric | Value |
+|---|---:|
+| Decode, c=1 median (5 reps after 3 warmups) | 17.73 tok/s |
+| End-to-end per task, c=1 | 14.44 s |
+| Aggregate, c=2 and c=4 ladder (2 reps each) | ~17.5–17.7 tok/s (flat) |
+| Soak, 20 min at c=2 | 41/41 reps ok, stable 17.5→17.7 tok/s |
+| Quality, corrected 26-task pack | 21/26 (math 8/8, instruction 4/5, long-context 3/3, held-out math 4/4, held-out code 1/1, coding 1/3, held-out instruction 0/2) |
+| Prefill / TTFT / ITL | — (not captured in sanitized receipts) |
+| Power, end-of-run snapshot per card | 40.10 / 44.49 / 40.64 / 41.82 W (configured limit not queried) |
+| Temperatures, end-of-run snapshot | core 41–43 °C, memory 45–55 °C (continuous/peak not recorded) |
+| VRAM, end-of-run snapshot per card | 32,656–42,312 of 65,536 MiB |
+| Energy | single-snapshot power proxy; not integrated energy and not a lower bound |
+| Fault telemetry | continuous throttle/Xid/thermal telemetry not recorded this run; no fault-free-operation claim is made |
+
+Aggregate curve flatness beyond c=4 and at longer contexts is untested. Result card: [results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md).
+
+## Qwen3.8-27B NVFP4, one card — pending evidence repair
+
+**Status:** the canonical sanitized receipts for the three-card runs are unmerged ([repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1); owning ticket [#58](https://github.com/seanphan/pixelml/issues/58)). The numbers below are platform context, not decision-grade, until that repair lands.
+
+**Measured (context):** three separate CMP 170HX cards at a 180 W limit.
 
 | Card | Decode, 256 output tokens | Decode, 900 output tokens | TTFT | Prefill |
 |---|---:|---:|---:|---:|
@@ -17,9 +54,11 @@ Peak observed core temperature was 51 °C; peak observed memory temperature acro
 
 Reproduction and raw outputs: [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX).
 
-## DeepSeek-V4-Flash-0731, three cards
+## DeepSeek-V4-Flash-0731, three cards — pending evidence repair
 
-**Measured:** 3 × 64 GiB cards, pipeline parallel size 3, 180 W/card, FP8 KV cache, 16,384 maximum sequence length, and speculative decoding with `k=5`.
+**Status:** canonical sanitized receipts are unmerged ([repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1); owning ticket [#65](https://github.com/seanphan/pixelml/issues/65)). Numbers below are platform context until the repair lands.
+
+**Measured (context):** 3 × 64 GiB cards, pipeline parallel size 3, 180 W/card, FP8 KV cache, 16,384 maximum sequence length, and speculative decoding with `k=5`.
 
 | Prompt class | Decode throughput |
 |---|---:|
@@ -51,5 +90,7 @@ Every submitted result must include:
 - raw redacted output and an explanation of the metric calculation.
 
 For server-sent-event APIs, count generated tokens from the final `usage.completion_tokens`. Counting stream events produced incorrect results in an earlier harness because events are not tokens.
+
+Rows marked `pending evidence repair` are restored to full decision-grade status only when the owning model repository merges the sanitized receipt chain, and the README scoreboard is updated in the same workflow.
 
 Use the template in [results/README.md](../results/README.md).
