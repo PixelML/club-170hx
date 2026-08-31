@@ -49,48 +49,16 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 
 ## Published workload results
 
-### PixelML result registry
+Canonical scoreboard of publication-safe PixelML measurements on CMP 170HX. Normalized metric matrix, methodology, and evidence tiers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Raw manifests and receipts stay in the model repositories.
 
-Publication gate: a number appears in this section only with sanitized raw receipts and a stable evidence pin. Two internal results are currently withheld under that gate:
+| Workload | Quant / runtime | Topology | Decode | Aggregate | Quality / success | Status | Evidence |
+|---|---|---|---|---|---|---|---|
+| GLM-5.3-Flash | UD-IQ4_XS · llama.cpp | 4 cards · layer split · 16k ctx · c ≤ 4 | 17.73 tok/s median @ c=1 | ~17.5–17.7 tok/s @ c=2/4 | 21/26 local tasks · 41/41 soak | Publication-safe | [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) · [Evidence pin](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) |
+| GLM-5.3-Flash | NVFP4 | 3 cards | — | — | — | Not compatible: SM121-format weights on SM80; AWQ INT4 ≈ 66 GiB/card does not fit 3 × 64 GiB | [Negative result](docs/BENCHMARKS.md#negative-results-matter) |
+| Qwen3.8-27B | NVFP4 · vLLM | 1 card × 3 runs @ 180 W | — | — | — | Pending evidence repair: [#58](https://github.com/seanphan/pixelml/issues/58) · [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
+| DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 cards | — | — | — | Pending evidence repair: [#65](https://github.com/seanphan/pixelml/issues/65) · [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
 
-| Workload | Status | Missing before numbers can be published |
-|---|---|---|
-| DeepSeek-V4-Flash-0731 native weights + DSpark, 3-card pipeline | Result exists; numbers withheld | redacted raw JSONL receipts and a complete run manifest at an exact revision |
-| Qwen3.8-27B W4A16 + DFlash2, three single-card runs | Result exists; numbers withheld | owner-approved repair of the evidence history (the current revision contains prohibited identifiers), then a sanitized re-pin |
-
-GLM-5.3-Flash remains a compatibility result rather than a speed result: no completed CMP 170HX serving run has been published. See the [negative-result notes](docs/BENCHMARKS.md#negative-results-matter).
-
-
-### Community reference
-
-**Community-reported, not independently reproduced by PixelML.** The pinned source history contains prohibited identifiers pending an owner-approved repair there, so treat its figures as reported-only: [allover326's four-card DeepSeek-V4-Flash run](https://github.com/allover326/deepseek-v4-cmp170hx/tree/3dd2d8817e7deae00d998edde0d227e7254ea71e) used pipeline parallelism and DSpark at 180 W/card.
-
-| Decode | Prefill and latency | Long context | Evidence |
-|---:|---:|---:|---|
-| **98.1 tok/s** single-stream aggregate; **712.8 tok/s** at 64 concurrent requests | **5,207 tok/s** at 77K context; 14.6 s TTFT at 100K in the PP/TP sweep | 1,047,736-token one-shot prefill; 1,002,852-token accumulated conversation with row chunk 64 | [Pinned results](https://github.com/allover326/deepseek-v4-cmp170hx/blob/3dd2d8817e7deae00d998edde0d227e7254ea71e/RESULTS.md) |
-
-At roughly 1.04M tokens, that community run measured 1,904 tok/s prefill, about 550 seconds to first token, and 35.6 tok/s decode. Retrieval accuracy also fell from about 100% at 150K to 30% at 900K, so the maximum window is a capacity result, not a claim that every token remains equally useful.
-
-The 98.1 tok/s decode figure is a single reported aggregate (n=1 per content class). The same source reports the unchanged server swinging 101.9–130.6 tok/s across runs and requires at least three aggregates, or many fixed-prompt runs, before treating a number as comparable. Read it as indicative, not as a controlled measurement.
-
-Do not compare these rows as a leaderboard. The models, prompts, context lengths, concurrency, and runtime patches differ. Decode rates above use generated-token counts from the final usage result or a fixed output count; they do not count streaming events as tokens.
-
-### Model, quant, and runtime strategy
-
-| Lane | Evidence | Current guidance |
-|---|---|---|
-| DeepSeek-V4 native checkpoint (MXFP4 experts + FP8 attention) with DSpark | **Internal result, receipts pending** — no club-published claims | Untested proposals for the eventual run: pipeline parallelism, a rebalanced final-rank layer split such as `15,15,13`, DSpark `k=5`, and FP8 KV. SM80-safe operator builds are an open question this configuration must answer. |
-| GLM-5.2 symmetric Int4/Int8 mix with an unquantized MTP head | **Community-reported:** 28.47 tok/s baseline on 8 CMP 170HX cards; MTP serving initialization verified | Useful SM80 reference for future DSA models, but not a four-card recipe. The [pinned vLLM composition](https://github.com/allover326/vllm-dsa-mtp-sm80/blob/56bba6097b06b3c0d981de3a6cef63ed394d2626/README.md) combines a Triton sparse-MLA backend with MTP under pipeline parallelism. |
-| GLM-5.3-Flash NVFP4, EXL3, and AWQ attempts | **[PixelML stable summary](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/0eab34e173bee43d9cf8a48d546db609c8f469d3/README.md):** no completed serving result at pin `0eab34e` | Keep these as fit/runtime investigations. Do not publish throughput until a checkpoint both fits and reaches an SM80-capable serving path. |
-| W4AFP8 or other FP8-activation quants | **Community-reported:** the tested GLM-5.2 paths require SM89 or newer | Reject at the fit gate unless the runtime documents an SM80-safe implementation. Whether FP8 KV cache works on SM80 is an open question until the DeepSeek receipts land. |
-
-Five rules keep repeating across our attempts and the community work:
-
-1. Start with pipeline parallelism, not tensor parallelism, when cards communicate over slow PCIe without P2P.
-2. Rebalance the final pipeline rank when it also holds the LM head or speculative draft; default equal splits can fail even when total VRAM is sufficient.
-3. Check the quant details, not only the bit count. Symmetric versus asymmetric MoE weights, activation format, KV format, and whether the draft head is quantized can change compatibility.
-4. Match the build to the patch: when compiled SM80 operators are required, verify before serving that they are present or buildable in the chosen image, because a precompiled image that applies only Python overlays would not provide them (**gap inferred; preflight untested on this node**).
-5. Verify composed patches with import and undefined-name checks, not only syntax compilation. The community composition includes this gate after a real missing-helper failure.
+`—` = not presented without sanitized stable evidence. Pending rows are not decision-grade; owning tickets repair the evidence, then the rows are restored.
 
 ## Repository map
 
@@ -100,14 +68,6 @@ scripts/    Read-only inventory, model-fit, and card-validation helpers
 workloads/  LLM, image, and video workload recipes and status
 results/    Submission format for reproducible community results
 ```
-
-## Model-family repositories
-
-Experiments live in one dedicated repository per model family or workload —
-for example [GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX)
-holds every GLM-5.3-Flash attempt (NVFP4, AWQ, GPTQ, EXL3, FP8/BF16, all runtimes,
-successes, and failures). Never one repository per quantization, checkpoint, runtime,
-or machine; this repository indexes results and holds cross-workload guidance.
 
 ## Safety first
 
