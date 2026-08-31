@@ -50,5 +50,5 @@ Consolidated decision guide from measured results across the 170HX fleet — wha
 - [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) — single-card recipe and raw outputs.
 - [PixelML/DeepSeek-V4-Flash-0731-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) — three-card PP3 + speculation recipe.
 - [allover326/deepseek-v4-cmp170hx](https://github.com/allover326/deepseek-v4-cmp170hx) — four-card PP4 reference, operational lessons.
-- [allover326/vllm-dsa-mtp-sm80](https://github.com/allover326/vllm-dsa-mtp-sm80) — GLM DSA + MTP under PP on SM80.
+- [allover326/vllm-dsa-mtp-sm80](https://github.com/allover326/vllm-dsa-mtp-sm80) — GLM-5.2-class DSA + MTP under PP on SM80. Note: registers only the GLM-5.2 architecture class; GLM-5.3-Flash (glm5_next) needs a different runtime base.
 - [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) — measured GGUF baseline and lane verdict.
