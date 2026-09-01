@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "status": "measured-provisional",
+  "publication_status": "blocked",
+  "date": "2026-08-31",
+  "model": {
+    "id": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+    "revision": "86f746b36186f0e567729a5c06a8c918caba82a9",
+    "format": "FP8 e4m3 weights, dynamic activations, 128x128 blocks"
+  },
+  "runtime": {
+    "engine": "source-built SM80 vLLM fork",
+    "source_revision": null,
+    "image_content_digest": "sha256:0e33b051516583ac8f9d2449a5d9889cadad8e43c121cc454d597c251986ddbe"
+  },
+  "hardware": {
+    "platform": "CMP 170HX",
+    "accelerator_count": 4,
+    "memory_gib_per_accelerator": 64,
+    "compute_capability": "8.0"
+  },
+  "recipe": {
+    "pipeline_parallel": 4,
+    "layer_partition": [11, 11, 11, 10],
+    "max_model_len": 16384,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 8,
+    "kv_cache_dtype": "fp8",
+    "speculative_method": "dspark",
+    "speculative_tokens": 6
+  },
+  "measurements": {
+    "cold_decode_tok_s": 51.06,
+    "warm_decode_tok_s": 59.78,
+    "sustained_decode": {
+      "prompt_tokens": 37,
+      "completion_tokens": 800,
+      "elapsed_s": 14.133,
+      "tok_s": 56.6
+    },
+    "cold_ttft_s": 0.214,
+    "warm_ttft_s": 0.163,
+    "uncached_prefill": {
+      "prompt_tokens": 2941,
+      "completion_tokens": 1,
+      "elapsed_s": 9.037,
+      "tok_s": 325.5
+    },
+    "concurrency_ladder": [
+      {"concurrency": 1, "completion_tokens": 400, "wall_s": 3.952, "aggregate_tok_s": 101.21},
+      {"concurrency": 2, "completion_tokens": 800, "wall_s": 6.976, "aggregate_tok_s": 114.68},
+      {"concurrency": 4, "completion_tokens": 1600, "wall_s": 9.431, "aggregate_tok_s": 169.65},
+      {"concurrency": 8, "completion_tokens": 3200, "wall_s": 23.889, "aggregate_tok_s": 133.95}
+    ]
+  },
+  "vision_gate": {
+    "status": "rejected",
+    "http_status": 400,
+    "classification": "tested SM80 runtime did not wire the vision tower"
+  },
+  "telemetry": {
+    "per_card_power_w_peak": [114.07, 105.17, 120.26, 136.77],
+    "core_temperature_c_max": 46,
+    "throttle_flags": "none observed"
+  },
+  "stable_envelope": {
+    "highest_measured_concurrency": 8,
+    "best_aggregate_concurrency": 4,
+    "excluded": [
+      {"concurrency": 16, "reason": "speculative draft-path wedge"}
+    ]
+  },
+  "blockers": [
+    "vision request failed on the tested runtime",
+    "runtime source revision was unavailable from the measured image",
+    "task-quality evaluation was not captured"
+  ]
+}

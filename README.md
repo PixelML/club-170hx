@@ -49,7 +49,12 @@ Exact versions matter. Treat this as a known-good reference, not a claim that ev
 
 ## Published workload results
 
-Canonical scoreboard of publication-safe PixelML measurements on CMP 170HX. Normalized metric matrix, methodology, and evidence tiers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Raw manifests and receipts stay in the model repositories.
+Canonical scoreboard of PixelML measurements on CMP 170HX. The status column
+separates publication-safe results from provisional or blocked measurements.
+Normalized metrics, methodology, and evidence tiers:
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md). Raw manifests and receipts stay in
+the model repositories; small redacted snapshots may be retained here when the
+detailed ledger is not public.
 
 | Workload | Quant / runtime | Topology | Decode | Aggregate | Quality / success | Status | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -57,8 +62,15 @@ Canonical scoreboard of publication-safe PixelML measurements on CMP 170HX. Norm
 | GLM-5.3-Flash | NVFP4 | 3 cards | — | — | — | Not compatible: SM121-format weights on SM80; AWQ INT4 ≈ 66 GiB/card does not fit 3 × 64 GiB | [Negative result](docs/BENCHMARKS.md#negative-results-matter) |
 | Qwen3.8-27B | NVFP4 · vLLM | 1 card × 3 runs @ 180 W | — | — | — | Pending evidence repair: [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 cards | — | — | — | Pending evidence repair: [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 | **59.78 tok/s warm** · 56.6 sustained | **169.65 tok/s @ c=4** · 325.5 tok/s prefill | Text passed; image rejected (HTTP 400) | Provisional measured text baseline; vision and immutable runtime pin still blocked | [Result summary](results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md) |
 
-`—` = not presented without sanitized stable evidence. Pending rows are not decision-grade; owning tickets repair the evidence, then the rows are restored.
+`—` = not presented without sanitized stable evidence. Pending and provisional
+rows are not decision-grade; they remain visible so measured learning is not
+lost, but their status and blockers must stay explicit.
+
+The Vision-Exp row is intentionally visible but not labeled publication-safe:
+the key text numbers are measured, while the SM80 runtime does not yet wire the
+vision tower and its source revision was unavailable from the measured image.
 
 ## Repository map
 
