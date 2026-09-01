@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
@@ -31,7 +32,13 @@ def font(size: int, bold: bool = False) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], panel: dict) -> None:
+def draw_panel(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    panel: dict,
+    labels: list[str],
+    rows: list[dict[str, str]],
+) -> None:
     left, top, right, bottom = box
     draw.rounded_rectangle(box, radius=18, fill=PANEL, outline=GRID, width=2)
     draw.text((left + 24, top + 20), panel["title"], font=font(22, True), fill=TEXT)
@@ -39,7 +46,7 @@ def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], panel:
 
     plot_left, plot_top = left + 72, top + 92
     plot_right, plot_bottom = right - 28, bottom - 62
-    all_values = [float(value) for series in panel["series"] for value in series["values"]]
+    all_values = [float(row[series["column"]]) for series in panel["series"] for row in rows]
     maximum = max(all_values) * 1.12 if all_values else 1.0
     if maximum <= 0:
         maximum = 1.0
@@ -50,7 +57,6 @@ def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], panel:
         draw.line((plot_left, y, plot_right, y), fill=GRID, width=1)
         draw.text((left + 12, y - 9), f"{value:.0f}", font=font(13), fill=MUTED)
 
-    labels = [str(value) for value in panel["x"]]
     x_positions = [
         plot_left + (plot_right - plot_left) * index / max(1, len(labels) - 1)
         for index in range(len(labels))
@@ -60,13 +66,14 @@ def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], panel:
 
     for series_index, series in enumerate(panel["series"]):
         color = series.get("color", ACCENTS[series_index % len(ACCENTS)])
+        values = [float(row[series["column"]]) for row in rows]
         points = []
-        for x, value in zip(x_positions, series["values"], strict=True):
+        for x, value in zip(x_positions, values, strict=True):
             y = plot_bottom - (plot_bottom - plot_top) * float(value) / maximum
             points.append((x, y))
         if len(points) > 1:
             draw.line(points, fill=color, width=4)
-        for (x, y), value in zip(points, series["values"], strict=True):
+        for (x, y), value in zip(points, values, strict=True):
             draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=color)
             draw.text((x - 18, y - 27), f"{float(value):g}", font=font(13, True), fill=color)
 
@@ -82,10 +89,23 @@ def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], panel:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", required=True, type=Path)
+    parser.add_argument("--results", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
     spec = json.loads(args.spec.read_text(encoding="utf-8"))
+    with args.results.open(encoding="utf-8", newline="") as handle:
+        rows = [row for row in csv.DictReader(handle) if row.get(spec["x_column"]) != "mean"]
+    if not rows:
+        raise SystemExit("results contain no measured rows")
+    labels = [row[spec["x_column"]] for row in rows]
+    required_columns = {
+        spec["x_column"],
+        *(series["column"] for panel in spec["panels"] for series in panel["series"]),
+    }
+    missing = required_columns - set(rows[0])
+    if missing:
+        raise SystemExit(f"results missing chart columns: {', '.join(sorted(missing))}")
     image = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
     draw = ImageDraw.Draw(image)
 
@@ -101,7 +121,7 @@ def main() -> None:
     panel_width = (WIDTH - 2 * margin - gap * (len(panels) - 1)) // len(panels)
     for index, panel in enumerate(panels):
         left = margin + index * (panel_width + gap)
-        draw_panel(draw, (left, panel_top, left + panel_width, panel_bottom), panel)
+        draw_panel(draw, (left, panel_top, left + panel_width, panel_bottom), panel, labels, rows)
 
     draw.text((46, 638), spec["footer"], font=font(13), fill=MUTED)
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -14,9 +14,10 @@ This directory is the runnable public entry point for measured CMP 170HX recipes
 recipes/<model-runtime>/
 ├── README.md             short verdict and notebook link
 ├── recipe.json           immutable pins and artifact index
+├── requirements.lock     exact direct serving dependencies
 ├── reproduce.ipynb       configure → preflight → install → serve → benchmark → curl
 ├── assets/performance.png
-└── results/summary.csv   clean measured data used by the notebook and chart
+└── results/              sanitized receipts plus the CSV used by the notebook and chart
 ```
 
 A published notebook must preserve clean outputs from the measured environment, regenerate its chart from committed results, fail closed when prerequisites are missing, and finish with an editable `curl` request that prints the model response and final usage accounting.
@@ -27,7 +28,8 @@ Validate every notebook before publication:
 python3 scripts/validate_recipe_notebooks.py
 python3 scripts/render_recipe_chart.py \
   --spec recipes/qwen3.8-27b-dflash2/chart-spec.json \
+  --results recipes/qwen3.8-27b-dflash2/results/summary.csv \
   --output recipes/qwen3.8-27b-dflash2/assets/performance.png
 ```
 
-Large logs and detailed experiment history remain in the linked model repository. The club notebook contains the exact public path needed to reproduce the published result.
+Large logs and detailed experiment history remain outside the club recipe. Link them only after their complete public boundary is independently validated. The club notebook contains the sanitized file-level receipts needed to verify the published result.

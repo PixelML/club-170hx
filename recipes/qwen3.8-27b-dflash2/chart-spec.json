@@ -1,32 +1,30 @@
 {
   "title": "Qwen3.8-27B + DFlash2 on CMP 170HX",
   "subtitle": "Three independent cards · 180 W · vLLM 0.27.1 · usage-token-counted",
+  "x_column": "card",
   "panels": [
     {
       "title": "Decode throughput",
       "y_label": "output tok/s",
-      "x": ["card-0", "card-1", "card-2"],
       "series": [
-        {"label": "256 output tokens", "values": [135.31, 140.27, 133.57]},
-        {"label": "900 output tokens", "values": [121.28, 124.78, 119.94]}
+        {"label": "256 output tokens", "column": "decode_256_tok_s"},
+        {"label": "900 output tokens", "column": "decode_900_tok_s"}
       ]
     },
     {
       "title": "Long-prompt prefill",
-      "y_label": "input tok/s at 6,603 tokens",
-      "x": ["card-0", "card-1", "card-2"],
+      "y_label": "input tok/s",
       "series": [
-        {"label": "prefill", "values": [1957.3, 1954.7, 1926.0]}
+        {"label": "6,603-token prefill", "column": "prefill_tok_s"}
       ]
     },
     {
       "title": "Time to first token",
       "y_label": "milliseconds · lower is better",
-      "x": ["card-0", "card-1", "card-2"],
       "series": [
-        {"label": "TTFT", "values": [201.2, 189.7, 181.4], "color": "#F2789F"}
+        {"label": "TTFT", "column": "ttft_ms", "color": "#F2789F"}
       ]
     }
   ],
-  "footer": "MEASURED 2026-08-30 · 1 warmup + 3 samples · final usage.completion_tokens · source: committed public receipts"
+  "footer": "MEASURED 2026-08-30 · 1 warmup + 3 samples · final usage.completion_tokens · source: results/summary.csv"
 }
