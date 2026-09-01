@@ -16,6 +16,7 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
 | Qwen3.8-27B | NVFP4 · vLLM | 1 (× 3 runs) | — | — | — | — | — | — | — | — | — | — | Pending evidence repair · [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 | 16,384 | — | — | — | — | — | — | — | — | — | Pending evidence repair · [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 | 16,384 | c=1; ladder 1/2/4/8 | 325.5 tok/s (2,941 input tokens) | 59.78 tok/s warm; 56.6 tok/s sustained | 169.65 tok/s @ c=4 | 0.163 s warm | — | Text passed; image rejected (HTTP 400) | Loaded sample: 114–137 W/card peak, core ≤46 °C, no throttle flags | — | Provisional measured text baseline; vision unavailable and runtime source revision unpinned | [Summary](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md) · [Redacted data](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.json) |
 
 ## GLM-5.3-Flash UD-IQ4_XS, four cards (publication-safe)
 
@@ -70,6 +71,35 @@ Reproduction and raw outputs: [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com
 Measured prefill reached 2,965 tok/s at 5,399 input tokens. Draft-token acceptance ranged from 5.07 to 5.32 tokens, or roughly 81–86%. The 48-shard checkpoint was about 148 GB. Cold startup included approximately 22 minutes of weight loading from shared storage plus approximately seven minutes of CUDA graph capture.
 
 The precompiled runtime image lacked `vllm._C` for this path; a source build was required. Full details: [PixelML/DeepSeek-V4-Flash-0731-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX).
+
+## DeepSeek-V4-Flash-Vision-Exp, four cards — provisional text baseline
+
+**Status:** the text path is measured, but this is not a publication-safe
+multimodal recipe. The measured SM80 runtime rejected image input, and its
+source revision was unavailable from the running image. The result stays
+provisional until vision passes and the runtime is immutably pinned.
+
+**Measured:** 4 × 64 GiB CMP 170HX, pipeline parallel size 4 with layer
+partition `11,11,11,10`, 16,384 maximum model length, FP8 KV cache, and
+DSpark speculative decoding with `k=6`. Model revision:
+`86f746b36186f0e567729a5c06a8c918caba82a9`.
+
+| Metric | Value |
+|---|---:|
+| Warm single-stream decode | **59.78 tok/s** |
+| Sustained decode, 800 completion tokens | **56.6 tok/s** |
+| Uncached prefill, 2,941 input tokens | **325.5 tok/s** |
+| Warm TTFT | **0.163 s** |
+| Aggregate decode, c=1 / 2 / 4 / 8 | 101.21 / 114.68 / **169.65** / 133.95 tok/s |
+| Image request | Rejected, HTTP 400 |
+
+Concurrency 4 was the stable throughput peak in the measured ladder. The
+concurrency-16 attempt wedged in the speculative draft path; it is outside the
+published stable envelope. The vision failure is a runtime compatibility gate,
+not evidence that the checkpoint itself is text-only.
+
+Public redacted snapshot: [result summary](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md)
+and [structured data](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.json).
 
 ## Negative results matter
 
