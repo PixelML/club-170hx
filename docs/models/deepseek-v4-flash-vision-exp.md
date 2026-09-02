@@ -186,6 +186,43 @@ Measured 2026-09-02, partial.
 | Uncached prefill, 2,941 tokens | 2,352.42 tok/s (median of 3) |
 | Warm streaming TTFT | 0.386 s (median of 3) |
 
+### Long context, max-model-len 262,144 (measured 2026-09-02)
+
+Same recipe (4x CMP 170HX, PP4, DSpark k=6, fp8 KV), relaunched with
+`--max-model-len 262144`. Prefill ladder, greedy, `max_tokens=1`, one
+warmup plus three reps per level, unique prompt prefix per rep.
+
+| Prompt tokens | Status | Median wall time (s) | Median prefill tok/s |
+|---:|---|---:|---:|
+| 2,941 | PASS | 1.24 | 2,397 |
+| 16,000 | PASS | 3.43 | 4,665 |
+| 32,000 | PASS | 6.18 | 5,182 |
+| 65,000 | PASS | 12.36 | 5,261 |
+| 131,000 | FAIL — engine crash | — | — |
+| 200,000 / 250,000 | Not reached | — | — |
+
+| Item | Value |
+|---|---:|
+| KV pool at boot | 1,621,821 tokens |
+| Reported max concurrency at 262,144 tokens/request | 6.19x |
+| Largest verified passing prompt | 65,000 tokens |
+| Needle-in-haystack (32k / 65k, three depths each) | Untested — server crashed before any needle request ran |
+| Long-context decode (C1/C2) | Untested — same cause |
+| Vision at 131k context | Not attempted — gated on the 131k prefill rung, which failed |
+
+The engine died while the harness built the 131,000-token fixture: a Triton
+kernel inside the DSpark/DFlash speculator's input-preparation step
+(`prepare_dflash_inputs`, `vllm/v1/worker/gpu/spec_decode/dflash/speculator.py`)
+raised `RuntimeError: Triton Error [CUDA]: an illegal memory access was
+encountered` on the PP3 (drafter) rank, which cascaded to an
+`EngineDeadError` and a clean container exit. Peak temperature during the
+run was 51°C, and no Xid or ECC events appeared — this is a stability
+failure, not a thermal or hardware fault. Per the run's operating
+authorization, the server was not restarted after the crash, so all phases
+that need prompt lengths at or above 131,000 tokens, or a live server after
+the crash, stay untested. Full writeup, verbatim crash excerpt, and chart:
+`results/2026-09-02-deepseek-v4-flash-vision-exp-4card-longctx-262k/`.
+
 ### Reproducibility and 180 W vs. 250 W (measured 2026-09-02)
 
 A follow-up 5-rep check on the text-only c=1 recipe above: 118.95 tok/s
@@ -228,6 +265,12 @@ The same checkpoint at the same revision also runs on a two-node DGX Spark kit (
 
 ## Changelog
 
+- **2026-09-02** — Long-context check at `max-model-len 262144`: prefill
+  ladder passes cleanly through 65,000 prompt tokens, then the engine
+  crashes on a Triton fault in the DSpark/DFlash speculator while building
+  the 131,000-token case. Not thermal, not Xid. Needle, decode, and vision
+  phases above 65k stay untested; server left down (not restarted, per
+  operating authorization). See "Long context, max-model-len 262,144" above.
 - **2026-09-02** — Reproducibility and power-cap check on the text-only c=1
   recipe: 5 reps put the median at 119 tok/s (peak 162), correcting the
   earlier 163.1 tok/s median-of-3 figure, which was a peak-adjacent sample,
