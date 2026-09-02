@@ -317,6 +317,65 @@ non-reproducibility). Both affect exact-token continuation without
 necessarily changing keyword-level correctness. Not root-caused or fixed as
 of this writing.
 
+## f.2 Reproducibility and 180 W vs. 250 W (measured 2026-09-02)
+
+A follow-up run checked two things on the vision build's text-only c=1
+recipe (section f.1): whether the 163.1 tok/s median-of-3 figure holds up
+under more reps, and whether a 250 W per-card power cap changes decode
+throughput versus the 180 W standing default. Full protocol and both
+sampled protocols' numbers: [BENCHMARKS.md](BENCHMARKS.md#reproducibility-and-power-cap-2026-09-02).
+
+**The 163 tok/s figure was a peak-adjacent sample, not a stable median.** A
+5-rep check on the same protocol put the 180 W median at 118.95 tok/s
+(range 48.5-161.7); the top of that range sits within 1% of the earlier
+163.1 tok/s figure, but the 5-rep median sits about 27% below it. C1
+aggregate tok/s on this recipe swings roughly 50-180 tok/s run to run,
+tracked to DSpark draft-acceptance ratio swinging 0.20-0.83 across reps —
+the same reps with the lowest tok/s are the same reps with the lowest
+acceptance ratio. **The corrected figure is 119 tok/s median of 5 reps,
+peak 162; quote the median and range, not the single earlier point.**
+
+**250 W bought no measured throughput gain.** At c=1/c=2 — the only levels
+both power caps completed cleanly — 250 W came in +1% to +5% over 180 W on
+most lanes, inside the run-to-run spread above; one lane (c=2, our
+prompt set) came in -10%, read as noise in the same direction, not a real
+regression. Measured active-load power (4-card total, c=2 burst): 414.8 W
+at 180 W cap versus 428.8 W at 250 W cap — only +3.4% more power drawn,
+because this workload at concurrency <= 2 is latency/memory-bound, not
+power-bound; SM clocks under load averaged about 1443 MHz at both caps.
+Tokens per Wh came out flat to worse at 250 W. **180 W stays the standing
+default.** Whether 250 W matters at c=4+ is untested — both power-cap arms
+lost the server to the crash below before reaching that concurrency
+cleanly.
+
+**The concurrency ceiling narrows under the higher power cap.** 180 W
+stayed up through c=4 and crashed mid-c=8 (1 of 2 reps succeeded at 193.46
+tok/s before the crash); 250 W crashed earlier, at c=4 on warmup (0 of 4
+succeeded). Both crashes are the same `EngineCore` failure already on file
+in section f.1 (`RuntimeError: cancelled`, `shm_broadcast.py`,
+`acquire_read`), and both happened with GPUs at 41-58 C core / 47-63 C
+memory — well under the 80 C / 85 C stop thresholds, so this is not a
+thermal event at either cap. One data point is not enough to say the power
+cap causes the earlier crash, but it is the only variable that changed
+between the two arms, so it is flagged for a future run to isolate.
+**Read the concurrency envelope for this build as: stable to c=2 on both
+arms; c=4 is a coin flip depending on power cap; every arm is down by
+c=8.** Tracked, not fixed. 180 W power limit was restored and verified on
+all 4 cards at the end of this run.
+
+**Harness telemetry bug, self-inflicted and disclosed.** The 1 Hz
+power/clock/temp sampler queried the wrong `nvidia-smi` field name
+(`memory.temperature` instead of `temperature.memory`) for this run, so it
+silently produced empty CSVs for both power-cap arms — every sample failed
+and was dropped rather than raising an error. Fixed in the harness after
+the fact. The 250 W stop condition was still enforced live, via manual
+60 s-cadence `nvidia-smi` checks during both runs (max observed 58 C core /
+63 C memory, no stop triggered); two short supplementary c=2 bursts with
+working telemetry, run immediately after each arm, produced the
+power/tok-per-Wh figures above and are disclosed as supplementary,
+same-day, same-config samples rather than part of the original ladder's own
+telemetry stream.
+
 ## g. Failure modes and recovery
 
 | Signal | Meaning | Recovery |
@@ -324,7 +383,7 @@ of this writing.
 | Xid 79, "fallen off the bus" | Card left the PCIe bus; PCI config reads as an invalid header | Function-level reset, secondary-bus reset, runtime power changes, and remove/rescan all failed in the measured case. A true cold power cycle (standby rails discharged) was required |
 | Xid 154, "Node Reboot Required" | Follow-on to a bus-drop event | Full VM/host reboot |
 | Xid 43 (software-classified) | Draft-path embedding assert at high concurrency (measured at c=16 on a DSpark ladder) | Not a hardware or ECC fault; restart the server process |
-| `RuntimeError: cancelled` in `shm_broadcast.py acquire_read` | `EngineCore` process died mid-batch under concurrent load (measured at c=4 on the vision-path fork, see section f.1); not an Xid or ECC event | Not a hardware fault; the container exits cleanly (code 0). Restart the server process to recover; do not restart automatically if a standing instruction says otherwise |
+| `RuntimeError: cancelled` in `shm_broadcast.py acquire_read` | `EngineCore` process died mid-batch under concurrent load on the vision-path fork (section f.1); crash point measured at c=4 (180 W, first run) and again at c=4 on warmup or mid-c=8 depending on power cap (section f.2, 250 W crashes at c=4, 180 W crashes mid-c=8); not an Xid or ECC event, not thermal (41-58 C at every observed crash) | Not a hardware fault; the container exits cleanly (code 0). Restart the server process to recover; stay at c=2 or below until this is fixed; do not restart automatically if a standing instruction says otherwise |
 | NVRM VA-space corruption after an OOM kill storm | Kernel log shows NVRM assertion failures on every GPU (`pool_alloc.c`, `vaspace_api.c`); `cuInit` returns `CUDA_ERROR_NO_DEVICE` host-wide | Reloading `nvidia_uvm` alone does not clear it. Full sequence: `rmmod nvidia_uvm nvidia` then `modprobe nvidia nvidia_uvm` restores all devices without a VM reboot |
 | `--gpus all` assigns zero devices after a crash | Stale cgroup state left behind by an OOM crash; reproduced in a minimal test container | Use an explicit device list (for example `--gpus '"device=0,1,2,3"'`) instead of `all` |
 | Ranks stuck in D state during NFS-backed weight load | `wchan folio_wait_bit_common`: uninterruptible page wait while `mmap`-ing shards over NFS; `rchar` stays near-static because `mmap` page faults do not increment it | This is loading, not hanging. Confirm with a bounded read-throughput sample (physical reads increasing) before treating it as stuck |

@@ -138,7 +138,7 @@ executed notebook's appendix and in
 |---|---:|---|
 | Functional gates (`/v1/models`, deterministic greedy, image keyword match) | PASS, 10/10 image keyword match | Measured 2026-09-02 |
 | Golden corpus, text (20 rows) | 15/20 keyword match, 10/20 exact-match vs. DGX Spark reference | Measured 2026-09-02, known limitation |
-| Decode, c=1, text-only | 163.1 tok/s aggregate (median of 3) | Measured 2026-09-02 |
+| Decode, c=1, text-only | 119 tok/s median of 5 reps (peak 162) aggregate | Measured 2026-09-02; DSpark acceptance variance (0.20-0.83) drives the run-to-run spread |
 | Decode, c=2, text-only | 116.6 tok/s aggregate (median of 3) | Measured 2026-09-02 |
 | Decode, c=4, text-only | server crashed on rep 3 of 3 | Measured 2026-09-02 |
 | Decode, c=8 / c=16, text-only | not measured | Not measured, server stayed down after the c=4 crash |
@@ -171,6 +171,80 @@ greedy continuations at temperature 0; see
 Full protocol, the chart, and the appendix are in the executed notebook:
 [notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb](../notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb).
 Raw receipts: [results/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm/](../results/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm/).
+
+### Reproducibility and power cap (2026-09-02)
+
+A follow-up run checked whether the 163.1 tok/s c=1 figure above holds up
+under more reps, and whether raising the per-card power cap from 180 W to
+250 W changes decode throughput. Same server, same PP4 + DSpark k=6 recipe,
+text-only prompts. Two measurement protocols ran side by side at each
+concurrency level: **ours** (our 2,941-token fixture prompt, 400-token
+non-streaming completions, `aggregate_tok_s = total_completion_tokens /
+wall_s`) and **mia** (MiaAI-style: a fresh 256-token prompt per request,
+128-token forced streaming decode, decode tok/s measured after the first
+token). Reps: warmup(1) + 5 at c=1/c=2, warmup(1) + 3 at c=4/c=8, one
+attempt at c=16. Tokens are read from the API's final `usage` object in
+both protocols.
+
+![power-cap reproducibility chart](../assets/charts/2026-09-02-deepseek-v4-flash-vision-exp-4card-repro-power.png)
+
+| Level | Protocol | 180 W median (min-max) | 250 W median (min-max) |
+|---|---|---:|---:|
+| C1 | ours (2,941-tok fixture) | 118.95 (48.5-161.7) | 120.42 (86.9-154.7) |
+| C1 | mia (256-tok, decode-only) | 134.67 (57.8-141.0) | 138.10 (79.0-145.6) |
+| C2 | ours | 176.59 (71.4-190.3) | 158.75 (102.3-201.3) |
+| C2 | mia | 235.83 (141.0-239.4) | 241.38 (177.2-267.8) |
+| C4 | ours | 207.59 (124.5-290.7) | crashed on warmup |
+| C4 | mia | 363.51 (328.5-402.0) | crashed on warmup |
+| C8 | ours | 1/2 reps succeeded (193.46 tok/s), then crashed | crashed on warmup |
+| C16 | any | wedged, server already down | wedged, same |
+
+**The 163 tok/s figure: reproduced as a peak, not as a stable median.** The
+prior figure was a median of 3 reps at 163.1 tok/s. This run's same
+protocol, 5 reps, put the 180 W median at 118.95 tok/s — the top of this
+run's range (161.7) sits within 1% of the old median, but the 5-rep median
+sits about 27% below it. C1 aggregate tok/s on this recipe swings roughly
+50-180 tok/s run to run. Draft-acceptance ratio (DSpark, accepted / draft
+tokens) swings from about 0.20 to 0.83 across reps, and the low-ratio reps
+are the same reps with the lowest tok/s — that is the main source of the
+spread, not the power cap. **Anyone quoting a single C1 number for this
+recipe should quote 119 tok/s median of 5 reps (peak 162), not 163.**
+
+**250 W: no measurable throughput gain.** At C1/C2 — the only levels both
+power caps completed cleanly — 250 W bought +1% to +5% on most lanes, well
+inside the run-to-run spread above (one lane, C2 ours, showed -10%, likely
+the same noise in the other direction). Measured active-load power (4-card
+total, C2 ours burst): 414.8 W at the 180 W cap versus 428.8 W at the
+250 W cap, only +3.4% more power drawn — this decode workload at
+concurrency <= 2 is latency-bound, not power-bound, so the higher cap is
+never actually pushed against. Tokens per Wh at C1/C2 came out flat to
+worse at 250 W. 180 W is kept as the standing default; whether 250 W helps
+at c=4+ is untested, because both arms lost the server to the crash below
+before reaching that concurrency cleanly.
+
+**Concurrency ceiling, both arms.** 180 W stayed up through c=4 and crashed
+mid-c=8 (`EngineCore`, `shm_broadcast.acquire_read`, `RuntimeError:
+cancelled`); 250 W crashed earlier, at c=4 on warmup, same error signature.
+Both crashes happened with GPUs at 41-58 C core / 47-63 C memory, well
+under the 80 C / 85 C stop thresholds — not a thermal event. One data point
+is not enough to say the 250 W cap causes the earlier crash, but it is the
+only variable that changed between the two arms, so it is flagged for a
+future run. Read this together as: **stable through c=2 on both arms;
+c=4 is a coin flip depending on power cap; every arm is down by c=8.**
+Tracked, not fixed.
+
+**Harness telemetry bug (disclosed).** The continuous 1 Hz power/clock/temp
+sampler queried the wrong `nvidia-smi` field name for this run and produced
+empty CSVs for both arms; every sample failed and was dropped instead of
+raising. Fixed in the harness after the fact. In its place: manual 60 s
+`nvidia-smi` checks during both live runs enforced the 250 W stop condition
+in real time (max observed 58 C core / 63 C memory, no stop triggered), and
+two short supplementary C2 bursts with working telemetry produced the
+power/tok-per-Wh figures above. 180 W was restored and verified on all 4
+cards at the end of the run.
+
+Full receipts, per-rep numbers, and the chart source:
+[results/2026-09-02-deepseek-v4-flash-vision-exp-4card-repro-power/](../results/2026-09-02-deepseek-v4-flash-vision-exp-4card-repro-power/).
 
 ### Vision-correctness milestone (history)
 

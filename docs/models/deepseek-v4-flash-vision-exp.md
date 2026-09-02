@@ -9,7 +9,7 @@ Read this page for the settings and commands. Read the executed notebooks for th
 | Cards | VRAM/card | Format | Runtime | Image tag | Partition | Speculative k | KV cache | Context | Measured decode | Status |
 |---|---:|---|---|---|---|---:|---|---:|---|---|
 | 4 | ~51–61 GiB under load | FP8 e4m3 | SM80 vLLM fork, PP4 | `vllm-deepseek-v4-sm80-20260902` | `11,11,11,10` | 6 (DSpark) | fp8 | 16,384 | 97.4 tok/s c=1, 220.2 tok/s c=8 (median of 3) | Measured, text path |
-| 4 | ~51–61 GiB under load | FP8 e4m3 | SM80 vLLM fork, PP4, vision-enabled (Path 3) | `vllm-deepseek-v4-vision-sm80-20260902` | `11,11,11,10` | 6 (DSpark) | fp8 | 16,384 | 163.1 tok/s c=1 text-only, 45.3 tok/s c=1 text+image | Measured, partial — server crashes at c=4 |
+| 4 | ~51–61 GiB under load | FP8 e4m3 | SM80 vLLM fork, PP4, vision-enabled (Path 3) | `vllm-deepseek-v4-vision-sm80-20260902` | `11,11,11,10` | 6 (DSpark) | fp8 | 16,384 | 119 tok/s median of 5 reps (peak 162), c=1 text-only; 45.3 tok/s c=1 text+image | Measured, partial — stable to c=2, crashes at c=4 to c=8 |
 | 4 | ~44.4 GiB weights resident | FP8 → BF16 fallback | Reference TP4 runtime + SM80 patches | — (source build, no published image) | TP4 | none | BF16 | ≤ ~1,024 input tokens (OOM above) | ~0.9 tok/s, batch 1 | Correctness only, history |
 | 3 | untested | FP8 e4m3 | SM80 vLLM fork, PP3 | — | `15,15,13` | 5 (DSpark) | fp8 | 16,384 | untested on this checkpoint (see `deepseek-v4-flash-0731.md` for the sibling checkpoint's 3-card numbers) | Untested |
 
@@ -121,7 +121,9 @@ A 64x64 gradient image, encoded as a `data:image/png;base64,...` URL, is what th
 - **Sampling for throughput benches:** greedy decoding, `ignore_eos=true`, 400 completion tokens per request, three repetitions per concurrency level, one warmup rep discarded. Count tokens from the final `usage.completion_tokens` object, not from streamed events.
 - **Prompt limits:** the measured prefill benchmark uses a 2,941-token uncached prompt. The reference TP4 runtime OOMs above roughly 1,024 input tokens (see Troubleshooting); the vLLM PP4 path does not share that ceiling.
 - **Image limits:** the vision launch command sets `--limit-mm-per-prompt '{"image": 2}'`. The measured golden corpus uses one image per request.
-- **Concurrency, vision build:** keep concurrency at c=2 or below on the vision-enabled image. The text-only ladder on that same build crashed at c=4 (`EngineCore` died, `RuntimeError: cancelled` in the shared-memory broadcast queue), and text+image concurrency above c=2 was not attempted given that crash history. The text-only image (no vision encoder) has its own, separate ceiling at c=16.
+- **Concurrency, vision build:** stable through c=2 on the vision-enabled image; the crash point sits somewhere in c=4 to c=8 and is tracked, not fixed. A 180 W-cap run stayed up through c=4 and crashed mid-c=8; a 250 W-cap run of the same recipe crashed earlier, at c=4 on warmup. Both crashes are the same `EngineCore` failure (`RuntimeError: cancelled` in the shared-memory broadcast queue, `shm_broadcast.acquire_read`). Keep concurrency at c=2 or below until this is fixed. Text+image concurrency above c=2 was not attempted given that crash history. The text-only image (no vision encoder) has its own, separate ceiling at c=16.
+- **Power cap:** 250 W per card buys no measured throughput gain over 180 W at c=1/c=2 (+1% to +5%, inside run-to-run noise) and is flat to worse on tokens/Wh; this decode workload is latency-bound at low concurrency, not power-bound. 180 W is the standing default. Detail: `docs/BENCHMARKS.md`, "Reproducibility and power cap."
+- **c=1 throughput spread:** a 5-rep check found the text-only c=1 aggregate swinging 48.5-161.7 tok/s run to run (median 119, peak 162), tracked to DSpark draft-acceptance ratio swings (0.20-0.83), not to the power cap. Quote the median and range, not a single point estimate.
 - **Context:** `--max-model-len 16384`, `--max-num-batched-tokens 2048`. Not tested past this window on this checkpoint.
 - **KV cache:** `fp8`. Cuts memory versus BF16 KV at some decode/prefill cost — see `docs/LESSONS.md` section d for the measured trade on a sibling checkpoint (Qwen3.8-27B): -3.4% decode, -19.5% prefill.
 
@@ -174,7 +176,7 @@ Measured 2026-09-02, partial.
 | Functional gates | PASS, 3/3 identical reps |
 | Golden corpus, image rows (10) | PASS, 10/10 keyword match |
 | Golden corpus, text rows (20) | 15/20 keyword match, 10/20 exact-match vs. DGX Spark reference |
-| Decode, c=1, text-only | 163.06 tok/s aggregate (median of 3) |
+| Decode, c=1, text-only | 119 tok/s median of 5 reps (peak 162), aggregate |
 | Decode, c=2, text-only | 116.57 tok/s aggregate (median of 3) |
 | Decode, c=4, text-only | FAIL — server crashed, rep 3 of 3 |
 | Decode, c=8 / c=16, text-only | Not measured |
@@ -183,6 +185,19 @@ Measured 2026-09-02, partial.
 | Decode, c=4 and above, text+image | Not attempted, given the c=4 text-only crash |
 | Uncached prefill, 2,941 tokens | 2,352.42 tok/s (median of 3) |
 | Warm streaming TTFT | 0.386 s (median of 3) |
+
+### Reproducibility and 180 W vs. 250 W (measured 2026-09-02)
+
+A follow-up 5-rep check on the text-only c=1 recipe above: 118.95 tok/s
+median at 180 W (range 48.5-161.7), 120.42 tok/s median at 250 W (range
+86.9-154.7) — statistically indistinguishable at this concurrency. The wide
+range is driven by DSpark draft-acceptance ratio swinging 0.20-0.83 across
+reps, not by the power cap. 250 W bought +3.4% more measured active-load
+power and flat-to-worse tokens/Wh; concurrency stayed stable to c=2 on both
+arms, with 180 W crashing mid-c=8 and 250 W crashing earlier at c=4 (same
+`EngineCore`/`shm_broadcast` failure). Full protocol, both-protocol table,
+and chart: `docs/BENCHMARKS.md`, "Reproducibility and power cap"; raw
+receipts: `results/2026-09-02-deepseek-v4-flash-vision-exp-4card-repro-power/`.
 
 ### Reference TP4 runtime — vision correctness milestone (history)
 
@@ -213,6 +228,14 @@ The same checkpoint at the same revision also runs on a two-node DGX Spark kit (
 
 ## Changelog
 
+- **2026-09-02** — Reproducibility and power-cap check on the text-only c=1
+  recipe: 5 reps put the median at 119 tok/s (peak 162), correcting the
+  earlier 163.1 tok/s median-of-3 figure, which was a peak-adjacent sample,
+  not a stable central tendency. 250 W per card measured no throughput gain
+  over 180 W; 180 W kept as the standing default. Concurrency ceiling
+  narrowed to c=4-c=8 depending on power cap (previously reported only at
+  c=4 for this build). Detail: `docs/BENCHMARKS.md`, "Reproducibility and
+  power cap."
 - **2026-09-02** — Vision path measured on the SM80 vLLM PP4 fork (Path 3): functional gates and image correctness pass, text-only ladder crashes at c=4, text+image ladder measured through c=2. Text path re-measured on the normalized protocol through c=16 (220.2 tok/s aggregate at c=8, device-side assert at c=16). Published as release [`dsv4-vision-exp-4card-2026-09-02`](https://github.com/PixelML/club-170hx/releases/tag/dsv4-vision-exp-4card-2026-09-02), a full release, not a pre-release. Two result videos are attached: [text-only motion](https://github.com/PixelML/club-170hx/releases/download/dsv4-vision-exp-4card-2026-09-02/dsv4-vision-4card-motion-1920x1080.mp4) and [text+image motion](https://github.com/PixelML/club-170hx/releases/download/dsv4-vision-exp-4card-2026-09-02/dsv4-vision-4card-vision-motion-1920x1080.mp4).
 - **2026-08-31** — Earlier text-path ladder and single-stream run, superseded by the 2026-09-02 normalized text benchmark. Numbers kept in `docs/BENCHMARKS.md` as historical, not current.
 - **2026-08-31 (approx.)** — Reference TP4 runtime achieves the first real-image completion of this checkpoint on Ampere hardware, at about 0.9 tok/s. Kept as the correctness-only history milestone.
