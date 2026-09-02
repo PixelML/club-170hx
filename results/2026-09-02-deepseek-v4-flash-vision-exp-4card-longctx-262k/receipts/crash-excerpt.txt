@@ -1,0 +1,73 @@
+(APIServer pid=1) INFO 09-02 17:07:29 [v1/metrics/loggers.py:310] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 81.6 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.9%, Prefix cache hit rate: 28.2%
+(APIServer pid=1) INFO 09-02 17:07:29 [v1/spec_decode/metrics.py:120] SpecDecoding metrics: Mean acceptance length: 3.90, Accepted throughput: 60.69 tokens/s, Drafted throughput: 125.39 tokens/s, Accepted: 607 tokens, Drafted: 1254 tokens, Per-position acceptance rate: 0.943, 0.785, 0.584, 0.344, 0.163, 0.086, Avg Draft acceptance rate: 48.4%
+(EngineCore pid=438) DEBUG 09-02 17:07:34 [v1/engine/core.py:1416] EngineCore waiting for work.
+(APIServer pid=1) DEBUG 09-02 17:07:34 [entrypoints/.../engine/protocol.py:56] The following fields were present in the request but ignored: {'store'}
+(EngineCore pid=438) DEBUG 09-02 17:07:35 [v1/engine/core.py:1428] EngineCore loop active.
+(EngineCore pid=438) DEBUG 09-02 17:07:36 [distributed/device_communicators/shm_broadcast.py:212] Poller received notify event
+(Worker_PP0 pid=514) DEBUG 09-02 17:07:36 [distributed/device_communicators/shm_broadcast.py:212] Poller received notify event
+(Worker_PP1 pid=515) DEBUG 09-02 17:07:36 [distributed/device_communicators/shm_broadcast.py:212] Poller received notify event
+(EngineCore pid=438) DEBUG 09-02 17:07:36 [distributed/device_communicators/shm_broadcast.py:212] Poller received notify event
+(Worker_PP1 pid=515) DEBUG 09-02 17:07:36 [distributed/device_communicators/shm_broadcast.py:212] Poller received notify event
+(Worker_PP0 pid=514) DEBUG 09-02 17:07:36 [distributed/device_communicators/shm_broadcast.py:212] Poller received notify event
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018] WorkerProc hit an exception.
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018] Traceback (most recent call last):
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/executor/multiproc_executor.py", line 1010, in worker_busy_loop
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     output = func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu_worker.py", line 1015, in sample_tokens
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return self.model_runner.sample_tokens(grammar_output)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/eplb_utils.py", line 38, in wrapper
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     result = fn(self, *args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/model_runner.py", line 1593, in sample_tokens
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     draft_tokens = self.speculator.propose(
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]                    ^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py", line 376, in propose
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     prepare_dflash_inputs(
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py", line 674, in prepare_dflash_inputs
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     _prepare_dflash_inputs_kernel[(num_reqs, num_blocks)](
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 370, in <lambda>
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/triton/runtime/jit.py", line 760, in run
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     launch_metadata = kernel.launch_metadata(grid, stream, *bound_args.values())
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 485, in launch_metadata
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     self._init_handles()
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/triton/compiler/compiler.py", line 468, in _init_handles
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     self.module, self.function, self.n_regs, self.n_spills, self.n_max_threads = driver.active.utils.load_binary(
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018] RuntimeError: Triton Error [CUDA]: an illegal memory access was encountered
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018] Traceback (most recent call last):
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/executor/multiproc_executor.py", line 1010, in worker_busy_loop
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     output = func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu_worker.py", line 1015, in sample_tokens
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return self.model_runner.sample_tokens(grammar_output)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/eplb_utils.py", line 38, in wrapper
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     result = fn(self, *args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/model_runner.py", line 1593, in sample_tokens
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     draft_tokens = self.speculator.propose(
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]                    ^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/opt/venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]     return func(*args, **kwargs)
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_PP3 pid=517) ERROR 09-02 17:07:37 [v1/executor/multiproc_executor.py:1018]   File "/vllm/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py", line 376, in propose
