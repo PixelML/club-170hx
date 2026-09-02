@@ -16,7 +16,8 @@ evidence; read the number next to its source.
 | Qwen3.8-27B | W4A16-AutoRound | vLLM 0.27.1, DFlash2 k=7 | 3 (180 W, local) | Measured | 133.6-140.3 tok/s decode per card, 1,926-1,957 tok/s prefill | [PixelML/Qwen3.8-27B-CMP-170HX RESULTS.md](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | Qwen3.8-27B | W8A16 (official checkpoint) | vLLM 0.27.1, DFlash2 k=7 | 1 (255 W) | Measured (negative vs W4A16) | 31.6 tok/s decode, acceptance 2.9 (slower than W4A16 because the card is bandwidth-bound) | [PixelML/Qwen3.8-27B-CMP-170HX RESULTS.md](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | Qwen3.8-27B | W4A16 AutoRound (dbirks) + DFlash2 k=7 | vLLM | 1 (3 cards tested, 180 W) | Measured 2026-08-30 | 136.38 tok/s mean at 256 tokens; TTFT 190.8 ms; prefill 1,946 tok/s | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
-| Qwen3.8-27B | Ninfer sm_80 fork (groupwise-int + w8, MTP draft-tokens 3, lm-head-draft) | Ithrial/ninfer-cmp170hx (sm_80 port) | 1 | Measured (negative on decode, positive on prefill) | 39.6-41.2 tok/s decode (3.5x behind the vLLM DFlash2 stack); prefill 419,177 tok/s and 1.8 ms TTFT (chat-template prompt, different route) | [Ithrial/ninfer-cmp170hx](https://github.com/Ithrial/ninfer-cmp170hx); comparison in [PixelML/Qwen3.8-27B-CMP-170HX RESULTS.md](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
+| Qwen3.8-27B | Ninfer sm_80 fork (groupwise-int + w8, MTP draft-tokens 3, lm-head-draft) | Ithrial/ninfer-cmp170hx (sm_80 port) | 1 | Measured (negative on decode, positive on prefill); superseded on decode by the controlled A/B below | 39.6-41.2 tok/s decode (3.5x behind the vLLM DFlash2 stack); prefill 419,177 tok/s and 1.8 ms TTFT (chat-template prompt, different route) | [Ithrial/ninfer-cmp170hx](https://github.com/Ithrial/ninfer-cmp170hx); comparison in [PixelML/Qwen3.8-27B-CMP-170HX RESULTS.md](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
+| Qwen3.8-27B | Ninfer sm_80 fork, controlled A/B vs. the vLLM DFlash2 recipe, int8 KV | Ithrial/ninfer-cmp170hx (sm_80 port), MTP draft-tokens 3, lm-head-draft | 1 (180 W) | Measured 2026-09-02, negative | Spec-on 38.16 tok/s decode256 (3.6x slower than the 138.6 tok/s vLLM control); spec-off 29.95 tok/s (4.6x slower); MTP gives a real ~1.28x uplift over spec-off; verdict: stay on vLLM | [results/2026-09-02-qwen3.8-27b-ninfer-ab](../results/2026-09-02-qwen3.8-27b-ninfer-ab/README.md) |
 | Qwen3.6-35B-A3B | (NInfer field checkpoint) | NInfer / llama-swap | 1 | Measured (field observation, not a controlled benchmark) | 93-126 generated tok/s, 1,580-2,347 prompt tok/s | [Ithrial/ninfer-cmp170hx](https://github.com/Ithrial/ninfer-cmp170hx) |
 | Qwen3.8-Flash-Next | AWQ-INT4 | vLLM (pending upstream support) | 4 (planned) | Planned; checkpoint verified, not yet run | 5 prior attempts on 6x40GB rented cards all failed before serving (vocab/TP mismatch, PLE-offload/PP conflict, Marlin sharding, MoE group-scale divisibility, container seccomp blocking `pidfd_getfd` in the CPU-offload worker); checkpoint since verified byte-for-byte on local storage (50/50 files, 38/38 shard hashes match) | [PixelML/Qwen3.8-Flash-Next-CMP-170HX](https://github.com/PixelML/Qwen3.8-Flash-Next-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | Native MXFP4 experts + FP8 e4m3 attention | vLLM (SM8x fork, full source build), PP3, DSpark k=5 | 3 (180 W, local) | Measured | 83.3 tok/s aggregate decode (technical 73.4 / prose 72.4 / code 116.6), 2,965 tok/s prefill at 5,399 tokens, acceptance 5.07-5.32 | [PixelML/DeepSeek-V4-Flash-0731-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
@@ -66,10 +67,14 @@ llama.cpp fork) is the only measured row; every vLLM-path row above is a
 documented negative result kept for the record, not a gap in testing.
 
 **Ninfer sm_80 fork.** A genuine, buildable sm_80 port of a Blackwell-targeted
-engine. It is not competitive with the vLLM + speculative-decoding stack on
-single-stream decode (3.5x slower), but its prefill/TTFT path is
-substantially faster and may be worth porting independent of the rest of the
-fork.
+engine. A controlled A/B against the vLLM DFlash2 recipe on 2026-09-02
+confirmed it is not competitive on single-stream decode: 3.6x slower with
+its own MTP speculation on, 4.6x slower with speculation off. The prior
+prefill/TTFT numbers used a different request route (chat-template prompt,
+not the streamed decode benchmark) and were not re-measured on the same
+protocol in this A/B, so they stay flagged as a separate, unreconciled
+observation rather than a competing verdict. See
+[results/2026-09-02-qwen3.8-27b-ninfer-ab](../results/2026-09-02-qwen3.8-27b-ninfer-ab/README.md).
 
 ## See also
 

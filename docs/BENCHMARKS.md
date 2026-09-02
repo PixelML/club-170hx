@@ -15,6 +15,7 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 | GLM-5.3-Flash | UD-IQ4_XS · llama.cpp (0069971) | 4 · layer split | 16,384 | c=1; ladder 1/2/4; soak c=2 | — | 17.73 tok/s median (c=1) | ~17.5–17.7 tok/s (c=2/4) | — | — | 21/26 local tasks · 41/41 soak reps | Snapshot only: 40.10–44.49 W, core 41–43 °C, mem 45–55 °C, VRAM 32,656–42,312 / 65,536 MiB; limit not queried | Snapshot proxy only, not integrated | Publication-safe | [Run manifest](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) · [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) |
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
 | Qwen3.8-27B | W4A16 AutoRound + DFlash2 k=7 · vLLM | 1 (3 cards tested) | 64k | c=1 | 1,946 tok/s | 136.38 tok/s (256 tok) / 122.00 (900 tok) | — | 190.8 ms | — | 3 cards, 3 runs | 180 W cap; peak 51 °C core / 61 °C memory | — | Measured 2026-08-30 | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
+| Qwen3.8-27B | Ninfer sm_80 fork, MTP spec-on vs. spec-off vs. vLLM+DFlash2 control | 1 | 64k | c=1 | — | 38.16 tok/s spec-on / 29.95 spec-off (control: 138.6 tok/s) | — | 2.1 ms (Ninfer, decode) | — | 3 samples/case | 180 W cap; peak 195.9–203.0 W, 67–69 °C (Ninfer, above cap reading) | — | Measured 2026-09-02, negative for Ninfer | [results/2026-09-02-qwen3.8-27b-ninfer-ab](../results/2026-09-02-qwen3.8-27b-ninfer-ab/README.md) |
 | DeepSeek-V4-Flash-0731 | FP8 · SM80 vLLM fork · PP3 · DSpark k=5 | 3 | 16,384 | c=1, three prompt classes | 2,965 tok/s (5,399 in) | 83.3 tok/s aggregate (73.4 / 72.4 / 116.6) | — | — | — | 400 tok × 3 classes | 180 W cap | acceptance 5.07–5.32 | Measured 2026-08-30 | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 16,384 | c=1; ladder 1/2/4/8/16 | 2,352 tok/s warm (362 tok/s first cold prefill) (2,941 input tokens) | 97.4 tok/s (median of 3; 57.6–123.5) (c=1) | 165.5 tok/s (median of 3; 140.3–203.2) @ c=4; failed (device-side assert, reproduced twice) @ c=16 | 0.394 s warm | — | Text passed; image not served on this path | — | — | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Section](#deepseek-v4-flash-vision-exp-four-cards) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 → BF16 fallback · reference TP4 runtime + SM80 patches | 4 · TP4 | ≤ ~1,024 input tokens (OOM above) | batch 1 | 512 tokens in ~8.7–9.8 s | 0.88–0.93 tok/s (3 × 401 tokens) | — | ~2.05–2.08 s proxy | — | Real-image completion PASS; no-image and wrong-image controls PASS | — | — | Correctness evidence only, not a performance result | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Milestone](#vision-correctness-milestone) |
@@ -56,6 +57,30 @@ Aggregate curve flatness beyond c=4 and at longer contexts is untested. Result c
 Peak observed core temperature was 51 °C; peak observed memory temperature across the three runs was 61 °C. A single-card hosted reference reported 147.7 tok/s at 255 W; it is context, not a controlled apples-to-apples comparison.
 
 Reproduction and raw outputs: [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX).
+
+## Qwen3.8-27B runtime A/B: vLLM vs. Ninfer sm_80 fork (measured 2026-09-02)
+
+**Verdict: stay on vLLM + DFlash2.** The `Ithrial/ninfer-cmp170hx` sm_80 fork,
+run with its own MTP speculative decoding, is 3.6x slower on decode256 than
+the vLLM + DFlash2 control (38.16 vs. 138.6 tok/s) despite a higher measured
+SM clock (1455 MHz vs. the control's 1170-1200 MHz sustained). With Ninfer's
+speculation off, the gap widens to 4.6x (29.95 tok/s). The fork's peak power
+draw (195.9-203.0 W) exceeded the 180 W cap reading configured on the card,
+which is flagged as an open question about how the fork interacts with the
+driver's power limit, not folded into the speed verdict.
+
+| Metric | vLLM + DFlash2 (control) | Ninfer spec-on (MTP) | Ninfer spec-off |
+|---|---:|---:|---:|
+| decode256 | 138.6 tok/s | 38.16 tok/s | 29.95 tok/s |
+| decode900 | 123.4 tok/s | 39.15 tok/s | 29.55 tok/s |
+| Peak power | 190.5 W | 195.9 W | 203.0 W |
+| Peak SM clock | 1170-1200 MHz sustained | 1455 MHz | 1455 MHz |
+
+A prior attempt at this fork had crashed at warmup
+(`gqa_attention_prefill.cu:64: CUDA_CHECK ... invalid argument`); that crash
+did not recur on this run. Full protocol, per-sample data, and a
+bandwidth-ceiling estimate:
+[results/2026-09-02-qwen3.8-27b-ninfer-ab](../results/2026-09-02-qwen3.8-27b-ninfer-ab/README.md).
 
 ## DeepSeek-V4-Flash-0731, three cards — pending evidence repair
 

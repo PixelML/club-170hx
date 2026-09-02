@@ -113,6 +113,37 @@ Peak core temperature 51°C, peak memory temperature 61°C across the three runs
 
 122.42 tok/s decode (256 tok), 111.22 tok/s (900 tok), TTFT 181.5 ms, prefill 1,341.9 tok/s, 21.9 GiB VRAM, 390 W. The CMP 170HX measured about 1.21x faster on decode and 1.61x faster on prefill at the same recipe, and roughly 2.4x better tokens per watt.
 
+## Runtime A/B: vLLM vs. Ninfer sm_80 fork
+
+The `Ithrial/ninfer-cmp170hx` sm_80 fork ships its own speculative-decoding
+path (MTP, `--draft-tokens 3 --lm-head-draft`) and was worth a controlled
+comparison against this page's vLLM + DFlash2 recipe on the same card. A
+prior attempt had crashed at warmup; this run checked whether that was fixed
+before measuring anything.
+
+| Metric | vLLM + DFlash2 (control) | Ninfer spec-on (MTP) | Ninfer spec-off |
+|---|---:|---:|---:|
+| decode256 | 138.6 tok/s | 38.16 tok/s | 29.95 tok/s |
+| decode900 | 123.4 tok/s | 39.15 tok/s | 29.55 tok/s |
+| Peak power | 190.5 W | 195.9 W | 203.0 W |
+| Peak SM clock | 1170-1200 MHz sustained (1470 MHz sampled peak) | 1455 MHz | 1455 MHz |
+
+Full protocol, per-sample data, and the bandwidth-ceiling estimate:
+[results/2026-09-02-qwen3.8-27b-ninfer-ab](../../results/2026-09-02-qwen3.8-27b-ninfer-ab/README.md).
+
+**Verdict: stay on vLLM + DFlash2.** Ninfer's own MTP speculation is
+functioning — it gives a real ~1.28x uplift over its own spec-off run — but
+Ninfer's base per-pass throughput on this build is far below vLLM's, not a
+spec-acceptance problem. Spec-on is 3.6x slower than the control; spec-off
+is 4.6x slower. The prior warmup crash did not recur on this attempt, so the
+build is at least stable enough to bench, just not fast enough to recommend.
+
+One open question, not folded into the speed verdict above: Ninfer's peak
+power reading (195.9-203.0 W) came in above the 180 W cap configured on the
+card, at a higher clock than the control run's sustained clock. This looks
+like a difference in how the two engines interact with the driver's power
+limit and is worth a follow-up, not a claim about either engine's speed.
+
 ## Artifacts
 
 - **Evidence repository:** [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX).
@@ -123,5 +154,6 @@ Peak core temperature 51°C, peak memory temperature 61°C across the three runs
 
 ## Changelog
 
+- **2026-09-02** — Runtime A/B against the Ninfer sm_80 fork measured: 3.6x slower on decode with the fork's own MTP speculation on, 4.6x slower with it off; verdict is to stay on vLLM + DFlash2.
 - **2026-08-30** — Three-card local runs at 180 W measured (136.38 tok/s mean decode at 256 tokens); sanitized receipt chain still pending merge in the evidence repository.
 - **2026-08-28** — Single rented-card run at 255 W measured (147.7 tok/s decode); first-attempt private-image and SSH failures documented.

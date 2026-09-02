@@ -1,0 +1,142 @@
+{
+  "collected_at_utc": "2026-09-02T09:30:00Z",
+  "host_note": "four-card CMP 170HX test node, day 2 of ownership",
+  "driver": {
+    "nvrm_version": "610.43.03",
+    "module_path": "/lib/modules/6.8.0-138-generic/updates/cmpunlocker/nvidia.ko",
+    "module_resolves_to_patched_copy": true,
+    "unlock_tool": "amoghmunikote/cmpunlocker",
+    "unlock_commit": "7019bc2b407ebf776d1b0836a0569a3dec52c4f5",
+    "unlock_profile": "8gb (64 GiB target)"
+  },
+  "coordination_state_at_collection": {
+    "note": "GPU3 was held by another job at collection time (a Qwen3.8-27B Ninfer A/B benchmark); GPUs 0-2 were idle. The stress gate below was deferred until the whole fleet was clear.",
+    "read_only_checks_only": true,
+    "stress_gate_deferred": true
+  },
+  "cards": [
+    {
+      "index": 0,
+      "uuid_suffix": "...12509",
+      "temp_core_c": 38,
+      "temp_memory_c": 41,
+      "power_draw_w": 33.62,
+      "power_limit_w": 180.0,
+      "power_limit_default_w": 250.0,
+      "pcie_link_cap": "Gen1 x16 (card max)",
+      "pcie_link_status": "Gen1 x8 (board topology, expected)",
+      "pcie_replays_since_reset": 0,
+      "pcie_aer_uncorrectable": "none observed (UESta all clear)",
+      "pcie_aer_correctable": "none observed (CESta all clear)",
+      "ecc_volatile": "N/A (ECC reporting not exposed on this card/driver combo)",
+      "retired_pages": "N/A",
+      "remapped_rows": "N/A",
+      "xid_since_boot": [],
+      "note": "x8 width is expected board behavior, not a card or riser fault: this is a dual-socket workstation with 7 PCIe slots all populated, and the board shares lanes between neighboring slots, dropping a slot to x8 when its neighbor is occupied. Confirmed by Sean 2026-09-02. Not a diagnostic flag."
+    },
+    {
+      "index": 1,
+      "uuid_suffix": "...1b105",
+      "temp_core_c": 37,
+      "temp_memory_c": 50,
+      "power_draw_w": 37.9,
+      "power_limit_w": 180.0,
+      "power_limit_default_w": 250.0,
+      "pcie_link_cap": "Gen1 x16 (card max)",
+      "pcie_link_status": "Gen1 x16 (ok)",
+      "pcie_replays_since_reset": 0,
+      "pcie_aer_uncorrectable": "none observed",
+      "pcie_aer_correctable": "none observed",
+      "ecc_volatile": "N/A",
+      "retired_pages": "N/A",
+      "remapped_rows": "N/A",
+      "xid_since_boot": [],
+      "note": "Involved in the 2026-09-01 18:59:59 vaspace/pool_alloc assertion burst (fleet-wide OOM storm); cleared by module reload, no Xid raised on this card."
+    },
+    {
+      "index": 2,
+      "uuid_suffix": "...f5178",
+      "temp_core_c": 38,
+      "temp_memory_c": 51,
+      "power_draw_w": 33.94,
+      "power_limit_w": 180.0,
+      "power_limit_default_w": 250.0,
+      "pcie_link_cap": "Gen1 x16 (card max)",
+      "pcie_link_status": "Gen1 x16 (ok)",
+      "pcie_replays_since_reset": 0,
+      "pcie_aer_uncorrectable": "none observed",
+      "pcie_aer_correctable": "none observed",
+      "ecc_volatile": "N/A",
+      "retired_pages": "N/A",
+      "remapped_rows": "N/A",
+      "xid_since_boot": [],
+      "note": "Also in the 2026-09-01 18:50:04 and 18:59:59 vaspace assertion bursts. No Xid raised on this card."
+    },
+    {
+      "index": 3,
+      "uuid_suffix": "...4c637f",
+      "temp_core_c": 38,
+      "temp_memory_c": 51,
+      "power_draw_w": 41.4,
+      "power_limit_w": 180.0,
+      "power_limit_default_w": 300.0,
+      "pcie_link_cap": "Gen1 x16 (card max)",
+      "pcie_link_status": "Gen1 x16 (ok)",
+      "pcie_replays_since_reset": 0,
+      "pcie_aer_uncorrectable": "none observed",
+      "pcie_aer_correctable": "none observed",
+      "ecc_volatile": "N/A",
+      "retired_pages": "N/A",
+      "remapped_rows": "N/A",
+      "xid_since_boot": [
+        {
+          "xid": 43,
+          "timestamp": "2026-09-02T05:30:53Z",
+          "process": "python3.12",
+          "channel": "0x00000002",
+          "classification": "software (GPU reset requested by user channel; not a hardware Xid class)",
+          "context": "occurred after a described C16 wedge"
+        }
+      ],
+      "note": "GPU board serial and NVRM re-init logged at 2026-09-02T05:30:53Z alongside the Xid 43, consistent with a driver-level recovery, not a card dropout. Also in both 2026-09-01 vaspace assertion bursts. Currently running an active workload (Qwen3.8-27B NInfer A/B) at time of collection -- 8% util, 15032 MiB used."
+    }
+  ],
+  "dmesg_history_summary": {
+    "window_checked": "2026-08-29 boot through 2026-09-02 09:30 UTC (journalctl -k + /var/log/syslog, /var/log/syslog.1)",
+    "events": [
+      {
+        "time": "2026-09-01T18:50:04Z",
+        "gpus": [
+          2,
+          3
+        ],
+        "type": "NVRM vaspace/pool_alloc assertion (nvAssertFailedNoLog)",
+        "likely_cause": "OOM storm per user report"
+      },
+      {
+        "time": "2026-09-01T18:59:59Z",
+        "gpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "type": "NVRM vaspace/pool_alloc assertion (nvAssertFailedNoLog), fleet-wide",
+        "likely_cause": "OOM storm per user report, cleared by module reload"
+      },
+      {
+        "time": "2026-09-02T05:30:53Z",
+        "gpus": [
+          3
+        ],
+        "type": "Xid 43 + GPU re-init (GSP boot sequence re-logged)",
+        "likely_cause": "software reset after a described C16 wedge"
+      }
+    ],
+    "hardware_class_xids_seen": "none (no Xid 48/79/94/95 or similar hardware-fault classes observed in the checked window)"
+  },
+  "known_prior_findings_referenced": {
+    "gpu0_pcie_x8_link": "confirmed still present at this collection; expected board topology (dual-socket workstation, 7 slots populated, lane sharing between neighbors), not a fault -- corrected by Sean 2026-09-02, supersedes any earlier riser/seating suspicion",
+    "idle_thermal_baseline_2026-08-30": "37-38C core / 41-51C memory / 33.7-37.7W per card at 180W cap, per docs/COOLING-AND-POWER.md; current snapshot is consistent with that baseline"
+  }
+}
