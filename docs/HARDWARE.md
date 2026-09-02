@@ -57,7 +57,7 @@ passthrough bug. One card trained at x8 instead of the advertised x16
 (a width downgrade), which points to a riser or slot issue on that card,
 not a driver or passthrough fault. For comparison, consumer GeForce cards
 on the same host show x1 width at 2.5GT/s at idle; that is normal ASPM
-power-saving behavior at idle, not a fault.
+power-saving behavior, not a fault.
 
 ## Known-good measured configuration
 

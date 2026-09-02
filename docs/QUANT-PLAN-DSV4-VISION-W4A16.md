@@ -18,9 +18,9 @@ mistake to avoid.
 
 **Top risk:** two open vLLM bugs threaten correctness/stability on Ampere specifically for
 MoE W4A16, independent of whether quantization itself succeeds:
-- [vllm#35922](https://github.com/vllm-project/vllm/issues/35922) — `fused_marlin_moe`
+- [vllm#35922](https://github.com/vllm-project/vllm/issues/35922): `fused_marlin_moe`
   `cudaErrorIllegalAddress` for W4A16 INT4 MoE on A100/SM80.
-- [vllm#41511](https://github.com/vllm-project/vllm/issues/41511) — compressed-tensors W4A16
+- [vllm#41511](https://github.com/vllm-project/vllm/issues/41511): compressed-tensors W4A16
   MoE under tensor parallelism reports `group_size=128` but computes `group_size=16`
   (an 8x mismatch tracking TP degree), corrupting weight-scale sharding.
 
@@ -34,7 +34,7 @@ nodes instead of tensor parallel across cards.
 **Tool: `llm-compressor` (vllm-project)**, not AutoAWQ (archived, no deepseek_v4 support),
 not AutoRound (its own README says MoE/VLM support is "currently limited"; a third-party
 `Intel/DeepSeek-V4-Flash-W4A16-AutoRound` card states vLLM/SGLang do not run it), and not
-GPTQModel as primary (it lists DeepSeek V4 support as of a 2026-05-13 dev release — newer
+GPTQModel as primary (it lists DeepSeek V4 support as of a 2026-05-13 dev release: newer
 and less proven than llm-compressor's dedicated, documented DeepSeek-V4 page). Keep
 GPTQModel as the fallback if llm-compressor's oneshot run fails on the vision-tower path.
 
@@ -43,11 +43,11 @@ llm-compressor references:
 - [MoE quantization guide](https://docs.vllm.ai/projects/llm-compressor/en/latest/examples/quantizing_moe/)
 - [Multimodal vision quantization guide](https://docs.vllm.ai/projects/llm-compressor/en/latest/examples/multimodal_vision/)
 - [Memory guide](https://docs.vllm.ai/projects/llm-compressor/en/latest/guides/memory/)
-- RedHat has already shipped `DeepSeek-V4-Flash-NVFP4-FP8` with this tool, confirming the
+- RedHat has already shipped `DeepSeek-V4-Flash-NVFP4-FP8` with this tool; that confirms the
   architecture path works end to end (different target precision, same loader/recipe shape).
 
 Loading `AutoModelForCausalLM.from_pretrained` on the FP8-block checkpoint dequantizes to
-BF16 automatically — no separate dequant step needed.
+BF16 automatically; no separate dequant step needed.
 
 ### Recipe skeleton (`recipe.yaml`)
 
@@ -77,7 +77,7 @@ quant_stage:
 Design goal, informed by the `baicai1145` size regression: do **not** blanket-upcast
 non-expert weight to BF16. Where llm-compressor's exporter allows it, re-express attention,
 shared-expert, and embedding weights that were FP8 in the source as FP8 W8A8 in the output
-rather than BF16 — this alone is the difference between a ~166 GB artifact and a ~100 GB one.
+rather than BF16; this alone is the difference between a ~166 GB artifact and a ~100 GB one.
 This step is **untested**; validate the exporter actually supports mixed INT4/FP8/BF16 output
 before committing to the size estimate below.
 
@@ -95,7 +95,7 @@ NVMe)**, not the 4x170HX box. Reasoning:
 
 - llm-compressor's sequential onloading needs the full BF16-dequantized model resident
   somewhere (measured comparable: GLM-4.6, a similarly-sized MoE, needed 768 GB RAM + 300 GB
-  swap and was CPU-memory-bound, not GPU-bound — [GLM-4.6-AWQ card](https://huggingface.co/bullpoint/GLM-4.6-AWQ)).
+  swap and was CPU-memory-bound, not GPU-bound; [GLM-4.6-AWQ card](https://huggingface.co/bullpoint/GLM-4.6-AWQ)).
   The DGX Spark unified memory architecture (GPU and CPU share the same 120 GiB pool, no PCIe
   copy) is a better fit for this access pattern than a discrete-GPU rig with fixed VRAM per
   card.
@@ -115,7 +115,7 @@ Neither DGX Spark node currently has `llmcompressor` or `auto_round` installed, 
 Python or any existing venv/container (**measured**, checked via `python3 -c "import ..."`
 and `pip list` across the local Python environments on both nodes). Installing
 `llm-compressor` is a required setup step before any job launches; watch for aarch64 wheel
-availability — `llm-compressor`, `auto-gptq`-style native-kernel dependencies, and CUDA
+availability: `llm-compressor`, `auto-gptq`-style native-kernel dependencies, and CUDA
 extensions are commonly x86_64-only, and this is the single biggest unresolved feasibility
 question. **Untested. Do not launch until wheel availability is confirmed on GB10.**
 
@@ -208,10 +208,10 @@ were left unquantized and why.
 ## 8. Open questions before launch
 
 1. Does `llm-compressor` (or its CUDA-kernel dependencies) have working aarch64/GB10 wheels?
-   **Untested — resolve first.**
+   **Untested; resolve first.**
 2. Does the exporter support mixed INT4/FP8/BF16 output, or does everything non-INT4 default
    to BF16 (the `baicai1145` outcome)? Determines whether the artifact lands at ~100 GB or
    ~165 GB. **Untested.**
 3. Do vllm#35922 and vllm#41511 reproduce on the actual 170HX SM80 cards with this specific
-   MoE shape (256 experts, group-128)? **Untested — this is the go/no-go gate for calling the
+   MoE shape (256 experts, group-128)? **Untested; this is the go/no-go gate for calling the
    artifact usable, independent of whether quantization itself succeeds.**
