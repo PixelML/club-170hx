@@ -66,6 +66,22 @@ These follow `AGENTS.md` and apply to every notebook and every file under
 - Preserve negative and failed results; do not delete a failed configuration
   from a table.
 
+## Docker image
+
+For DeepSeek-V4-Flash-Vision-Exp on SM80 (CMP 170HX), a prebuilt vLLM
+image replaces a from-source build that takes about 60 minutes:
+
+```bash
+docker pull ghcr.io/pixelml/club-170hx:vllm-deepseek-v4-sm80-20260902
+```
+
+This image is text-path only; it does not run the vision encoder path.
+For the fork lineage, patch list, launch command, security scan, and a
+`vast-onstart.sh` script for one-command bring-up on a rented box, see
+`docs/DOCKER-IMAGE.md` in the
+[DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX)
+evidence repository.
+
 ## Adding a notebook
 
 1. Copy `notebooks/TEMPLATE.ipynb` to the new file name.
