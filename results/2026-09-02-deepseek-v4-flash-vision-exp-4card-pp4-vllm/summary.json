@@ -1,0 +1,156 @@
+{
+  "experiment": "dsv4-vision-exp-4card-canonical",
+  "utc_dir": "20260902T0440Z",
+  "model": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+  "revision": "86f746b36186f0e567729a5c06a8c918caba82a9",
+  "snapshot": {
+    "path": "<model-storage>/models/deepseek-v4-flash-vision-exp/deepseek-ai-86f746b36186f0e567729a5c06a8c918caba82a9",
+    "revision": "86f746b36186f0e567729a5c06a8c918caba82a9",
+    "safetensors_shards": 48,
+    "shard_bytes": 167819404368,
+    "repo_bytes_excluding_hf_cache": 167831846872,
+    "hf_cache_bookkeeping_bytes": 29746,
+    "all_file_bytes": 167831876618,
+    "expected_repo_bytes": 167831846872,
+    "repo_bytes_match": true,
+    "model_type": "deepseek_v4",
+    "num_nextn_predict_layers": 3,
+    "num_hidden_layers": 43,
+    "verdict": "PASS"
+  },
+  "image": {
+    "tag": "<image>",
+    "id": "sha256:90a1419e8ceaad3542153ef4e2a1d94a69b9af03cce7b0a1b267dd1dad55b9d7",
+    "source": "<workdir>/repos/dsv4-vllm @ f8ea5bb163c161ef38b401d055cc5fd4a934091a + 8 uncommitted patch files (receipts/vllm-source-patches.diff)",
+    "dockerfile": "Dockerfile.fullbuild16",
+    "build": "all layers cache-hit (image created 2026-09-01T05:22:44Z)"
+  },
+  "boot": {
+    "launched_utc": "2026-09-02T04:42:11Z",
+    "ready_utc": "2026-09-02T05:27:08Z",
+    "ready_after_s": 2515,
+    "model_load_s": {
+      "pp0-2": 1146,
+      "pp3": 2270
+    }
+  },
+  "gate": "PASS",
+  "prefill": {
+    "reps": [
+      [
+        8.1295,
+        361.77
+      ],
+      [
+        1.2503,
+        2352.24
+      ],
+      [
+        1.2181,
+        2414.42
+      ]
+    ],
+    "median_wall_s": 1.2503,
+    "median_tok_s": 2352.24,
+    "prompt_tokens_exact_2941": true
+  },
+  "ttft_s": [
+    0.3885,
+    0.3936,
+    0.4182
+  ],
+  "ttft_median_s": 0.3936,
+  "ladder": [
+    {
+      "c": 1,
+      "status": "PASS",
+      "warmup_agg": 117.89,
+      "agg_reps": [
+        57.58,
+        123.45,
+        97.41
+      ],
+      "summary": {
+        "aggregate_tok_s_median": 97.41,
+        "aggregate_tok_s_min": 57.58,
+        "aggregate_tok_s_max": 123.45,
+        "per_request_tok_s_median_of_medians": 97.42,
+        "success_rate": 1.0
+      }
+    },
+    {
+      "c": 2,
+      "status": "PASS",
+      "warmup_agg": 98.54,
+      "agg_reps": [
+        103.66,
+        159.24,
+        96.58
+      ],
+      "summary": {
+        "aggregate_tok_s_median": 103.66,
+        "aggregate_tok_s_min": 96.58,
+        "aggregate_tok_s_max": 159.24,
+        "per_request_tok_s_median_of_medians": 57.37,
+        "success_rate": 1.0
+      }
+    },
+    {
+      "c": 4,
+      "status": "PASS",
+      "warmup_agg": 164.7,
+      "agg_reps": [
+        140.32,
+        203.17,
+        165.53
+      ],
+      "summary": {
+        "aggregate_tok_s_median": 165.53,
+        "aggregate_tok_s_min": 140.32,
+        "aggregate_tok_s_max": 203.17,
+        "per_request_tok_s_median_of_medians": 66.92,
+        "success_rate": 1.0
+      }
+    },
+    {
+      "c": 8,
+      "status": "PASS",
+      "warmup_agg": 216.5,
+      "agg_reps": [
+        220.17,
+        231.99,
+        206.33
+      ],
+      "summary": {
+        "aggregate_tok_s_median": 220.17,
+        "aggregate_tok_s_min": 206.33,
+        "aggregate_tok_s_max": 231.99,
+        "per_request_tok_s_median_of_medians": 35.96,
+        "success_rate": 1.0
+      }
+    },
+    {
+      "c": 16,
+      "status": "FAIL",
+      "warmup_agg": 238.39,
+      "agg_reps": [
+        0.0
+      ],
+      "summary": null
+    }
+  ],
+  "c16_failure": {
+    "warmup": "16/16 ok, 238.39 tok/s aggregate",
+    "rep0": "0/16 ok; all 16 requests HTTP 500 InternalServerError 'EngineCore encountered an issue' after ~300 s",
+    "root": "[rank3] ProcessGroupNCCL watchdog: CUDA error: device-side assert triggered (cudaErrorAssert) -> c10::DistBackendError; EngineCore 'RPC call to sample_tokens timed out'; EngineDeadError",
+    "xid": "NVRM: Xid (<pci>): 43, pid=<pid> python3.12 (software-caused, one event)",
+    "retried": false
+  },
+  "gpu_bus_ids": "0, <pci> 1, <pci> 2, <pci> 3, <pci> ",
+  "final_gpu_memory_mib": [
+    0,
+    0,
+    0,
+    0
+  ]
+}

@@ -28,6 +28,17 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 | Choose an AI workload | [Workload matrix](docs/WORKLOADS.md) |
 | Read the consolidated lessons | [What we learned](docs/LESSONS.md) |
 | See every model tried on this card | [Model status](docs/MODEL-STATUS.md) |
+| Read an executed experiment notebook | [Notebooks](notebooks/README.md) |
+
+## Notebooks
+
+Each row links one executed Jupyter notebook, top to bottom, with committed
+outputs. The schema and the LIVE-replay convention are in
+[notebooks/README.md](notebooks/README.md).
+
+| Date | Experiment | Headline | Notebook |
+|---|---|---|---|
+| 2026-09-02 | DeepSeek-V4-Flash-Vision-Exp, 4x CMP 170HX, PP4 + DSpark k=6 | 220.2 tok/s aggregate decode at c=8 (median of 3); c=16 fails with a device-side assert | [notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm.ipynb](notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm.ipynb) |
 
 ## Four-card rig update
 

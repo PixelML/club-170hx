@@ -107,6 +107,11 @@ objects, three repetitions per level.
 The placeholders are filled when the normalized run completes and its receipts
 merge in the model repository. Until then this table is not decision-grade.
 
+Full tables, per-request spread, telemetry, and the throughput-vs-concurrency
+chart are in the executed notebook:
+[notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm.ipynb](../notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm.ipynb).
+Raw receipts: [results/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm/](../results/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm/).
+
 **Earlier run, superseded.** An earlier ladder on the same topology reported
 101.21 / 114.68 / 169.65 / 133.95 tok/s aggregate at c=1 / 2 / 4 / 8, with a
 c=16 wedge in the speculative draft path. A separate mixed-content single-stream
