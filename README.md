@@ -101,6 +101,10 @@ revision was unavailable from the running image and the protocol differed from
 the single-stream baseline, so the row is superseded. The third row is the
 vision-correctness milestone; its decode rate is not a performance claim.
 
+## Hugging Face
+
+Curated, verified artifacts from this club: [PixelML/club-170hx: verified on CMP 170HX (SM80)](https://huggingface.co/collections/PixelML/club-170hx-verified-on-cmp-170hx-sm80-6a97bf4edc20b52c5cf454e3).
+
 ## Repository map
 
 ```text
