@@ -4,9 +4,9 @@
 
 ## Run on CMP 170HX
 
-| Cards | VRAM/card | Format | Runtime | Partition | k (DSpark) | KV cache | Context | Measured decode | Status |
-|---|---:|---|---|---|---:|---|---:|---|---|
-| 3 (180 W, local) | untested | MXFP4 experts + FP8 e4m3 | SM80 vLLM fork (source build), PP3 | `15,15,13` | 5 | fp8 | 16,384 | 83.3 tok/s aggregate (technical 73.4 / prose 72.4 / code 116.6) | Measured, pending evidence repair |
+| Cards | VRAM/card | Format | Runtime | Partition | k (DSpark) | KV cache | Context | Measured decode | TTFT | Status |
+|---|---:|---|---|---|---:|---|---:|---|---|---|
+| 3 (180 W, local) | untested | MXFP4 experts + FP8 e4m3 | SM80 vLLM fork (source build), PP3 | `15,15,13` | 5 | fp8 | 16,384 | 83.3 tok/s aggregate (technical 73.4 / prose 72.4 / code 116.6) | untested | Measured, pending evidence repair |
 | 4 (community reference) | untested | Same | SM80 vLLM fork, PP4 | untested split | 5 | fp8 | 1,047,736 (full context verified) | 98.1 tok/s aggregate | Measured, upstream reference — not this club's own run |
 | 4 (PP4, acceptance study) | untested | Same | SM80 vLLM fork, PP4 | untested split | 5 | fp8 | untested | Not a throughput row; acceptance length 3.03 (per-position 0.730/0.569/0.372/0.226/0.131) | Measured, from `docs/LESSONS.md` |
 | 4 (PP4, k=7 comparison) | untested | Same | SM80 vLLM fork, PP4 | untested split | 7 | fp8 | untested | 60.3 tok/s aggregate — worse than k=5; acceptance never extends past ~3 tokens | Measured, negative result: do not raise k above the checkpoint's block size |
@@ -31,10 +31,10 @@ export TORCH_CUDA_ARCH_LIST=8.0
 
 ```bash
 pip install -U huggingface_hub
-hf download deepseek-ai/DeepSeek-V4-Flash-0731 --revision <pin-before-use> --local-dir <weights>
+hf download deepseek-ai/DeepSeek-V4-Flash-0731 --revision 7872f01b1d1fe23eabc4c98b48bffcef5a386062 --local-dir <weights>
 ```
 
-Pin the exact revision from your own `hf download` output; none is recorded in the sanitized notes reviewed for this page.
+No revision hash was recorded in the launch script or receipts for the 2026-08-30 run. The hash above (`7872f01b1d1fe23eabc4c98b48bffcef5a386062`) is resolved after the fact: it is the newest commit on the `main` branch on Hugging Face at or before the run date, dated 2026-08-01, per the [HF Hub commits API](https://huggingface.co/api/models/deepseek-ai/DeepSeek-V4-Flash-0731/commits/main). It is a reconstruction, not a value captured at run time — pin your own revision from a fresh `hf download` and compare.
 
 ### 3. Launch — 3 cards, PP3
 
@@ -131,8 +131,8 @@ DSpark keeps winning through 64 concurrent requests on pipeline parallel (712.8 
 ## Artifacts
 
 - **Evidence repository:** [PixelML/DeepSeek-V4-Flash-0731-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX). Sanitized receipts for the 3-card run are an open PR there as of this writing.
-- **GHCR image:** none published for this recipe as of this writing; built from source per the Quick start above.
-- **Checkpoint:** [deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) — pin an exact revision before use.
+- **GHCR image:** none published for this recipe. No image lineage exists for this checkpoint on its own; it shares the "fullbuild" source-build lineage documented for the vision-capable sibling (`Dockerfile.fullbuild` in the allover326 stack, later `Dockerfile.fullbuild16` for the vision fork — see `deepseek-v4-flash-vision-exp.md`). Build from source per the Quick start above.
+- **Checkpoint:** [deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) — revision `7872f01b1d1fe23eabc4c98b48bffcef5a386062` (resolved after the fact, see Quick start above).
 - **Patch series:** SM80 vLLM fork and patches from [allover326/vllm-dsa-mtp-sm80](https://github.com/allover326/vllm-dsa-mtp-sm80) and [allover326/deepseek-v4-cmp170hx](https://github.com/allover326/deepseek-v4-cmp170hx).
 - **Executed notebook:** [notebooks/2026-08-30-deepseek-v4-flash-0731-3card-pp3-vllm.ipynb](../../notebooks/2026-08-30-deepseek-v4-flash-0731-3card-pp3-vllm.ipynb).
 
