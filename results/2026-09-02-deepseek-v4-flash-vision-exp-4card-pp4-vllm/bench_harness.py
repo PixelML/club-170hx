@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Canonical 4-card text benchmark harness for DeepSeek-V4-Flash-Vision-Exp on the
-0731-fork SM80 vLLM recipe. Uses only the OpenAI-compatible HTTP API.
+"""Canonical 4-card text/vision benchmark harness for DeepSeek-V4-Flash-Vision-Exp on
+the SM80 vLLM Path 3 recipe. Uses only the OpenAI-compatible HTTP API.
 
 Phases (each writes a raw JSON receipt into OUT/):
-  gate     : /v1/models + deterministic greedy token check
-  prefill  : uncached prefill, 2941 prompt tokens, max_tokens=1, 3 reps, unique prefix each
-  ttft     : warm streaming TTFT, 3 reps, same fixture (cached prefix)
-  ladder   : C1,C2,C4,C8,C16 greedy, ignore_eos, 400 completion tokens, 1 warmup + 3 measured reps
+  gate         : /v1/models + deterministic greedy token check
+  prefill      : uncached prefill, 2941 prompt tokens, max_tokens=1, 3 reps, unique prefix each
+  ttft         : warm streaming TTFT, 3 reps, same fixture (cached prefix)
+  ladder       : C1,C2,C4,C8,C16 greedy, ignore_eos, 400 completion tokens, text-only
+                 prompts, 1 warmup + 3 measured reps per level (/v1/completions)
+  ladder_image : same protocol as `ladder`, but every request in a level is a
+                 text+one-image chat request (/v1/chat/completions), one fixed
+                 64x64 gradient PNG data URL, cycling through 5 short prompts
+
+Extension added 2026-09-02 for the vision-on-vLLM live run: `ladder_image` and
+its helpers (`chat_completion`, `IMAGE_PROMPTS`, `IMAGE_DATA_URL`) reuse the
+same concurrency/warmup/rep/telemetry-sampling protocol as the text `ladder`
+so the two series are directly comparable.
 """
 import json, os, sys, time, uuid, subprocess, threading
 from concurrent.futures import ThreadPoolExecutor
@@ -180,6 +189,103 @@ def ladder_level(c, rep_tag):
             "per_request_wall_s": [r["wall_s"] for r in res], "errors": [r["error"] for r in res if not r["ok"]],
             "finish_reasons": [r.get("finish_reason") for r in ok], "gpu_samples": samples}
 
+# ---------------- image fixture -----------------
+# Same 64x64 red-to-green horizontal gradient PNG used by the golden corpus
+# (img03_gradient_red_green), embedded here so this harness has no filesystem
+# dependency on the golden-corpus directory.
+IMAGE_DATA_URL = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAaElEQVR4"
+    "nO3PMQqAQBAEwVXO/z9YQf9wSSF0MekEfbwz95pnexe+n/NzBWgFaAVoBWgFaAVoBWgFaAVoBWgFaA"
+    "VoBWgFaAVoBWgFaAVoBWgFaAVoBWgFaAVoBWgFaAVoBWgFaAVoBWgf4opAfzhR4U8AAAAASUVORK5C"
+    "YII="
+)
+IMAGE_PROMPTS = [
+    "This image is a horizontal color gradient. Name the two colors it blends between, then describe one practical use of gradients in data visualization.",
+    "Describe this image in detail: what colors are present, how they transition, and what mood the colors evoke.",
+    "This image shows a gradient. Explain step by step how you would reproduce this gradient in CSS using linear-gradient.",
+    "Look at this image and write a short paragraph as if describing it to someone who cannot see it.",
+    "This is a gradient image. Compare and contrast the two colors present, and suggest one design context where this pairing works well.",
+]
+
+def chat_completion(text, image_data_url, max_tokens, ignore_eos=False, timeout=1800):
+    body = {
+        "model": MODEL,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ],
+        }],
+    }
+    if ignore_eos: body["ignore_eos"] = True
+    t0 = time.perf_counter()
+    try:
+        r = json.load(post("/v1/chat/completions", body, timeout))
+        dt = time.perf_counter() - t0
+        return {"ok": True, "wall_s": round(dt, 4), "usage": r["usage"],
+                "text_head": (r["choices"][0]["message"].get("content") or "")[:80],
+                "finish_reason": r["choices"][0].get("finish_reason")}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "wall_s": round(time.perf_counter() - t0, 4), "error": f"HTTP {e.code}: {e.read().decode(errors='replace')[:2000]}"}
+    except Exception as e:
+        return {"ok": False, "wall_s": round(time.perf_counter() - t0, 4), "error": f"{type(e).__name__}: {e}"[:2000]}
+
+def ladder_image_level(c, rep_tag):
+    samples = []
+    stop = threading.Event()
+    def sampler():
+        while not stop.is_set():
+            samples.append({"t": now(), "gpu": smi()}); stop.wait(2)
+    th = threading.Thread(target=sampler, daemon=True); th.start()
+    with ThreadPoolExecutor(max_workers=c) as ex:
+        t0 = time.perf_counter()
+        res = list(ex.map(lambda i: chat_completion(f"[{rep_tag}-{i}] " + IMAGE_PROMPTS[i % len(IMAGE_PROMPTS)],
+                                                     IMAGE_DATA_URL, LADDER_TOKENS, ignore_eos=True), range(c)))
+        wall = time.perf_counter() - t0
+    stop.set(); th.join(timeout=5)
+    ok = [r for r in res if r["ok"]]
+    toks = sum(r["usage"]["completion_tokens"] for r in ok)
+    per = sorted(r["usage"]["completion_tokens"] / r["wall_s"] for r in ok)
+    return {"concurrency": c, "requests": c, "succeeded": len(ok), "failed": c - len(ok),
+            "success_rate": round(len(ok) / c, 3), "total_completion_tokens": toks, "wall_s": round(wall, 3),
+            "aggregate_tok_s": round(toks / wall, 2) if wall > 0 else None,
+            "all_exactly_400": all(r["usage"]["completion_tokens"] == LADDER_TOKENS for r in ok) and len(ok) == c,
+            "per_request_tok_s": {"median": round(per[len(per)//2], 2) if per else None, "min": round(per[0], 2) if per else None,
+                                  "max": round(per[-1], 2) if per else None, "all": [round(x, 2) for x in per]},
+            "per_request_wall_s": [r["wall_s"] for r in res], "errors": [r["error"] for r in res if not r["ok"]],
+            "finish_reasons": [r.get("finish_reason") for r in ok], "gpu_samples": samples}
+
+def ladder_image(levels):
+    rec = {"phase": "concurrency_ladder_image", "utc": now(), "max_tokens": LADDER_TOKENS,
+           "sampling": "temperature 0, ignore_eos, text+one-image chat request",
+           "warmup_per_level": 1, "measured_reps_per_level": REPS, "levels": []}
+    for c in levels:
+        entry = {"concurrency": c, "reps": [], "warmup": None, "status": "running"}
+        rec["levels"].append(entry); save("ladder_image.json", rec)
+        w = ladder_image_level(c, f"warm-img-c{c}"); w.pop("gpu_samples", None); entry["warmup"] = w
+        print(f"[image] C{c} warmup: {w['aggregate_tok_s']} tok/s ok={w['succeeded']}/{c}", flush=True)
+        if w["failed"] == c:
+            entry["status"] = "FAIL_warmup"; save("ladder_image.json", rec); print(f"[image] C{c} warmup failed; stopping ladder", flush=True); break
+        for i in range(REPS):
+            r = ladder_image_level(c, f"rep{i}-img-c{c}"); entry["reps"].append(r); save("ladder_image.json", rec)
+            print(f"[image] C{c} rep{i}: {r['aggregate_tok_s']} tok/s agg, per-req median {r['per_request_tok_s']['median']}, ok={r['succeeded']}/{c}, wall {r['wall_s']}s", flush=True)
+            if r["failed"] == c:
+                entry["status"] = "FAIL"; break
+            time.sleep(2)
+        if entry["status"] == "running":
+            aggs = sorted(x["aggregate_tok_s"] for x in entry["reps"]); meds = sorted(x["per_request_tok_s"]["median"] for x in entry["reps"])
+            entry["status"] = "PASS" if all(x["failed"] == 0 for x in entry["reps"]) else "PARTIAL"
+            entry["summary"] = {"aggregate_tok_s_median": aggs[len(aggs)//2], "aggregate_tok_s_min": aggs[0], "aggregate_tok_s_max": aggs[-1],
+                                "per_request_tok_s_median_of_medians": meds[len(meds)//2],
+                                "success_rate": round(sum(x["succeeded"] for x in entry["reps"]) / (c * len(entry["reps"])), 3)}
+        save("ladder_image.json", rec)
+        if entry["status"] == "FAIL":
+            print(f"[image] C{c} failed; stopping ladder", flush=True); break
+        time.sleep(3)
+
 def ladder(levels):
     rec = {"phase": "concurrency_ladder", "utc": now(), "max_tokens": LADDER_TOKENS, "sampling": "temperature 0, ignore_eos",
            "warmup_per_level": 1, "measured_reps_per_level": REPS, "levels": []}
@@ -213,3 +319,4 @@ if __name__ == "__main__":
     elif phase == "prefill": prefill()
     elif phase == "ttft": ttft()
     elif phase == "ladder": ladder([int(x) for x in (sys.argv[2].split(",") if len(sys.argv) > 2 else LADDER)])
+    elif phase == "ladder_image": ladder_image([int(x) for x in (sys.argv[2].split(",") if len(sys.argv) > 2 else LADDER)])

@@ -1,4 +1,46 @@
 {
-  "status": "not run",
-  "note": "This experiment (vision on the PP4/DSpark fork) has not produced a serving run yet. See the appendix for the Route B attempt log and Path 3 status. Values in this notebook's TL;DR and pins come from committed evidence documents (docs/LESSONS.md, VISION-ROUTEB-ATTEMPT7-2026-09-02.md, the public reference-runtime repo), not from a receipt under this results/ directory."
+  "status": "measured, partial (server crashed mid-ladder)",
+  "utc": "2026-09-02T12:00:00Z",
+  "endpoint": "local OpenAI-compatible vLLM endpoint (redacted host), served_model_name deepseek-v4-flash-vision-exp",
+  "gate": "PASS (models list, deterministic greedy check identical x3)",
+  "golden_corpus": {
+    "rows": 30,
+    "overall_keyword_match": "25/30",
+    "image_keyword_match": "10/10",
+    "text_keyword_match": "15/20",
+    "text_exact_match_vs_dgx_reference": "10/20",
+    "text_finish_reason_mismatches": 4,
+    "note": "Vision correctness (keyword match) is solid. Text exact-match gap vs. the DGX Spark reference is a known limitation, most likely SM80 kernel numerics plus the dspark speculative-decode draft model changing greedy continuations at temperature 0."
+  },
+  "prefill_uncached_2941tok": {
+    "reps": 3,
+    "median_tok_s": 2352.42,
+    "note": "First rep was slower (918 tok/s, cold cache); reps 2-3 landed near 2350-2400 tok/s."
+  },
+  "warm_ttft_s": {
+    "reps": 3,
+    "median_s": 0.3858
+  },
+  "concurrency_ladder_text_only": {
+    "c1": {"status": "PASS", "aggregate_tok_s_median": 163.06, "per_request_tok_s_median": 163.08},
+    "c2": {"status": "PASS", "aggregate_tok_s_median": 116.57, "per_request_tok_s_median": 119.56},
+    "c4": {"status": "FAIL", "note": "2 of 3 measured reps succeeded (241.85, 159.98 tok/s aggregate); rep 3 returned HTTP 500 on all 4 requests when the vLLM EngineCore process died with a fatal RuntimeError('cancelled') in shm_broadcast.dequeue. The vLLM container then exited (exit code 0) and dropped the API server."},
+    "c8": {"status": "not measured", "note": "Server was down after the C4 crash; per the operating instruction not to restart the server, no further requests were sent."},
+    "c16": {"status": "not measured", "note": "Same reason as C8."}
+  },
+  "concurrency_ladder_text_plus_image": {
+    "c1": {"status": "not measured"},
+    "c2": {"status": "not measured"},
+    "c4": {"status": "not measured"},
+    "c8": {"status": "not measured"},
+    "c16": {"status": "not measured"},
+    "note": "Ladder order was gate -> golden corpus -> prefill -> TTFT -> text ladder -> image ladder. The server crashed during the text ladder (C4) before the image ladder started. The single-request text+image throughput figure from the prior boot report (~55 tok/s per request, C1, from a separate session) is carried forward as measured-but-not-reproduced-in-this-run; it is not re-measured here."
+  },
+  "safety": {
+    "gpu_temps_c": "42-47 across all 4 cards for the entire session",
+    "xid_or_ecc_events": "none observed",
+    "gpu_state_after_crash": "0 MiB used, 0% utilization, idle, safe",
+    "server_restarted": false,
+    "note": "The server was not stopped or restarted by this session, before or after the crash, per the standing operating instruction for this endpoint."
+  }
 }
