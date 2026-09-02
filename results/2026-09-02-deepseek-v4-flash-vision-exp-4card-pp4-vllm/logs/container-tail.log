@@ -1,0 +1,122 @@
+(APIServer pid=<pid>) INFO:     Application startup complete.
+[rank3]:[E902 05:30:53.550049244 ProcessGroupNCCL.cpp:2174] [PG ID 5 PG GUID 27 Rank 3] Process group watchdog thread terminated with exception: CUDA error: device-side assert triggered
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 5 PG GUID 27 Rank 3] Process group watchdog thread terminated with exception: CUDA error: device-side assert triggered
+Search for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+
+Exception raised from query at /__w/pytorch/pytorch/c10/cuda/CUDAEvent.h:111 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7ea621f63bfd in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0xc4e9 (0x7ea6223a74e9 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10_cuda.so)
+frame #2: c10d::ProcessGroupNCCL::WorkNCCL::finishedGPUExecutionInternal() const + 0x50 (0x7ea56c845920 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::WorkNCCL::isCompleted() + 0x68 (0x7ea56c84f7b8 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0xa7a (0x7ea56c85ae6a in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cuda.so)
+frame #5: c10d::ProcessGroupNCCL::Watchdog::run() + 0x157 (0x7ea56c85cd47 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cuda.so)
+frame #6: <unknown function> + 0xecdb4 (0x7ea5f146edb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #7: <unknown function> + 0x9caa4 (0x7ea622de4aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #8: __clone + 0x44 (0x7ea622e71a64 in /lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /__w/pytorch/pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2180 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x7ea621f63bfd in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::DistError::DistError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7ea621f64bd2 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: c10::DistBackendError::DistBackendError(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x72 (0x7ea621f64d02 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #3: <unknown function> + 0x697922 (0x7ea56bf96922 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ea5f146edb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ea622de4aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: __clone + 0x44 (0x7ea622e71a64 in /lib/x86_64-linux-gnu/libc.so.6)
+
+(APIServer pid=<pid>) INFO 09-02 05:31:00 [loggers.py:310] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 63.3 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 36.2%
+(APIServer pid=<pid>) INFO 09-02 05:31:00 [metrics.py:120] SpecDecoding metrics: Mean acceptance length: 2.50, Accepted throughput: 38.00 tokens/s, Drafted throughput: 152.40 tokens/s, Accepted: 380 tokens, Drafted: 1524 tokens, Per-position acceptance rate: 0.705, 0.394, 0.224, 0.094, 0.047, 0.031, Avg Draft acceptance rate: 24.9%
+(APIServer pid=<pid>) INFO 09-02 05:31:10 [loggers.py:310] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 36.2%
+(EngineCore pid=<pid>) INFO 09-02 05:31:54 [shm_broadcast.py:802] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+(EngineCore pid=<pid>) INFO 09-02 05:32:54 [shm_broadcast.py:802] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+(EngineCore pid=<pid>) INFO 09-02 05:33:54 [shm_broadcast.py:802] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+(EngineCore pid=<pid>) INFO 09-02 05:34:54 [shm_broadcast.py:802] No available shared memory broadcast block found in 60 seconds. This typically happens when some processes are hanging or doing some time-consuming work (e.g. compilation, weight/kv cache quantization).
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [dump_input.py:72] Dumping input data for V1 LLM engine (v0.0.0) with config: model='/model', speculative_config=SpeculativeConfig(method='dspark', model='/model', num_spec_tokens=6), tokenizer='/model', skip_tokenizer_init=False, tokenizer_mode=deepseek_v4, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=16384, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=4, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=deepseek_v4_fp8, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=fp8, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=dsv4v, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['+quant_fp8', 'all', '+quant_fp8', '+quant_fp8', '+quant_fp8'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 112, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native']), enable_flashinfer_autotune=False, enable_cutedsl_warmup=True, enable_jit_warmup=True, enable_bf16x3_router_gemm=False, moe_backend='auto', linear_backend='auto'), 
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [dump_input.py:79] Dumping scheduler output for model execution: SchedulerOutput(scheduled_new_reqs=[NewRequestData(req_id=cmpl-b5a0610dbfbb901f-0-bb0c05ad,prompt_token_ids_len=36,prefill_token_ids_len=36,mm_features=[],sampling_params=SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=0.0, top_p=1.0, top_k=0, min_p=0.0, seed=None, stop=[], stop_token_ids=[], bad_words=[], thinking_token_budget=None, include_stop_str_in_output=False, ignore_eos=True, max_tokens=400, min_tokens=0, logprobs=None, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, structured_outputs=None, extra_args=None),block_ids=([2982], [3042], [2669], [2829, 3122, 2736, 2750, 3151, 3071, 2784, 3084, 3150, 2767, 3147], [3100, 3135, 3049, 2189, 3080, 3069]),num_computed_tokens=0,lora_request=None,prompt_embeds_shape=None)], scheduled_cached_reqs=CachedRequestData(req_ids=[],resumed_req_ids=set(),new_token_ids_lens=[],all_token_ids_lens={},new_block_ids=[],num_computed_tokens=[],num_output_tokens=[]), num_scheduled_tokens={cmpl-b5a0610dbfbb901f-0-bb0c05ad: 36}, total_num_scheduled_tokens=36, scheduled_spec_decode_tokens={}, scheduled_encoder_inputs={}, num_common_prefix_blocks=[1, 0, 0, 0, 0], finished_req_ids=[], free_encoder_mm_hashes=[], scheduled_encoder_input_stats=null, preempted_req_ids=[], has_structured_output_requests=false, pending_structured_output_tokens=false, num_invalid_spec_tokens=null, kv_connector_metadata=null, ec_connector_metadata=null, ec_manager_metadata=null, new_block_ids_to_zero=[2982], kv_cache_block_copies=null, partial_tail_offloads=null, num_spec_tokens_to_schedule=6)
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [dump_input.py:81] Dumping scheduler stats: SchedulerStats(num_running_reqs=6, num_waiting_reqs=0, num_skipped_waiting_reqs=0, step_counter=0, current_wave=0, kv_cache_usage=0.0031693123138711865, iteration_details=None, prefix_cache_stats=PrefixCacheStats(reset=False, requests=6, queries=205, hits=0, preempted_requests=0, preempted_queries=0, preempted_hits=0), connector_prefix_cache_stats=None, kv_cache_eviction_events=[], spec_decoding_stats=None, kv_connector_stats=None, waiting_lora_adapters={}, running_lora_adapters={}, cudagraph_stats=None, perf_stats=None)
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] EngineCore encountered a fatal error.
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] Traceback (most recent call last):
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/executor/multiproc_executor.py", line 401, in get_response
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     status, result = mq.dequeue(timeout=dequeue_timeout)
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/distributed/device_communicators/shm_broadcast.py", line 890, in dequeue
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     with self.acquire_read(timeout, indefinite) as buf:
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/usr/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     return next(self.gen)
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]            ^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/distributed/device_communicators/shm_broadcast.py", line 795, in acquire_read
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     self._spin_condition.wait(timeout_ms=read_timeout.timeout_ms())
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]                                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/distributed/device_communicators/shm_broadcast.py", line 748, in timeout_ms
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     raise TimeoutError
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] TimeoutError
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] 
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] The above exception was the direct cause of the following exception:
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] 
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] Traceback (most recent call last):
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/engine/core.py", line 1342, in run_engine_core
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     engine_core.run_busy_loop()
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/fault_tolerance/engine_core_sentinel.py", line 179, in run_with_fault_tolerance
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     busy_loop_func(self)
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/engine/core.py", line 1386, in run_busy_loop
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     self._process_engine_step()
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/engine/core.py", line 1439, in _process_engine_step
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     outputs, model_executed = self.step_fn()
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]                               ^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/engine/core.py", line 701, in step_with_batch_queue
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     model_output = future.result()
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]                    ^^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/executor/multiproc_executor.py", line 91, in result
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     return super().result()
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]            ^^^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     return self.__get_result()
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]            ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     raise self._exception
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/executor/multiproc_executor.py", line 95, in _wait_for_response
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     response = self.aggregate(self.get_response())
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]                               ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]   File "/vllm/vllm/v1/executor/multiproc_executor.py", line 403, in get_response
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351]     raise TimeoutError(f"RPC call to {method} timed out.") from e
+(EngineCore pid=<pid>) ERROR 09-02 05:35:53 [core.py:1351] TimeoutError: RPC call to sample_tokens timed out.
+(EngineCore pid=<pid>) INFO 09-02 05:35:53 [multiproc_executor.py:440] [shutdown] Executor: waiting for worker exit count=4
+(Worker_PP0 pid=<pid>) INFO 09-02 05:35:53 [multiproc_executor.py:804] Parent process exited, terminating worker queues
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707] AsyncLLM output_handler failed.
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707] Traceback (most recent call last):
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707]   File "/vllm/vllm/v1/engine/async_llm.py", line 663, in output_handler
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707]     outputs = await engine_core.get_output_async()
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707]   File "/vllm/vllm/v1/engine/core_client.py", line 1101, in get_output_async
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707]     raise self._format_exception(outputs) from None
+(APIServer pid=<pid>) ERROR 09-02 05:35:53 [async_llm.py:707] vllm.v1.engine.exceptions.EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.
+(APIServer pid=<pid>) INFO:     <ip>:38686 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38680 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38688 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38704 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38720 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38722 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38736 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38746 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38760 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38770 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38772 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38776 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38790 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38802 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38806 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     <ip>:38814 - "POST /v1/completions HTTP/1.1" 500 Internal Server Error
+(APIServer pid=<pid>) INFO:     Shutting down
+(APIServer pid=<pid>) INFO:     Waiting for application shutdown.
+(APIServer pid=<pid>) INFO:     Application shutdown complete.
+(APIServer pid=<pid>) INFO:     Finished server process [1]
+(APIServer pid=<pid>) INFO 09-02 05:35:53 [core_client.py:686] [shutdown] MPClient: start timeout=0s
+(APIServer pid=<pid>) INFO 09-02 05:35:53 [core_client.py:688] [shutdown] MPClient: stopping engine manager
+(APIServer pid=<pid>) INFO 09-02 05:35:53 [utils.py:612] [shutdown] Process manager: send sigterm to process EngineCore
+(APIServer pid=<pid>) WARNING 09-02 05:35:53 [utils.py:632] [shutdown] Process manager: force killing remaining processes count=1
+(APIServer pid=<pid>) WARNING 09-02 05:35:53 [utils.py:637] [shutdown] Process manager: force killing remaining process EngineCore pid 439
+(APIServer pid=<pid>) INFO 09-02 05:35:53 [core_client.py:690] [shutdown] MPClient: engine manager stopped
+(APIServer pid=<pid>) INFO 09-02 05:35:53 [core_client.py:691] [shutdown] MPClient: cleaning up background resources
+(APIServer pid=<pid>) INFO 09-02 05:35:53 [core_client.py:693] [shutdown] MPClient: complete

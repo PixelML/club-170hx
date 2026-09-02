@@ -4,7 +4,7 @@ The repository covers more than LLM inference. Each workload track starts with c
 
 | Track | Current state | Next evidence needed |
 |---|---|---|
-| LLM inference | Verified on one- and three-card workloads | More model families, concurrency, energy/token |
+| LLM inference | Verified on one-, three-, and four-card workloads; real-image vision verified on four cards | More model families, concurrency, energy/token, a performance-grade SM80 vision path |
 | Image generation | Planned | Reproducible SM80 pipeline, images/minute, peak VRAM and power |
 | Video generation | Planned | Reproducible model, resolution/frames, seconds/frame, peak VRAM |
 | CUDA/QC | Initial tools included | Near-full HBM and sustained compute reports from more cards |

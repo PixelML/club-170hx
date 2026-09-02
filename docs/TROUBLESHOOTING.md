@@ -2,6 +2,13 @@
 
 Start at the lowest layer where the card is missing. Do not reinstall a driver when the host itself cannot enumerate the device.
 
+For runtime- and workload-level failures that are not hardware faults —
+NCCL store timeouts from storage-read skew, ranks stuck in D state during an
+NFS-backed weight load, `--gpus all` losing devices after a crash, NVRM
+VA-space corruption after an OOM kill storm, or a container seccomp policy
+blocking `pidfd_getfd` — see [What we learned: failure modes and
+recovery](LESSONS.md#g-failure-modes-and-recovery).
+
 | Symptom | First check | Likely direction |
 |---|---|---|
 | No fans/board boot, standby LEDs flash | Minimal motherboard configuration and PSU cabling | PSU protection, short, board power, wrong modular cable |

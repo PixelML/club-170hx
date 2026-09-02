@@ -47,6 +47,18 @@ nvidia-smi -q | grep -A1 'HW Power Brake Slowdown'
 
 Save a redacted baseline outside the public repository. A card missing from `lspci` is a hardware/firmware/power/enumeration problem; reinstalling a guest driver will not make a non-enumerated PCI device appear.
 
+## PCIe link status
+
+**Measured 2026-09-02, on the four-card test node.** Host-side `lspci -vv` on
+the hypervisor shows every CMP 170HX card advertising `LnkCap: Speed
+2.5GT/s, Width x16`. PCIe Gen1 is the card's advertised maximum, so a Gen1
+link seen in a guest is a card/vBIOS capability, not a hypervisor
+passthrough bug. One card trained at x8 instead of the advertised x16
+(a width downgrade), which points to a riser or slot issue on that card,
+not a driver or passthrough fault. For comparison, consumer GeForce cards
+on the same host show x1 width at 2.5GT/s at idle; that is normal ASPM
+power-saving behavior at idle, not a fault.
+
 ## Known-good measured configuration
 
 **Measured inventory:** four cards enumerated in one Ubuntu guest on 2026-08-30 and exposed 65,536 MiB each, for 256 GiB aggregate. Four-card workload performance remains untested.
