@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "phase": "C",
+  "date_utc": "2026-08-30",
+  "runtime": {
+    "repo": "unslothai/llama.cpp",
+    "commit": "00699716c275498ff84d71e329178fe21cba56a6",
+    "build_flags": "-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=80",
+    "server_fingerprint": "b1-0069971"
+  },
+  "model": {
+    "repo": "unsloth/GLM-5.3-Flash-GGUF",
+    "revision": "2975ab414d30340466d8c51533c6e91f0cca64c1",
+    "quant": "UD-IQ4_XS",
+    "shards": 5,
+    "total_bytes": 156822111075,
+    "storage": "canonical shared model library (not guest root)"
+  },
+  "serve_config": {
+    "ctx": 16384,
+    "split_mode": "layer",
+    "tensor_split": "1,1,1,1",
+    "parallel": 1,
+    "threads": 8,
+    "flash_attn": "auto (fork default)",
+    "cache_k_v": "f16 (server defaults)",
+    "batch_ubatch": "2048/512 (server defaults)"
+  },
+  "host": {
+    "gpus": "4x CMP 170HX 64 GiB",
+    "driver": "610.43.03",
+    "kernel": "6.8",
+    "os": "Ubuntu 22.04",
+    "power_limit": "not-queried (per-card configured limit not captured this phase; consistency with gpu.power_limit_w restored)"
+  },
+  "protocol": {
+    "warmups": 3,
+    "c1_reps": 5,
+    "prompt_tokens_approx": 400,
+    "completion_tokens": 256,
+    "ladder": "1,2,4 x 2 reps",
+    "soak": "20 min at c=2, 41 reps",
+    "seed": 42,
+    "temperature": 0.0
+  },
+  "safety": {
+    "core_limit_c": 80,
+    "mem_limit_c": 85,
+    "snapshot_file": "gpu-final.csv",
+    "throttle_events": "not-recorded (no continuous throttle telemetry this phase; final snapshot only)",
+    "xid_events": "not-recorded (thermal-guard Xid scan ran between phases with no detected events logged; continuous kernel-log capture not committed)",
+    "telemetry_note": "single snapshot at end of run + bounded guard calls between stages; continuous watch telemetry for the soak is a known gap in this run and is enforced in bench/rebench.sh for future runs",
+    "thermal_breaches": "not-recorded (no continuous thermal-breach telemetry committed; guard checks ran between phases)"
+  },
+  "artifacts": {
+    "warmups": "warmups.jsonl",
+    "speed_c1": "speed-c1.jsonl",
+    "ladder": "ladder.jsonl",
+    "soak": "soak.jsonl",
+    "quality_first": "quality.jsonl",
+    "quality_corrected": "quality-final2.jsonl",
+    "summary_csv": "../summary.csv",
+    "charts_dir": "charts/"
+  },
+  "harness_git_sha": "0a50f0f38c069559516bf66343e1083ec3ef6145",
+  "gpu": {
+    "power_limit_w": "as-configured (operator-set; unchanged this phase; exact per-card limit not queried)"
+  },
+  "harness_git_sha_note": "measured phase-C baseline ran on the bench/ tree at this revision; later PR commits touch harness/derivation code only and are pinned separately by the PR head in review"
+}
