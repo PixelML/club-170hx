@@ -53,11 +53,14 @@ Save a redacted baseline outside the public repository. A card missing from `lsp
 the hypervisor shows every CMP 170HX card advertising `LnkCap: Speed
 2.5GT/s, Width x16`. PCIe Gen1 is the card's advertised maximum, so a Gen1
 link seen in a guest is a card/vBIOS capability, not a hypervisor
-passthrough bug. One card trained at x8 instead of the advertised x16
-(a width downgrade), which points to a riser or slot issue on that card,
-not a driver or passthrough fault. For comparison, consumer GeForce cards
-on the same host show x1 width at 2.5GT/s at idle; that is normal ASPM
-power-saving behavior, not a fault.
+passthrough bug. One card trains at x8 instead of the advertised x16. On this
+board, a fully populated seven-slot dual-socket layout shares lanes between
+neighboring slots, so a neighbor's card occupying the adjacent slot drops
+that card to x8 — this is expected board topology, not a riser fault or a
+passthrough bug (an earlier note in this section called it a riser
+suspicion; the 2026-09-02 health gate traced it to lane sharing instead).
+For comparison, consumer GeForce cards on the same host show x1 width at
+2.5GT/s at idle; that is normal ASPM power-saving behavior, not a fault.
 
 ## Known-good measured configuration
 

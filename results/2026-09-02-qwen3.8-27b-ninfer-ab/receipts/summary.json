@@ -1,0 +1,45 @@
+{
+  "note": "Hand-verified summary of the A/B table posted to the tracking issue. Per-sample numbers are in armA/bench.json, armB/bench-spec-on.json, armB/bench-nospec.json.",
+  "hardware": "1x CMP 170HX, 180 W power cap",
+  "driver": "610.43.03",
+  "protocol": "streaming, temperature 0, ignore_eos, warmup 1 + 3 samples, decode256/decode900/prefill_long (~6654 prompt tokens), tokens from the final SSE usage object, nvidia-smi peak sampling",
+  "arms": {
+    "arm_a_vllm_dflash2_control": {
+      "runtime": "vLLM 0.27.1 + DFlash2 (k=7)",
+      "decode256_tok_s": 138.56,
+      "decode900_tok_s": 123.37,
+      "mean_ttft_ms": 189.7,
+      "prefill_tok_s_6.6k_prompt": 1933.3,
+      "peak_power_w": 190.5,
+      "peak_sm_clock_mhz": 1470,
+      "peak_core_temp_c": 59,
+      "peak_memory_temp_c": 65,
+      "peak_vram_gib": 58.6
+    },
+    "arm_b_ninfer_spec_on": {
+      "runtime": "Ithrial/ninfer-cmp170hx (sm_80 fork), --spec mtp --draft-tokens 3 --lm-head-draft --kv-dtype int8",
+      "decode256_tok_s": 38.16,
+      "decode900_tok_s": 39.15,
+      "mean_ttft_ms_decode": 2.1,
+      "ttft_ms_prefill_long": 22.5,
+      "peak_power_w": 195.9,
+      "peak_sm_clock_mhz": 1455,
+      "peak_core_temp_c": 67,
+      "peak_vram_gib": 19.6
+    },
+    "arm_b_ninfer_spec_off": {
+      "runtime": "Ithrial/ninfer-cmp170hx (sm_80 fork), --kv-dtype int8, no speculative decoding",
+      "decode256_tok_s": 29.95,
+      "decode900_tok_s": 29.55,
+      "mean_ttft_ms_decode": 1.7,
+      "ttft_ms_prefill_long": 36.7,
+      "peak_power_w": 203.0,
+      "peak_sm_clock_mhz": 1455,
+      "peak_core_temp_c": 69,
+      "peak_vram_gib": 18.7
+    }
+  },
+  "verdict": "Ninfer sm_80 fork not competitive with vLLM+DFlash2 on this card: spec-on is 3.6x slower on decode256 (38.16 vs 138.6 tok/s), spec-off is 4.6x slower (29.95 vs 138.6 tok/s). MTP speculation gives a real ~1.28x uplift over spec-off, so the draft path works; the base per-pass throughput on this engine build is the bottleneck, not spec acceptance. Ninfer's peak power (195.9-203.0 W) reads above the 180 W cap configured for the card, at a higher SM clock (1455 MHz) than Arm A's control run (1170-1200 MHz sustained, 1470 MHz sampled peak) -- flagged as a cap-enforcement discrepancy worth a follow-up, not treated as a finding about which engine is faster.",
+  "prior_issue_status": "A previously reported crash (gqa_attention_prefill.cu:64 CUDA_CHECK invalid argument at warmup) did not recur on this attempt; both Arm B configurations booted and served cleanly on the first try.",
+  "bandwidth_ceiling_note": "Using the spec-off run as the clean single-token-per-pass baseline (no multi-token amortization): ~29.75 tok/s average x ~15.92 GiB weights implies roughly 508.6 GB/s, about 34% of a 1.5 TB/s HBM ceiling. The same naive formula does not apply to the spec-on or Arm A rows -- both amortize one weight read across multiple accepted tokens per verify pass, which pushes the naive ratio past 100% and makes it meaningless without an accept-rate-normalized model. Arm A has no captured non-spec baseline in this receipt set, so its true per-pass bandwidth utilization cannot be isolated the same way."
+}
