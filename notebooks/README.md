@@ -18,6 +18,31 @@ YYYY-MM-DD-<model>-<topology>-<runtime>.ipynb
 
 Example: `2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm.ipynb`.
 
+## The first screen
+
+Mobile readers do not scroll past one screen, so the very first cell is a
+short markdown hero cell, before section 1 and before the `LIVE` status
+cell. It holds, in this order and nothing else:
+
+1. A one-line title naming the model and the hardware.
+2. A four-row metrics table with units: decode at c=1, best aggregate,
+   prefill, TTFT. Use "untested" for a row with no receipt instead of
+   guessing a number.
+3. The chart image at its `assets/charts/*.png` relative path, or, for a
+   vision notebook with a passing run, the proof image with the model's
+   one-line answer underneath it. A notebook with no passing run yet
+   states that plainly instead of showing a fake image.
+4. The pull command, one code line (`hf download ...` or `docker pull ...`).
+5. One link line: the release, the evidence repository, or the
+   Hugging Face collection.
+
+No pins, no protocol text, no prose paragraph belongs in this cell. If the
+notebook has an embedded video, that cell comes second, right after the
+hero cell. Everything else — pins, protocol, the full tables, Reproduce,
+and the appendix — follows below as section 1 onward.
+`notebooks/TEMPLATE.ipynb` and `notebooks/TEMPLATE-vision.ipynb` carry this
+hero cell already filled with placeholders.
+
 ## Required sections
 
 Every notebook reads top to bottom in four sections, in this order.
