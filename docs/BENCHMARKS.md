@@ -16,7 +16,7 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
 | Qwen3.8-27B | NVFP4 · vLLM | 1 (× 3 runs) | — | — | — | — | — | — | — | — | — | — | Pending evidence repair · [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 | 16,384 | — | — | — | — | — | — | — | — | — | Pending evidence repair · [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
-| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 16,384 | c=1; ladder 1/2/4/8/16 | `{{PREFILL}}` tok/s (2,941 input tokens) | `{{C1}}` tok/s (c=1) | `{{C4}}` tok/s @ c=4; `{{C16}}` tok/s @ c=16 | `{{TTFT}}` s warm | — | Text passed; image not served on this path | — | — | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Section](#deepseek-v4-flash-vision-exp-four-cards) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 16,384 | c=1; ladder 1/2/4/8/16 | 2,352 tok/s warm (362 tok/s first cold prefill) (2,941 input tokens) | 97.4 tok/s (median of 3; 57.6–123.5) (c=1) | 165.5 tok/s (median of 3; 140.3–203.2) @ c=4; failed (device-side assert, reproduced twice) @ c=16 | 0.394 s warm | — | Text passed; image not served on this path | — | — | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Section](#deepseek-v4-flash-vision-exp-four-cards) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 | 16,384 | c=1; ladder 1/2/4/8 | 325.5 tok/s (2,941 input tokens) | 59.78 tok/s warm; 56.6 tok/s sustained | 101.21 tok/s @ c=1; 169.65 tok/s @ c=4 | 0.163 s warm | — | Text passed; image rejected (HTTP 400) | Loaded sample: 114–137 W/card peak, core ≤46 °C, no throttle flags | — | Earlier run, provenance unverified, superseded | [Summary](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md) · [Redacted data](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.json) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 → BF16 fallback · reference TP4 runtime + SM80 patches | 4 · TP4 | ≤ ~1,024 input tokens (OOM above) | batch 1 | 512 tokens in ~8.7–9.8 s | 0.88–0.93 tok/s (3 × 401 tokens) | — | ~2.05–2.08 s proxy | — | Real-image completion PASS; no-image and wrong-image controls PASS | — | — | Correctness evidence only, not a performance result | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Milestone](#vision-correctness-milestone) |
 
@@ -96,11 +96,13 @@ objects, three repetitions per level.
 
 | Metric | Value |
 |---|---:|
-| Decode, c=1 | `{{C1}}` tok/s |
-| Aggregate, c=4 | `{{C4}}` tok/s |
-| Aggregate, c=16 | `{{C16}}` tok/s |
-| Uncached prefill, 2,941 input tokens | `{{PREFILL}}` tok/s |
-| Warm TTFT | `{{TTFT}}` s |
+| Decode, c=1 | 97.4 tok/s (median of 3; 57.6–123.5) |
+| Aggregate, c=4 | 165.5 tok/s (median of 3; 140.3–203.2) |
+| Aggregate, c=16 | failed (device-side assert, reproduced twice) |
+| Uncached prefill, 2,941 input tokens | 2,352 tok/s warm (362 tok/s first cold prefill) |
+| Warm TTFT | 0.394 s |
+| Aggregate, c=2 | 103.7 tok/s (median of 3; 96.6–159.2) |
+| Aggregate, c=8 | 220.2 tok/s (median of 3; 206.3–232.0) |
 
 The placeholders are filled when the normalized run completes and its receipts
 merge in the model repository. Until then this table is not decision-grade.

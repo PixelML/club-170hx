@@ -45,11 +45,11 @@ The four cards now serve `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` (FP8, 48 sha
 
 | Measurement | Value | Status |
 |---|---:|---|
-| Decode, c=1 (text path, PP4, DSpark k=6) | `{{C1}}` tok/s | Benchmark in progress |
-| Aggregate, c=4 | `{{C4}}` tok/s | Benchmark in progress |
-| Aggregate, c=16 | `{{C16}}` tok/s | Benchmark in progress |
-| Uncached prefill, 2,941 input tokens | `{{PREFILL}}` tok/s | Benchmark in progress |
-| Warm TTFT | `{{TTFT}}` s | Benchmark in progress |
+| Decode, c=1 (text path, PP4, DSpark k=6) | 97.4 tok/s (median of 3; 57.6–123.5) | Measured 2026-09-02 |
+| Aggregate, c=4 | 165.5 tok/s (median of 3; 140.3–203.2) | Measured 2026-09-02 |
+| Aggregate, c=16 | failed (device-side assert, reproduced twice) | Measured 2026-09-02 |
+| Uncached prefill, 2,941 input tokens | 2,352 tok/s warm (362 tok/s first cold prefill) | Measured 2026-09-02 |
+| Warm TTFT | 0.394 s | Measured 2026-09-02 |
 | Real-image completion (vision path, TP4 reference runtime) | PASS, 0.9 tok/s decode | Correctness evidence only |
 
 The upstream Vision vLLM path needed four SM80 patches before the engine reached readiness. Three are fixed with fallbacks; one is structural and unresolved. The gap table, the vision milestone, and the negative results are in [Benchmarks](docs/BENCHMARKS.md#deepseek-v4-flash-vision-exp-four-cards). The SM80 vLLM fork and patch set build on the work of [allover326](https://github.com/allover326/vllm-dsa-mtp-sm80).
@@ -85,7 +85,7 @@ detailed ledger is not public.
 | GLM-5.3-Flash | NVFP4 | 3 cards | — | — | — | Not compatible: SM121-format weights on SM80; AWQ INT4 ≈ 66 GiB/card does not fit 3 × 64 GiB | [Negative result](docs/BENCHMARKS.md#negative-results-matter) |
 | Qwen3.8-27B | NVFP4 · vLLM | 1 card × 3 runs @ 180 W | — | — | — | Pending evidence repair: [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 cards | — | — | — | Pending evidence repair: [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
-| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 · DSpark k=6 | `{{C1}}` tok/s @ c=1 | `{{C4}}` tok/s @ c=4 · `{{C16}}` tok/s @ c=16 · `{{PREFILL}}` tok/s prefill | Text passed; image not served on this path | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Benchmarks](docs/BENCHMARKS.md#deepseek-v4-flash-vision-exp-four-cards) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 · DSpark k=6 | 97.4 tok/s (median of 3; 57.6–123.5) @ c=1 | 165.5 tok/s (median of 3; 140.3–203.2) @ c=4 · failed (device-side assert, reproduced twice) @ c=16 · 2,352 tok/s warm (362 tok/s first cold prefill) prefill | Text passed; image not served on this path | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Benchmarks](docs/BENCHMARKS.md#deepseek-v4-flash-vision-exp-four-cards) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 · DSpark k=6 | 59.78 tok/s warm (single stream) | 101.21 tok/s @ c=1 · 169.65 tok/s @ c=4 · 325.5 tok/s prefill | Text passed; image rejected (HTTP 400) | Earlier run, provenance unverified, superseded | [Result summary](results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 → BF16 fallback · reference TP4 runtime + SM80 patches | 4 cards · TP4 · batch 1 | 0.9 tok/s | — | Real-image completion PASS; prefill OOM above ~1,024 tokens | Correctness evidence only, not a performance result | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Benchmarks](docs/BENCHMARKS.md#vision-correctness-milestone) |
 
