@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "date_utc": "2026-08-28T15:10Z",
+    "host_gpu": "NVIDIA GeForce RTX 3090 (GPU1, CUDA_VISIBLE_DEVICES=1), driver 580.173.02, 24576 MiB",
+    "gpu0_note": "GPU0 (RTX 3090) left untouched; ~600 MiB of pre-existing ComfyUI contexts were resident on GPU1 during the run and are included in the sizing",
+    "workdir": "/tmp/local3090-bench",
+    "repo": "syv-ai/qwen38-27b-rtx3090 @ /tmp/syv (copied to /tmp/local3090-bench/repo)",
+    "venv": "python3.12, vllm 0.27.1, torch 2.13.0+cu130, per docker/requirements.txt",
+    "target_model": "/tmp/local3090-bench/models/Qwen3.8-27B-W4A16-AutoRound-fast (W4A16 AutoRound base + int4-GPTQ lm_head/MTP fast variant, 14.71 GiB, 8 shards)",
+    "drafter": "/tmp/local3090-bench/models/Qwen3.8-27B-DFlash2-W4A16 (1.2 GB, prepare/fetch_dflash2.py)",
+    "patches": "all repo patches applied to installed vllm (dflash2-backport, lookup-drafting, marlin, spec-decode-attn, etc.); confirmed active in server log (DFlash2 lookup-augmented drafting, MarlinLinearKernel, V2 model runner)",
+    "port": 18021,
+    "comparison_target": "CMP 170HX: 147.7 tok/s (DFlash2 7-token speculative, 256-token gen, batch 1)",
+    "protocol": "v9 onstart script protocol: /tokenize for prompt size, SSE /v1/completions with stream_options.include_usage, temperature 0, ignore_eos, warm 1 + 3 samples per cohort",
+    "benchmark_prompts": {"story_11tok": "Write a story about a robot who learns to paint.", "long_6603tok": "summarize ... alpha beta gamma ... (repeated, 6603 tokens)"}
+  },
+  "server_config_speculative": {
+    "launch": "SPEC=dflash2 CTX=fast MAX_SEQS=1 DFLASH_TOKENS=7 PORT=18021 GPU_UTIL=0.92 KV_MEM= DFLASH_MAX_LEN=40960 bash single-user/start_qwen.sh",
+    "speculative_config": {"method": "dflash", "model": "Qwen3.8-27B-DFlash2-W4A16", "num_speculative_tokens": 7},
+    "gpu_memory_utilization": 0.92,
+    "max_model_len": 40960,
+    "max_model_len_deviation_note": "start_qwen.sh default 65536 does NOT boot at GPU_UTIL=0.92 on this card: with ~600 MiB resident ComfyUI memory on GPU1, vLLM profiles only 3.57 GiB of KV cache and 65536 ctx needs 4.88 GiB (vllm raises 'estimated maximum model length is 43904'). DFLASH_MAX_LEN lowered to 40960 (needs ~3.05 GiB); KV pool capacity does not affect batch-1 decode/prefill speed. First attempt at 65536 failed and is preserved in server-failed-run1.log.",
+    "kv_cache": "43,115 tokens pool (bf16 KV, FlashAttention, mamba ssm fp16)",
+    "cudagraph": "max_capture_size 8 (MAX_SEQS=1 x (7+1))",
+    "boot_to_health_s": 420
+  },
+  "server_config_baseline": {
+    "launch": "direct `vllm serve <fast-model>` with identical flags minus --speculative-config (start_qwen.sh has no SPEC=none path), CG=32 per script default",
+    "max_model_len": 40960,
+    "kv_cache": "101,627 tokens pool",
+    "boot_to_health_s": 280
+  },
+  "results_speculative_dflash2_k7": {
+    "decode256": {"decode_tok_s": 122.42, "mean_ttft_ms": 181.5, "mean_total_s": 2.265, "out_tok": 256, "runs": [122.45, 122.37, 122.43]},
+    "decode900": {"decode_tok_s": 111.22, "mean_ttft_ms": 169.4, "mean_total_s": 8.252, "out_tok": 900, "runs": [111.55, 111.47, 110.65]},
+    "prefill_8k": {"prefill_tok_s": 1341.9, "mean_ttft_ms": 4920.5, "prompt_tokens": 6603},
+    "acceptance": {
+      "mean_acceptance_length_tokens_per_step": [2.72, 2.53, 2.65, 2.56, 3.0],
+      "per_position_acceptance_rate_example": [0.689, 0.454, 0.243, 0.16, 0.107, 0.044, 0.019],
+      "avg_draft_acceptance_rate_pct": [24.5, 21.8, 23.6, 22.2],
+      "source": "vLLM SpecDecoding metrics lines in server.log"
+    }
+  },
+  "results_baseline_no_spec": {
+    "decode256": {"decode_tok_s": 53.14, "mean_ttft_ms": 122.6, "mean_total_s": 4.921, "out_tok": 256, "runs": [53.17, 53.15, 53.11]},
+    "decode900": {"decode_tok_s": 52.86, "mean_ttft_ms": 115.7, "mean_total_s": 17.123, "out_tok": 900, "runs": [52.98, 52.93, 52.67]},
+    "prefill_8k": {"prefill_tok_s": 1353.9, "mean_ttft_ms": 4877.1, "prompt_tokens": 6603}
+  },
+  "headline": {
+    "rtx3090_dflash2_k7_decode256_tok_s": 122.42,
+    "cmp170hx_reference_tok_s": 147.7,
+    "ratio_vs_cmp170hx": 0.829,
+    "spec_speedup_over_baseline_256": 2.30,
+    "ttft_11tok_prompt_ms": {"speculative": 181.5, "baseline": 122.6},
+    "prefill_8k_tok_s": {"speculative": 1341.9, "baseline": 1353.9}
+  },
+  "gpu1_peak": {
+    "during_speculative": {"vram_mib": 21957, "power_w": 390, "sm_clock_mhz": 1980, "util_pct": 100, "temp_c": 70},
+    "during_baseline": {"vram_mib": 22203, "power_w": 389.5, "sm_clock_mhz": 1950, "util_pct": 100, "temp_c": 75},
+    "note": "power pinned at the 390 W cap for a 3090 (spec 350 W card on a 390 W BIOS); decode is power/bandwidth saturated"
+  },
+  "versions": {"vllm": "0.27.1", "torch": "2.13.0+cu130", "python": "3.12.13", "driver": "580.173.02"},
+  "disk": {"before_gb_free": 11, "after_gb_free": 10, "workdir_size": "~27 GB total (27G in /tmp/local3090-bench: venv 9.9G + models ~16G incl. hardlinks + hf cache 940M)"},
+  "failures_and_fixes": [
+    {
+      "run": "first server boot (previous attempt, preserved in server-failed-run1.log)",
+      "error": "ValueError: To serve at least one request with the model's max seq len (65536), (4.88 GiB KV cache is needed, which is larger than the available KV cache memory (3.57 GiB). Based on the available memory, the estimated maximum model length is 43904. Try increasing `gpu_memory_utilization` ... or decreasing `max_model_len`",
+      "cause": "GPU_UTIL=0.92 + ~600 MiB resident ComfyUI memory on GPU1 leaves 3.57 GiB KV; 65536 ctx needs 4.88 GiB",
+      "fix": "DFLASH_MAX_LEN=40960 (start_qwen.sh env), GPU_UTIL and all other flags unchanged; second boot healthy in 420 s"
+    }
+  ],
+  "artifacts": {
+    "results": "/tmp/local3090-bench/results.json",
+    "bench_stdout": "/tmp/local3090-bench/bench-stdout.log",
+    "server_log_spec": "/tmp/local3090-bench/server.log (full) + server.log.tail200",
+    "server_log_baseline": "/tmp/local3090-bench/server-baseline.log",
+    "server_log_failed_first_attempt": "/tmp/local3090-bench/server-failed-run1.log",
+    "bench_script": "/tmp/local3090-bench/bench.py",
+    "copied_to": "<workdir>/WIP/glm53-flash-vast/local3090-results.json"
+  }
+}

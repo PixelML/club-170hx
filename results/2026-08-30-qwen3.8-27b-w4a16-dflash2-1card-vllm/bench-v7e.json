@@ -1,0 +1,20 @@
+{
+  "instance": "<instance-11>",
+  "endpoint": "http://<rented-host-ip>:50996",
+  "model": "lued/Qwen3.8-27B-INT8-W8A16-MTP (official W8A16, no requant)",
+  "draft": "local models/Qwen3.8-27B-DFlash2-W4A16 (syvai requant of incoai drafter)",
+  "protocol": "greedy, streaming, single request, 88-token prompt, 256 max tokens, ignore_eos",
+  "runs": [
+    {"run": "warmup", "ttft_ms": 1755.2, "total_s": 4.587, "output_tokens": 91, "output_tok_s": 31.78},
+    {"run": "run1", "ttft_ms": 599.3, "total_s": 3.449, "output_tokens": 91, "output_tok_s": 31.58},
+    {"run": "run2", "ttft_ms": 596.1, "total_s": 3.446, "output_tokens": 91, "output_tok_s": 31.58},
+    {"run": "run3", "ttft_ms": 628.4, "total_s": 3.478, "output_tokens": 91, "output_tok_s": 31.59}
+  ],
+  "summary": {"runs": 3, "mean_ttft_ms": 607.9, "mean_output_tok_s": 31.58, "mean_total_tok_s": 26.32},
+  "server_metrics": {
+    "mean_acceptance_length": 2.9,
+    "per_position_acceptance": [0.694, 0.444, 0.250, 0.139, 0.111, 0.083, 0.056],
+    "kv_cache_tokens": 69758,
+    "kv_note": "launcher still pinned kv_cache_memory_bytes=5583457484 (5.2 GiB) via its CTX=fast default"
+  }
+}

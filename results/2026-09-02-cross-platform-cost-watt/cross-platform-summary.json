@@ -1,0 +1,167 @@
+{
+  "date": "2026-09-02",
+  "title": "Cross-platform cost/watt: 4x CMP 170HX vs 2x DGX Spark, DeepSeek-V4-Flash-Vision-Exp",
+  "assumptions": {
+    "cmp_hardware_usd": {
+      "per_card": 1700,
+      "cards": 4,
+      "host": 1500,
+      "total": 8300,
+      "label": "assumed (public list price)"
+    },
+    "spark_hardware_usd": {
+      "per_node": 3999,
+      "nodes": 2,
+      "total": 7998,
+      "label": "assumed (public list price)"
+    },
+    "electricity_usd_per_kwh": {
+      "base": 0.15,
+      "sensitivity": 0.3,
+      "label": "assumed"
+    },
+    "lifetime_years": 3,
+    "utilization": 0.5,
+    "label": "assumed",
+    "cmp_power_cap_w_per_card": 180
+  },
+  "cmp_170hx": {
+    "measured_from": "results/2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm/{ladder.json,telemetry-5s.csv}",
+    "best_stable_concurrency": 8,
+    "levels": [
+      {
+        "concurrency": 1,
+        "aggregate_tok_s_median": 97.41,
+        "window_s": 16.0,
+        "mean_total_W_4card": 396.19,
+        "n_samples": 4,
+        "total_completion_tokens_3reps": 1200,
+        "tok_per_Wh": 681.49
+      },
+      {
+        "concurrency": 2,
+        "aggregate_tok_s_median": 103.66,
+        "window_s": 23.0,
+        "mean_total_W_4card": 388.86,
+        "n_samples": 6,
+        "total_completion_tokens_3reps": 2400,
+        "tok_per_Wh": 966.03
+      },
+      {
+        "concurrency": 4,
+        "aggregate_tok_s_median": 165.53,
+        "window_s": 31.0,
+        "mean_total_W_4card": 484.37,
+        "n_samples": 7,
+        "total_completion_tokens_3reps": 4800,
+        "tok_per_Wh": 1150.82
+      },
+      {
+        "concurrency": 8,
+        "aggregate_tok_s_median": 220.17,
+        "window_s": 47.0,
+        "mean_total_W_4card": 504.54,
+        "n_samples": 10,
+        "total_completion_tokens_3reps": 9600,
+        "tok_per_Wh": 1457.42
+      },
+      {
+        "concurrency": 16,
+        "aggregate_tok_s_median": 0.0,
+        "window_s": 300.0,
+        "mean_total_W_4card": 234.01,
+        "n_samples": 60,
+        "total_completion_tokens_3reps": 0,
+        "tok_per_Wh": null
+      }
+    ],
+    "idle_baseline_w_4card_label": "inferred (first 60s of telemetry-5s.csv, 12 samples)",
+    "idle_baseline_w_4card": 143.04
+  },
+  "dgx_spark": {
+    "measured_from": "results/2026-09-02-cross-platform-cost-watt/{spark-raw/ladder.json,spark-power/*.csv}",
+    "best_stable_concurrency": 8,
+    "levels": [
+      {
+        "concurrency": 1,
+        "aggregate_tok_s_median": 37.65,
+        "window_s": 33.0,
+        "mean_apollo_W": 30.97,
+        "mean_apollo2_W": 39.32,
+        "mean_total_W": 70.29,
+        "total_completion_tokens_3reps": 1200,
+        "tok_per_Wh": 1862.39,
+        "n_samples": [
+          36,
+          36
+        ]
+      },
+      {
+        "concurrency": 2,
+        "aggregate_tok_s_median": 48.36,
+        "window_s": 51.0,
+        "mean_apollo_W": 33.95,
+        "mean_apollo2_W": 43.81,
+        "mean_total_W": 77.76,
+        "total_completion_tokens_3reps": 2400,
+        "tok_per_Wh": 2178.62,
+        "n_samples": [
+          54,
+          54
+        ]
+      },
+      {
+        "concurrency": 4,
+        "aggregate_tok_s_median": 73.53,
+        "window_s": 68.0,
+        "mean_apollo_W": 37.98,
+        "mean_apollo2_W": 46.68,
+        "mean_total_W": 84.65,
+        "total_completion_tokens_3reps": 4800,
+        "tok_per_Wh": 3001.84,
+        "n_samples": [
+          71,
+          71
+        ]
+      },
+      {
+        "concurrency": 8,
+        "aggregate_tok_s_median": 81.06,
+        "window_s": 122.0,
+        "mean_apollo_W": 40.33,
+        "mean_apollo2_W": 48.99,
+        "mean_total_W": 89.32,
+        "total_completion_tokens_3reps": 9600,
+        "tok_per_Wh": 3171.55,
+        "n_samples": [
+          125,
+          125
+        ]
+      }
+    ],
+    "idle_baseline_w_2node": {
+      "before": 26.22,
+      "after": 29.88,
+      "label": "measured, GPU-power-only lower bound"
+    },
+    "note": "GB10 unified-memory nodes report GPU power only via nvidia-smi; whole-node energy is a lower bound."
+  },
+  "cost_per_million_output_tokens_usd": {
+    "cmp_170hx_c8": {
+      "amortized_hw": 0.7968,
+      "energy_at_0.15": 0.1029,
+      "energy_at_0.30": 0.2058,
+      "total_at_0.15": 0.8997,
+      "total_at_0.30": 1.0027,
+      "label": "measured throughput + assumed cost"
+    },
+    "dgx_spark_c8": {
+      "amortized_hw": 2.0858,
+      "energy_at_0.15": 0.0473,
+      "energy_at_0.30": 0.0946,
+      "total_at_0.15": 2.1331,
+      "total_at_0.30": 2.1804,
+      "label": "measured throughput + assumed cost"
+    }
+  }
+}

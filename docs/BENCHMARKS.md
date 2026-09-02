@@ -214,6 +214,53 @@ This is context, not a head-to-head comparison. The platforms differ in
 runtime revision, parallelism, memory budget, interconnect, and power. The
 DGX Spark path serves images through upstream vLLM; the CMP path does not.
 
+### Cross-platform: 4x CMP 170HX vs 2x DGX Spark
+
+Same checkpoint, same date, two purpose-built runs: one on the four-card
+CMP 170HX rig at PP4 + DSpark k=6, one on a two-node DGX Spark kit at TP=2.
+Both used the same protocol: greedy decoding, 400 completion tokens,
+`ignore_eos`, one warmup plus three reps per concurrency level, tokens
+counted from the final `usage` object. Full receipts, raw power logs, and
+the chart script are in
+[results/2026-09-02-cross-platform-cost-watt/](../results/2026-09-02-cross-platform-cost-watt/).
+
+| Concurrency | CMP 170HX tok/s | CMP 170HX tok/Wh | DGX Spark tok/s | DGX Spark tok/Wh |
+|---|---|---|---|---|
+| 1 | 97.4 | 681 | 37.7 | 1,862 |
+| 2 | 103.7 | 966 | 48.4 | 2,179 |
+| 4 | 165.5 | 1,151 | 73.5 | 3,002 |
+| 8 | 220.2 | 1,457 | 81.1 | 3,172 |
+
+At c=8, the CMP rig moves more tokens per second, but the Spark nodes move
+more tokens per watt-hour. The CMP 170HX draws four cards at up to 180 W
+each; the DGX Spark reading is GPU power only, so it undercounts the rest
+of the node and should be read as a lower bound.
+
+Cost tells a third story. At an assumed $8,300 for four CMP 170HX cards
+plus a host, and $8,000 for two DGX Spark units, amortized over three years
+at 50% utilization:
+
+| Platform (c=8) | Amortized hardware | Energy @ $0.15/kWh | Energy @ $0.30/kWh | Total @ $0.15/kWh |
+|---|---|---|---|---|
+| 4x CMP 170HX | $0.80 / M tok | $0.10 / M tok | $0.21 / M tok | $0.90 / M tok |
+| 2x DGX Spark | $2.09 / M tok | $0.05 / M tok | $0.09 / M tok | $2.13 / M tok |
+
+The CMP rig wins on cost per token because it moves more tokens per
+second, and the hardware cost is split across more of them. The Spark
+nodes win on power efficiency because GB10's unified memory draws far less
+than four discrete GPUs. Neither number is free of assumptions: hardware
+prices, electricity rate, and the three-year/50%-utilization lifetime are
+all inputs we chose, not measurements. Throughput and GPU power are
+measured; everything downstream of them is a model.
+
+![Tokens per Wh and dollars per million tokens, 4x CMP 170HX vs 2x DGX Spark](../assets/charts/2026-09-02-cross-platform-cmp170hx-vs-dgxspark.png)
+
+**Three-line summary:** At c=8, 4x CMP 170HX serves DeepSeek-V4-Flash-Vision-Exp
+at 220 tok/s for about $0.90 per million output tokens; 2x DGX Spark serves
+the same checkpoint at 81 tok/s for about $2.13 per million, using roughly
+half the power per token. Pick the CMP rig for throughput per dollar, and
+the Spark nodes for throughput per watt.
+
 ### Credits
 
 The SM80 vLLM fork, the DSA/MTP kernels, and the four-card reference recipe

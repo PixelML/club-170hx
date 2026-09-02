@@ -33,7 +33,7 @@ dequantize fine on SM80; FP8/FP4 **tensor-core compute** does not exist here.
 | flashinfer fast top-k (JIT) | Conditional | JIT needs `nvcc` and `curand.h` in the image; missing headers silently fall back to `torch.topk`, costing about 2x on the DFlash2 selector | Symlink `curand.h` from the pip CUDA package into the CUDA include path; clear the flashinfer JIT cache |
 | `fast_hadamard_transform` CUDA extension | No | Needed for the Vision-Exp indexer path on SM80; the compiled extension is not usable there | Pure-torch Sylvester Hadamard transform (`H @ H.T = n * I` checked for exactness) |
 | DSpark speculative decoding | Yes | +1.93x aggregate decode on DeepSeek-V4-Flash-0731 (PP4); keeps winning through 64 concurrent requests under pipeline parallel | Must match `num_speculative_tokens` to the checkpoint's exact `dspark_block_size` (see section d) |
-| MTP speculative decoding | Yes, needs patches | Stock vLLM blocks MTP under pipeline parallelism in three places (patched by `allover326/vllm-dsa-mtp-sm80`); the newer `GPUModelRunnerV2` path needed a second, separate patch for the same restriction | Apply both patch sets; verify with an import + undefined-name (pyflakes) check, not just `py_compile` |
+| MTP speculative decoding | Yes, needs patches | Stock vLLM blocks MTP under pipeline parallelism in three places (patched by `allover326/vllm-dsa-mtp-sm80`); the newer `GPUModelRunnerV2` path needed a second, separate patch for the same restriction | Apply both patch sets; verify with an import + undefined-name (pyflakes) check in addition to `py_compile` |
 | lm-head-draft (full 248k-row draft head) | Works, but hurts | -10.4% decode vs a truncated 40k-row draft head (119.2 vs 133.1 tok/s, Ninfer trick A/B) | Do not enable full-head drafting on this stack |
 | DFlash2 speculative decoding | Yes | 2.30x speedup on RTX 3090, 1.21-1.61x card-for-card decode/prefill advantage of 170HX over 3090 at the same recipe | None needed |
 
@@ -55,7 +55,7 @@ dequantize fine on SM80; FP8/FP4 **tensor-core compute** does not exist here.
   exported serving image measured 12.8 GB.
 - **Editable installs pay for themselves.** vLLM installed with `pip install -e .`
   means `/vllm/vllm/...` is live code. Patched Python files can be bind-mounted
-  read-only over the checkout and take effect with no rebuild — the
+  read-only over the checkout and take effect with no rebuild; the
   DeepSeek-V4-Flash-0731 recipe ships five patched files this way. Only
   changes under `csrc/` force a real rebuild.
 - **Verify a patched build with three checks, in order of what they catch:**
@@ -103,7 +103,7 @@ the speculative drafter, so an even split overloads it.
   headroom from activations and CUDA-graph capture; at 0.90 with the DSpark
   draft resident, capture OOMs.
 
-**Why alternative partitions fail:** the failure modes are consistent —
+**Why alternative partitions fail:** the failure modes are consistent:
 either the process exits before serving (exit 137, killed by memory pressure)
 or the engine boots but the first real request hits a device-side assert in
 the Marlin expert repack or the draft path. Neither failure mode is a
@@ -118,15 +118,15 @@ match the checkpoint, not a rule of thumb.
 | Checkpoint | Method | k | Mean acceptance length | Aggregate decode |
 |---|---|---:|---|---:|
 | DeepSeek-V4-Flash-0731 (PP4) | DSpark | 5 | 3.03 (per-position 0.730/0.569/0.372/0.226/0.131) | 98.1 tok/s |
-| DeepSeek-V4-Flash-0731 (PP4) | DSpark | 7 | 1.43-2.51 | 60.3 tok/s (worse — acceptance never extends past ~3 tokens, so extra drafts are pure waste) |
+| DeepSeek-V4-Flash-0731 (PP4) | DSpark | 7 | 1.43-2.51 | 60.3 tok/s (worse: acceptance never extends past ~3 tokens, so extra drafts are pure waste) |
 | DeepSeek-V4-Flash-0731 (PP3, 180 W local) | DSpark | 5 | 5.07-5.32 (81-86%) | 73.4-116.6 tok/s by content type, 83.3 aggregate |
 | DeepSeek-V4-Flash-Vision-Exp (PP4) | DSpark | 6 | not reported | 59.78 tok/s warm single-stream |
 | Qwen3.8-27B (1 card, 255 W) | DFlash2 | 7 | 2.56-2.80 | 147.7 tok/s |
 | Qwen3.8-27B (1 card, 180 W local) | DFlash2 | 7 | 2.85-3.32 (better than the 255 W run) | 135.3-140.3 tok/s |
 
 **vLLM enforces `num_speculative_tokens >= dspark_block_size`** for
-DeepSeek-V4-Flash-0731 (5 for that checkpoint). Below it, output is garbled,
-not merely lower-acceptance. Above it measures worse, not better.
+DeepSeek-V4-Flash-0731 (5 for that checkpoint). Below it, output is garbled
+rather than merely lower-acceptance. Above it measures worse, not better.
 
 **lm-head-draft hurts.** The full 248k-row draft head lost 10.4% decode
 against a truncated 40k-row draft head (119.2 vs 133.1 tok/s, same server,
@@ -139,7 +139,7 @@ same protocol). The wider acceptance of the full head does not pay for its
 card; it is not free.
 
 **DSpark output is not bit-reproducible at temperature 0**, on either the
-patched or the stock upstream path — this is a property of DSpark, not of any
+patched or the stock upstream path; this is a property of DSpark, not of any
 local patch. Plain (non-speculative) decode on the same server is
 self-deterministic. If bit-reproducible output matters, drop
 `speculative-config` entirely.
@@ -164,7 +164,7 @@ workers silently at 7 of 48 shards (no traceback). Fix: drop
 throughput over NFS during a stalled load: **31.01 MiB/s**. At that rate a
 179 GB checkpoint takes about 92 minutes of raw I/O. A local NVMe-class tier
 (about 500 MiB/s conservative, up to about 820 MB/s NVMe-class) cuts that to
-roughly 4-6 minutes — a 16-25x improvement on raw I/O, with total
+roughly 4-6 minutes, a 16-25x improvement on raw I/O, with total
 listener-ready time expected to fall from 75-90 minutes to 8-15 minutes once
 deserialization and kernel init are included.
 
@@ -183,7 +183,7 @@ NVMe staging copy of an already-verified checkpoint:
 5. Bind the final tree read-only into the serving container.
 6. Startup preflight requires the target to be a distinct real mount (by
    filesystem UUID), read-write, at or above its free-space floor, with a
-   valid manifest and a valid `READY.json`. Any failure aborts startup —
+   valid manifest and a valid `READY.json`. Any failure aborts startup;
    there is no automatic fallback to slower shared storage or to root.
 
 **Root-disk floors.** Two floors were enforced as stop conditions during
@@ -217,7 +217,7 @@ trusting it.
 reach 85 C within 1-2 minutes without directed airflow. Club measurements:
 stop thresholds are **80 C core / 85 C memory**. A four-card idle group
 (180 W cap per card, forced blower airflow, 0% utilization) measured about
-**141 W total group power**, 37-38 C core, 41-51 C memory — idle heat from
+**141 W total group power**, 37-38 C core, 41-51 C memory. Idle heat from
 four cards is real heat; an open frame with no ducted airflow is not
 sufficient cooling by itself.
 
@@ -232,7 +232,7 @@ platform itself is asserting the signal.
 **Measured 2026-09-02 (four-card test node): PCIe Gen1 is the card's own
 advertised ceiling, not a passthrough bug.** Host-side `lspci -vv` on the
 hypervisor shows every CMP 170HX card's `LnkCap` reporting `Speed 2.5GT/s,
-Width x16` — the card's own PCIe capability register caps at Gen1, so a
+Width x16`: the card's own PCIe capability register caps at Gen1, so a
 Gen1 link observed in a guest reflects the card/vBIOS, not a hypervisor
 misconfiguration. One card of the four trained at x8 instead of its
 advertised x16, a real width downgrade that points to a riser or slot
@@ -251,7 +251,7 @@ for the full note.
 | Xid 43 (software-classified) | Draft-path embedding assert at high concurrency (measured at c=16 on a DSpark ladder) | Not a hardware or ECC fault; restart the server process |
 | NVRM VA-space corruption after an OOM kill storm | Kernel log shows NVRM assertion failures on every GPU (`pool_alloc.c`, `vaspace_api.c`); `cuInit` returns `CUDA_ERROR_NO_DEVICE` host-wide | Reloading `nvidia_uvm` alone does not clear it. Full sequence: `rmmod nvidia_uvm nvidia` then `modprobe nvidia nvidia_uvm` restores all devices without a VM reboot |
 | `--gpus all` assigns zero devices after a crash | Stale cgroup state left behind by an OOM crash; reproduced in a minimal test container | Use an explicit device list (for example `--gpus '"device=0,1,2,3"'`) instead of `all` |
-| Ranks stuck in D state during NFS-backed weight load | `wchan folio_wait_bit_common` — uninterruptible page wait while `mmap`-ing shards over NFS; `rchar` stays near-static because `mmap` page faults do not increment it | This is loading, not hanging. Confirm with a bounded read-throughput sample (physical reads increasing) before treating it as stuck |
+| Ranks stuck in D state during NFS-backed weight load | `wchan folio_wait_bit_common`: uninterruptible page wait while `mmap`-ing shards over NFS; `rchar` stays near-static because `mmap` page faults do not increment it | This is loading, not hanging. Confirm with a bounded read-throughput sample (physical reads increasing) before treating it as stuck |
 | NCCL store timeout (600 s) | One rank stalls on an NFS page-in for a large shard while its peers reach the rendezvous store first; the skew exceeds the store timeout and `torchrun` SIGTERMs the stalled rank | Root cause is storage-read skew across ranks, not a network or NCCL defect; stage weights locally (section e) to remove the skew |
 | Container seccomp blocks `pidfd_getfd` | A CPU-offload worker process needs `pidfd_getfd`; common container seccomp profiles deny it | Works on bare metal; inside a container, either allow the syscall or avoid the code path that needs CPU offload (fits when the table it offloads is small enough for VRAM) |
 
@@ -259,7 +259,7 @@ for the full note.
 
 - **Field failure rate is high above the mining window.** Independent
   reports put failures around 50% among buyers, and faults appear **only**
-  above the 8 GiB region a mining rig would ever touch — the cards pass
+  above the 8 GiB region a mining rig would ever touch; the cards pass
   `nvidia-smi` and die only under a large model's full memory footprint.
   This is the reason for a strict pre-purchase gate, not an optional
   courtesy to the seller.
@@ -282,7 +282,7 @@ Full acceptance ladder and isolation procedure: [QC](QC.md).
   event counts.** Under speculative decoding a single server-sent event can
   carry several accepted tokens (roughly the acceptance length). An early
   harness counted events and reported 43.3 "tok/s" for a run that was
-  actually 110-130 real tok/s once the usage field was read correctly — more
+  actually 110-130 real tok/s once the usage field was read correctly; more
   than a 2x undercount from a counting bug, not a hardware difference.
 - **Aggregate vs single-stream are different metrics; do not compare them
   across rows.** Aggregate throughput is total completion tokens across every
@@ -296,12 +296,12 @@ Full acceptance ladder and isolation procedure: [QC](QC.md).
 - **Greedy, 400-token completion ladder.** Both DeepSeek-V4-Flash-0731 and
   DeepSeek-V4-Flash-Vision-Exp report decode by content type (technical,
   prose, code) at temperature 0, 400 generated tokens each, because
-  speculative acceptance is strongly content-dependent — a single prompt is
+  speculative acceptance is strongly content-dependent; a single prompt is
   not a measurement.
 - **Warm up once, then take at least 3 repetitions.** The Qwen protocol uses
   1 warmup request plus 3 measured samples. A confirmed case: an *unchanged*
   server produced aggregate numbers ranging from 101.9 to 130.6 tok/s across
-  four back-to-back runs — a single run at n=1 is not a measurement.
+  four back-to-back runs; a single run at n=1 is not a measurement.
 - **Expect about 5% node-to-node spread** even on the identical recipe and
   protocol. The same Qwen3.8-27B configuration measured 140.5 tok/s on one
   physical card and 147.7 tok/s on another; treat differences under about 5%
@@ -311,7 +311,7 @@ Full acceptance ladder and isolation procedure: [QC](QC.md).
 - **Disable prefix caching for prefill benchmarks.** Without
   `--no-enable-prefix-caching`, a repeated benchmark prompt can hit the
   prefix cache and report a multi-hundred-token prompt "prefilling" in a
-  fraction of a second — a measurement artifact, not a real number.
+  fraction of a second: a measurement artifact, not a real number.
 
 ## See also
 

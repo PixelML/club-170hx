@@ -21,7 +21,7 @@ configurations. Keep FP8 for the 4-card default.**
   lever on a bandwidth-bound part (Part 3).
 - Where to run the quantization: not on a CMP 170HX (64 GiB, no P2P, slow
   PCIe makes CPU offload traffic painful) and not on the 128 GB DGX Spark
-  GB10 unless `low_gpu_mem_usage` CPU-offload is used — a 168 GB FP8 source
+  GB10 unless `low_gpu_mem_usage` CPU-offload is used; a 168 GB FP8 source
   plus AutoRound's own working set will not fit in 128 GB unified memory
   without offload. Best fit: a multi-GPU box with ≥168 GB aggregate VRAM
   (matches the Intel recipe's 5x80GB pattern in their DeepSeek-V3 doc), or
@@ -29,15 +29,15 @@ configurations. Keep FP8 for the 4-card default.**
   `low_gpu_mem_usage=True`.
 - ETA: Intel's own reference point is a 72B model in 37 minutes on one GPU
   in "light" iterative mode; for RTN (`--iters 0`) a 170 GB-class MoE is
-  disk-I/O- and dequant-bound, not iteration-bound — order 1-3 hours end to
+  disk-I/O- and dequant-bound, not iteration-bound; order 1-3 hours end to
   end including calibration data load and shard packing. The 200-iteration
   default mode would cost meaningfully more (iterative SignSGD tuning per
   block) and is not required for the RTN-based DeepSeek-V4-Flash artifact
   that already ships.
 - Runner-up: W8A16 (FP8 weight-only via Marlin, what we run today) for
-  quality-sensitive routes, or a mixed scheme — INT4 routed experts +
+  quality-sensitive routes, or a mixed scheme (INT4 routed experts +
   BF16/FP8 attention and shared layers, the same split
-  `canada-quant/DeepSeek-V4-Flash-W4A16-FP8` uses — if MoE expert accuracy
+  `canada-quant/DeepSeek-V4-Flash-W4A16-FP8` uses) if MoE expert accuracy
   at 4-bit/group-128 turns out to regress specific benchmarks.
 
 Measured current PCIe link state of our 4 cards (this VM, idle, 2026-09-02):
@@ -49,19 +49,19 @@ Measured current PCIe link state of our 4 cards (this VM, idle, 2026-09-02):
 | 2 | 1 / 1 | x16 / x16 | 2.5GT/s, x16 |
 | 3 | 1 / 1 | x16 / x16 | 2.5GT/s, x16 |
 
-All four report `Speed 2.5GT/s (ok)` — Gen1, not "downgraded" from a higher
-capability; `LnkCap` itself caps at 2.5GT/s, so the guest's own PCIe
-capability register, not just `LnkSta`, is Gen1. GPU 0 alone shows a real
+All four report `Speed 2.5GT/s (ok)`: Gen1, not "downgraded" from a higher
+capability. `LnkCap` itself caps at 2.5GT/s, so both `LnkSta` and the
+guest's own PCIe capability register report Gen1. GPU 0 alone shows a real
 width downgrade (x8 of x16 capable). See Part 2 for what this means and how
 to check whether it is cosmetic.
 
 ---
 
-## Part 1 — The card
+## Part 1: The card
 
 ### Silicon
 
-The CMP 170HX ships on the **GA100-105F** die — the same Ampere GA100
+The CMP 170HX ships on the **GA100-105F** die: the same Ampere GA100
 silicon as the A100, cut down. Public teardown and benchmark data
 (TechPowerUp, an arXiv survey of mining-GPU silicon, and independent
 reviews) converge on:
@@ -75,21 +75,21 @@ reviews) converge on:
   variant, are documented as Gen4-electrical-signaled but negotiated at
   x4 lane width; treat "PCIe 4.0 x4" spec-sheet listings as the connector's
   maximum capability, not what the mining SKU is strapped to run at)
-- **No FP8/FP4 Tensor Core support** — FP8 arrived with Hopper; GA100 (A100
+- **No FP8/FP4 Tensor Core support**: FP8 arrived with Hopper; GA100 (A100
   and the CMP 170HX) tops out at FP16/BF16/TF32 Tensor Core math
 
 Sources: [TechPowerUp CMP 170HX database entry](https://www.techpowerup.com/289310/nvidia-cmp-170hx-mining-card-tested-based-on-ga100-gpu-sku), [arXiv 2505.03782 — mining-GPU survey](https://arxiv.org/pdf/2505.03782), [topcpu.net CMP 170HX vs A100 PCIe 80GB comparison](https://www.topcpu.net/en/gpu-c/CMP-170HX-vs-A100-PCIe-80-GB), [niconiconi "All GB/s without FLOPS" teardown/review](https://niconiconi.neocities.org/tech-notes/nvidia-cmp-170hx-review/).
 
-### Tensor throughput vs A100 — it is gated, not just smaller
+### Tensor throughput vs A100: smaller and also gated
 
 The niconiconi review and the `170th-Street` community benchmark repo both
-document that NVIDIA did not just disable SMs — it throttled the surviving
+document that NVIDIA both disabled SMs and throttled the surviving
 Tensor Cores at the instruction-issue level: a single MMA instruction has a
 fixed 256-cycle latency that cannot be hidden by instruction-level
 parallelism, and only 4 warps per SM may issue Tensor Core instructions
 concurrently (an unrestricted A100 allows far more). Non-tensor FP32 FMA
 throughput is separately throttled to ~0.39 TFLOPS. Measured FP16 compute
-on one review landed around 42 TFLOPS — "RTX 2060 territory" — versus the
+on one review landed around 42 TFLOPS ("RTX 2060 territory"), versus the
 A100's Tensor Core FP16 ceiling of 312 TFLOPS dense (624 TFLOPS sparse).
 Community reports after the compute-throughput unlock patch claim ~173
 TFLOPS BF16, still well under A100 but a large jump from the stock gate.
@@ -109,7 +109,7 @@ unlock tools made the cards usable for AI inference.
 
 Sources: [VideoCardz CMP 170HX spotting](https://videocardz.com/newz/nvidia-cmp-170hx-cryptomining-card-spotted-passive-design-offering-164-mh-s-hash-rate), [Tom's Hardware — unlock coverage](https://www.tomshardware.com/pc-components/gpus/nvidia-crypto-mining-gpus-hacked-to-restore-locked-away-vram-in-order-to-feed-ai-boom-software-mod-unlocks-64gb-of-vram-on-usd250-cmp-170hx), [WCCFTech price coverage](https://wccftech.com/nvidia-cmp-170hx-8-10-gb-prices-explode-over-1000-usd-as-tool-unlocks-hidden-64-80gb-vram/).
 
-### The 64 GB memory unlock — firmware, not soldering
+### The 64 GB memory unlock: firmware, not soldering
 
 GA100 is a monolithic package: the full complement of HBM2e stacks is
 physically present on every die, including the ones sold as 8 GB or
@@ -119,28 +119,28 @@ Amogh Munikote) exploits a signature-loading bug in the Falcon security
 microcontroller's BootROM to bypass those firmware locks and reprogram the
 memory geometry straps, exposing 64 GB on an 8 GB card (40 GB on a 10 GB
 card). It also restores gated SM compute throughput. This is a **firmware/
-driver-patch mod**, not a hardware memory upgrade — no chips are added or
+driver-patch mod**, not a hardware memory upgrade; no chips are added or
 replaced. Persistence requires patched, DKMS-installed kernel modules (a
 plain userspace patch does not survive reboot or driver reload).
 
 Reliability caveat directly from the tooling's own docs: "software cannot
 promise that the disabled HBM on your particular binned card is reliable.
 Do not load a model merely because `nvidia-smi` says 65536 MiB." Field
-reports (see below) put failure rates near 50% in one buyer group, with
-failures appearing only once workloads exceed the original 8 GB mining
-window — which is why club-170hx's HARDWARE.md and QC.md gate every card
-on a large-memory stress test before accepting it, not just `nvidia-smi`
+reports (see below) put failure rates near 50% in one buyer group; failures appear only once
+workloads exceed the original 8 GB mining window, which is why club-170hx's
+HARDWARE.md and QC.md gate every card
+on a large-memory stress test before accepting it, in addition to `nvidia-smi`
 enumeration.
 
 Sources: [amoghmunikote/cmpunlocker](https://github.com/amoghmunikote/cmpunlocker), [Tom's Hardware](https://www.tomshardware.com/pc-components/gpus/nvidia-crypto-mining-gpus-hacked-to-restore-locked-away-vram-in-order-to-feed-ai-boom-software-mod-unlocks-64gb-of-vram-on-usd250-cmp-170hx), [Korben summary](https://korben.info/en/nvidia-cmp-170hx-vram-unlocked-firmware.html), local: `/home/ubuntu/WIP/repos/club-170hx/docs/HARDWARE.md`, `docs/QC.md`.
 
-### The PCIe Gen/width mod — capacitor mod for width, vBIOS/strap for speed (unconfirmed)
+### The PCIe Gen/width mod: capacitor mod for width, vBIOS/strap for speed (unconfirmed)
 
 The clearest documented mechanism is a **hardware capacitor mod for lane
 width**, not a resistor strap: 12 of the CMP 170HX's 16 PCIe data lanes are
 missing their 0402 AC-coupling capacitors on the PCB, which forces the link
 to negotiate at x4 regardless of the slot. Soldering the missing
-capacitors restores x16 width — first documented working by Amogh Munikote.
+capacitors restores x16 width, first documented working by Amogh Munikote.
 This only affects **width**, not **speed**: the result of the capacitor mod
 alone is Gen1 x16 (~4 GB/s), not Gen2. A separate community fork
 (`bendy2/cmpunlocker`) adds a software "Gen2" patch on top of the driver
@@ -153,17 +153,17 @@ blocked by a real OTP silicon fuse (`FUSE_PCIE_GEN23_DIS`) that software
 cannot clear. A `thaurock-x/CMP-170HX-64GB-Unlocked-VBIOS` repo claims a
 one-shot 64 GB + x16 + higher-speed vBIOS, but its claims conflict with the
 strap-table research and should be treated with the same skepticism the
-gist author expresses — verify independently and keep an original vBIOS
+gist author expresses; verify independently and keep an original vBIOS
 backup before flashing.
 
 **Our own cards**: club-170hx's INSTALLATION.md records that "the
 experimental Gen2 path also caused guest/QEMU hangs and is excluded from
-this baseline" — i.e. the Gen2 patch was tried and rejected as unstable in
+this baseline"; i.e. the Gen2 patch was tried and rejected as unstable in
 our own environment, independent of the Proxmox link-speed question in
 Part 2. Our sellers separately mod'd the cards to Gen2 x16 electrically
 (per KNOWLEDGE.md, "x16 mod matters... seller modded Gen2 x16"), but what
-the guest currently negotiates is Gen1 (measured above) — consistent with
-either the guest-side Gen2 patch being disabled, or the Proxmox/QEMU
+the guest currently negotiates is Gen1 (measured above), consistent with
+either a disabled guest-side Gen2 patch or the Proxmox/QEMU
 root-port cap described in Part 2.
 
 Sources: [170th Street — PCIe Capacitor Mod](https://170th-street.gitbook.io/hx/modifications/pcie-capacitor-mod), [JRex286 GA100 vBIOS strap-table gist](https://gist.github.com/JRex286/84cd3921788d2ffbc1e9bf8b6f2c9396), [thaurock-x/CMP-170HX-64GB-Unlocked-VBIOS](https://github.com/thaurock-x/CMP-170HX-64GB-Unlocked-VBIOS), local: `/home/ubuntu/WIP/cmp170hx-knowledge/KNOWLEDGE.md`, `/home/ubuntu/WIP/repos/club-170hx/docs/INSTALLATION.md`.
@@ -172,12 +172,12 @@ Sources: [170th Street — PCIe Capacitor Mod](https://170th-street.gitbook.io/h
 
 The prompt's ~1,215 GB/s figure could not be traced to a specific,
 citable Reddit post in this pass (the LocalLLaMA thread search returned
-adjacent coverage — the unlock announcement, buyer-guide sites, and the
-official `llama.cpp` CUDA-performance discussion thread — but not the
+adjacent coverage (the unlock announcement, buyer-guide sites, and the
+official `llama.cpp` CUDA-performance discussion thread), but not the
 exact post with that number). It is directionally consistent with public
 material: theoretical peak is ~1,493-1,500 GB/s, and one review reports the
 610.43.03 driver raising achievable bandwidth from ~1.6 to ~1.8 TB/s by
-tightening HBM timing (tRCD 18ns → 14ns) — note that figure is *above*
+tightening HBM timing (tRCD 18ns → 14ns); note that figure is *above*
 the commonly cited 1.5 TB/s spec figure and should be read as a
 timing-tuned measurement, not the stock number. A measured ~1,215 GB/s
 (about 80% of the ~1,500 GB/s theoretical peak) is a plausible real-world
@@ -185,7 +185,7 @@ STREAM-style result and in line with typical HBM2e efficiency, but treat it
 as **unverified** pending the original post. Our own local benchmark notes
 (`KNOWLEDGE.md` §3) log the same "independent field data" figure
 third-hand ("Reddit r/LocalLLaMA, Aug 2026 ... ~1215 GB/s") without a
-direct link — same caveat applies there.
+direct link; the same caveat applies there.
 
 Sources: [niconiconi review (driver bandwidth note)](https://niconiconi.neocities.org/tech-notes/nvidia-cmp-170hx-review/), [ggml-org/llama.cpp discussion #15013 (CMP 170HX entry)](https://github.com/ggml-org/llama.cpp/discussions/15013), local: `/home/ubuntu/WIP/cmp170hx-knowledge/KNOWLEDGE.md` §3.
 
@@ -193,13 +193,13 @@ Sources: [niconiconi review (driver bandwidth note)](https://niconiconi.neocitie
 
 - [amoghmunikote/cmpunlocker](https://github.com/amoghmunikote/cmpunlocker) — the primary unlock tool (~300 stars/156 forks at indexing), with forks adding multi-card support (`bendy2/cmpunlocker`) and an earlier Falcon-exploit approach with a persistence daemon (`d3dx9/cmpunlocker`).
 - [170th-Street](https://170th-street.gitbook.io/hx/) — Munikote's community knowledge base for the card (mods, benchmarks).
-- `Ithrial/ninfer-cmp170hx` and `allover326` repos named in the task brief were not found in this search pass under those exact names/orgs on GitHub or in web results — could not verify or cite; flag for a follow-up search with corrected spelling/org if these are known to exist internally.
+- `Ithrial/ninfer-cmp170hx` and `allover326` repos named in the task brief were not found in this search pass under those exact names/orgs on GitHub or in web results, so they could not be verified or cited; flag for a follow-up search with corrected spelling/org if these are known to exist internally.
 - club-3090 / club-170hx — this repo's own sibling project pattern (community hardware playbooks for consumer/mining-surplus GPUs used for AI).
-- [r/LocalLLaMA CMP 170HX discussion](https://github.com/ggml-org/llama.cpp/discussions/15013) (llama.cpp side of the same community conversation, directly citable) — treat any specific Reddit "1215 GB/s" post as unverified per above.
+- [r/LocalLLaMA CMP 170HX discussion](https://github.com/ggml-org/llama.cpp/discussions/15013) (llama.cpp side of the same community conversation, directly citable); treat any specific Reddit "1215 GB/s" post as unverified per above.
 
 ---
 
-## Part 2 — PCIe: what the link speed actually costs
+## Part 2: what the PCIe link speed actually costs
 
 ### (a) Weight load time for a 168 GB checkpoint
 
@@ -215,13 +215,13 @@ assuming host→device transfer is the bottleneck (not disk read):
 
 In practice this rarely dominates: a single NVMe SSD reads at roughly
 3.5-7 GB/s, so at Gen1 x16 the **PCIe link and the disk are close to
-matched** — total load time in the tens of seconds either way, plus
+matched**, so total load time is in the tens of seconds either way, plus
 deserialization/dequant CPU time on top. At Gen2 or Gen4 the disk becomes
-the bottleneck, not the PCIe link — so the mod mostly matters when the
+the bottleneck, not the PCIe link, so the mod mostly matters when the
 checkpoint is already resident in page cache/RAM (repeated reloads,
 container restarts) or when the disk itself is fast NVMe RAID. This matches
 club-170hx's own note that "model loading at Gen2 x4 is ~2 min/card pain;
-x16 removes it" — i.e. lane **width**, not raw generation, was the acute
+x16 removes it"; i.e. lane **width**, not raw generation, was the acute
 problem at x4.
 
 ### (b) Pipeline-parallel inter-stage activation traffic (hidden=4096)
@@ -230,9 +230,9 @@ Per-token activation vector at a pipeline-stage boundary is
 `hidden_dim × dtype_bytes` = 4096 × 2 bytes (BF16) = **8 KiB**.
 
 - **Decode** (1 token/step): 8 KiB per stage crossing. At Gen1 x16 (4 GB/s)
-  that is ~2 microseconds of pure transfer time — negligible next to
+  that is ~2 microseconds of pure transfer time, negligible next to
   kernel-launch and synchronization overhead, let alone compute time.
-  Generation-of-PCIe-link makes essentially no difference at decode time.
+  The PCIe link generation makes no practical difference at decode time.
 - **Prefill** (2,941 tokens): 2,941 × 8 KiB ≈ **23 MB** per stage
   crossing.
   - Gen1 x16: 23 MB / 4 GB/s ≈ **5.7 ms**
@@ -248,10 +248,10 @@ Per-token activation vector at a pipeline-stage boundary is
 ### (c) Tensor-parallel all-reduce cost per layer (hidden=4096), no P2P
 
 TP needs a full all-reduce of the activation tensor after each sharded
-matmul — typically twice per transformer layer (post-attention projection,
+matmul, typically twice per transformer layer (post-attention projection,
 post-FFN down-projection). At **decode**, the payload per all-reduce is the
-same tiny 8 KiB seen in (b) — the problem with TP here is not bandwidth,
-it is **per-op latency multiplied by op count**, especially when GPUs
+same tiny 8 KiB seen in (b); the problem with TP here is not bandwidth but
+**per-op latency multiplied by op count**, especially when GPUs
 cannot DMA directly to each other (no NVLink, and PCIe peer-to-peer is
 frequently disabled or unavailable under virtualization/passthrough,
 forcing traffic to stage through host RAM). Each such round trip costs on
@@ -262,7 +262,7 @@ round trip through the host bridge, NCCL synchronization) regardless of the
 For this model: 43 layers × 2 all-reduces/layer = **86 collective ops per
 decode token**. Even at a conservative ~50-75 microseconds fixed latency
 per op (no-P2P, staged through host memory), that is roughly **4-6.5 ms of
-pure communication overhead added to every decode token** — before any
+pure communication overhead added to every decode token**, before any
 compute. At a target of ~150 tok/s per card (≈6.7 ms/token budget), that
 overhead alone can consume the entire per-token time budget. This is the
 concrete reason **pipeline parallelism wins on this fabric**: PP crosses
@@ -286,14 +286,14 @@ they must be told apart on the host, not the guest:**
    Alex Williamson's 2018 QEMU patch series added `x-speed`/`x-width`
    properties to override this per the machine type; from `pc-q35-4.0`
    onward these can be raised. **Where this applies, the guest-reported
-   Gen/width is purely a reported capability of the emulated bridge — real
+   Gen/width is purely a reported capability of the emulated bridge; real
    DMA still moves at the physical host link's negotiated speed.** The
    Proxmox wiki states this directly for the PCI-vs-PCIe passthrough flag:
    it "does not mean that PCIe capable devices that are passed through as
    PCI devices will only run at PCI speeds."
 2. **A real, physical downstream-link downgrade.** Separately and
    commonly, the *host's own* `lspci -vv` on the physical slot can show
-   `LnkSta` below `LnkCap` — this is a real electrical/training problem
+   `LnkSta` below `LnkCap`; this is a real electrical/training problem
    (ASPM power-saving downclock when idle, a BIOS PCIe link-speed setting
    left on a conservative value, a marginal riser/re-timer, or in rare
    cases a genuine board/slot limitation). If the *host* is downgraded,
@@ -303,7 +303,7 @@ they must be told apart on the host, not the guest:**
 **Our own measurement is case (2)-shaped, not case (1)-shaped**: `LnkCap`
 itself (the capability register, which VFIO passes through from the real
 device on properly configured passthrough) reads 2.5 GT/s on all four
-cards — not just `LnkSta`. That is consistent with the cards' **stock GA100
+cards, not only in `LnkSta`. That is consistent with the cards' **stock GA100
 mining-SKU PCIe capability actually being Gen1**, with the seller's
 "Gen2 x16" mod either not applied to the capability register the guest
 sees, or (per our own INSTALLATION.md) deliberately not enabled on this
@@ -340,25 +340,24 @@ qm config <vmid> | grep -iE 'machine|hostpci'
 
 1. **Re-check under load, not idle** (free, no config change). If host
    `LnkSta` rises under load, the idle reading was ASPM power-saving, not a
-   fault — the finding above was captured at idle.
+   fault; the finding above was captured at idle.
 2. **Confirm `machine: q35` with a recent version and `pcie=1` on each
    `hostpciN` line** (`qm config <vmid>`), rather than i440fx or a bare PCI
-   attach — this is a config check, not a live change, and is a
+   attach; this is a config check, not a live change, and is a
    prerequisite for any of the deeper fixes.
 3. **If the machine type predates `pc-q35-4.0`**, upgrading the VM's
    machine-type version (Proxmox VM Options → Machine) lets QEMU's default
    root-port speed/width rise above 2.5 GT/s x1 without needing the
-   experimental `x-speed`/`x-width` args at all — try this before hand
-   editing `args:`.
+   experimental `x-speed`/`x-width` args at all; try this before hand-editing `args:`.
 4. **Only if (1)-(3) don't move the guest number and the *host* itself
    shows the downgrade**: check host BIOS PCIe link-speed setting (set to
    Gen2/Gen3 explicitly, not "Auto"), and disable ASPM in host BIOS (not
    just `pcie_aspm=off`, which per the kernel maintainers' own clarification
-   leaves firmware-enabled ASPM untouched — the kernel flag and the BIOS
+   leaves firmware-enabled ASPM untouched; the kernel flag and the BIOS
    setting are not equivalent).
 5. **Last resort, most manual**: the QEMU `args: -global
-   pcie-root-port.x-speed=8 -global pcie-root-port.x-width=16` override —
-   only after confirming the *host* physical link genuinely supports Gen2,
+   pcie-root-port.x-speed=8 -global pcie-root-port.x-width=16` override,
+   and only after confirming the *host* physical link genuinely supports Gen2,
    since this setting only changes what the guest is told, not what the
    silicon can do.
 
@@ -371,33 +370,33 @@ Sources: [QEMU PCIe root-port speed/width patch series (Alex Williamson, 2018)](
 
 ---
 
-## Part 3 — Is W4A16 the right quant target on SM80?
+## Part 3: Is W4A16 the right quant target on SM80?
 
 ### Format comparison
 
 | Format | SM80 kernel path in vLLM | Size (this model) | Decode speed driver | Notes |
 |---|---|---|---|---|
-| FP8 block-quant (current) | Weight-only FP8 via **FP8 Marlin** ([vLLM PR #5975](https://github.com/vllm-project/vllm/pull/5975)) — Ampere has no native FP8 Tensor Core, so weights are dequantized FP8→BF16 in the kernel | 168 GB | Bytes moved from HBM = 1 byte/weight, plus dequant compute | What we run today; MoE support for FP8 Marlin has been a gap on vLLM (tracked in [vLLM issue #17579](https://github.com/vllm-project/vllm/issues/17579)) |
-| INT4 W4A16 (Marlin, AWQ/GPTQ/compressed-tensors) | **Marlin W4A16**, dense and (with caveats) MoE | ~95 GB (est., per task brief) | Bytes moved = 0.5 byte/weight — half of FP8 | Group size 128 typical; a reported MoE TP-scale-sharding bug blocks W4A16 MoE under TP>2 per a community project's bug report — verify against current vLLM main before relying on TP>2 |
+| FP8 block-quant (current) | Weight-only FP8 via **FP8 Marlin** ([vLLM PR #5975](https://github.com/vllm-project/vllm/pull/5975)); Ampere has no native FP8 Tensor Core, so weights are dequantized FP8→BF16 in the kernel | 168 GB | Bytes moved from HBM = 1 byte/weight, plus dequant compute | What we run today; MoE support for FP8 Marlin has been a gap on vLLM (tracked in [vLLM issue #17579](https://github.com/vllm-project/vllm/issues/17579)) |
+| INT4 W4A16 (Marlin, AWQ/GPTQ/compressed-tensors) | **Marlin W4A16**, dense and (with caveats) MoE | ~95 GB (est., per task brief) | Bytes moved = 0.5 byte/weight, half of FP8 | Group size 128 typical; a reported MoE TP-scale-sharding bug blocks W4A16 MoE under TP>2 per a community project's bug report; verify against current vLLM main before relying on TP>2 |
 | INT8 W8A16 | Marlin/compressed-tensors INT8 weight-only | ~170 GB | Bytes moved = 1 byte/weight, ~same as FP8 | No real size or bandwidth win over FP8 on this card; only useful if INT8 has an accuracy or kernel-maturity edge FP8-Marlin lacks |
 | AWQ / GPTQ (4-bit) | Both route to Marlin on SM80 when symmetric | ~95 GB | Same as generic W4A16 | AutoAWQ export is 4-bit only, asymmetric; AutoGPTQ supports 2/3/4/8-bit but its asymmetric kernel has documented accuracy issues at low bit-width |
 
 ### Why 4-bit weights can be *faster* than FP8 on this card
 
 vLLM's Marlin kernel family dequantizes packed low-bit weights (FP8 or
-INT4) to BF16 **in the GEMM kernel itself** before the tensor-core matmul —
+INT4) to BF16 **in the GEMM kernel itself** before the tensor-core matmul;
 Ampere has no native FP8 or INT4 tensor-core path, so both formats pay a
 dequant step. The part of the pipeline that differs is **bytes read from
 HBM per weight**: FP8 reads 1 byte/weight, INT4 reads 0.5 byte/weight (plus
 small per-group scale/zero-point overhead at group size 128). On a card
-whose decode throughput is bandwidth-bound — which every note in this repo
+whose decode throughput is bandwidth-bound (which every note in this repo
 and the wider community confirms the CMP 170HX is, given its gated Tensor
-Cores and abundant HBM bandwidth — halving the bytes-per-weight read from
+Cores and abundant HBM bandwidth), halving the bytes-per-weight read from
 HBM can directly translate into close to a 2x decode throughput
 improvement, since the dequant-and-matmul compute itself is not the
 limiter. This is the same reasoning documented in vLLM's own FP8 Marlin PR:
 "performance gains are higher on GPUs with less memory bandwidth" relative
-to compute — the CMP 170HX inverts that ratio even further toward
+to compute; the CMP 170HX inverts that ratio even further toward
 bandwidth-bound than a 3090 or A10.
 
 Source: [vLLM PR #5975 — FP8 Marlin for Ampere](https://github.com/vllm-project/vllm/pull/5975).
@@ -407,13 +406,13 @@ Source: [vLLM PR #5975 — FP8 Marlin for Ampere](https://github.com/vllm-projec
 Group size 128 is the standard, well-tested granularity for both AWQ and
 GPTQ/Marlin INT4 and is what the existing `Intel/DeepSeek-V4-Flash-W4A16-AutoRound`
 checkpoint uses. Risk is concentrated in **routed experts that see little
-calibration traffic** — with 256 routed experts and top-k routing, many
+calibration traffic**: with 256 routed experts and top-k routing, many
 experts are exercised rarely in a modest calibration set, so their
 per-channel scale/zero-point statistics are noisier than a dense model's.
 The Intel recipe mitigates this specifically by **excluding** certain
 layers from 4-bit (`--ignore_layers compressor,indexer.weights_proj` and
 keeping `wo_a` at 16-bit) rather than blanket-quantizing everything to
-INT4 — the same pattern `canada-quant/DeepSeek-V4-Flash-W4A16-FP8` follows
+INT4, the same pattern `canada-quant/DeepSeek-V4-Flash-W4A16-FP8` follows
 by keeping attention at FP8 and only putting routed experts at INT4. This
 is direct precedent for a **mixed scheme** as the fallback if all-INT4
 regresses quality: INT4 experts (bulk of the 168 GB) + higher-precision
@@ -442,7 +441,7 @@ decode, 76 ms TTFT, 2156 tok/s prefill, 57.8 GB VRAM, 255 W, using
 DFlash2 speculative decoding). That is the direct internal precedent for
 "W4A16 + Marlin decodes fast on this exact card," on a smaller dense-ish
 model; DeepSeek-V4-Flash-Vision-Exp's 256-expert MoE structure is the
-open variable this precedent does not cover — MoE-specific Marlin kernel
+open variable this precedent does not cover: MoE-specific Marlin kernel
 maturity and the TP-scale-sharding caveat above are the things to verify
 before assuming the same multiplier holds.
 
@@ -456,15 +455,15 @@ specific evals.
 
 ---
 
-## Part 4 — Intel AutoRound
+## Part 4: Intel AutoRound
 
 ### The method
 
 AutoRound is a **SignSGD-based learned-rounding** post-training
 quantization method (originally from Intel Neural Compressor, now a
 standalone library). Per block, it initializes learnable rounding-value
-and min/max-clipping parameters, then runs **sign gradient descent** —
-not plain SGD or Adam — over a calibration set for a default of **200
+and min/max-clipping parameters, then runs **sign gradient descent**
+(not plain SGD or Adam) over a calibration set for a default of **200
 steps**, because block-wise reconstruction produces noisy gradients that
 SignSGD is more robust to than magnitude-sensitive optimizers. After
 tuning, parameters are clamped and the block is packed to the target
@@ -474,7 +473,7 @@ This differs from the two other common PTQ methods:
 - **GPTQ**: one-shot, uses second-order (Hessian) curvature information to
   choose per-weight rounding that minimizes layer output error, no
   gradient-descent training loop.
-- **AWQ**: one-shot, activation-aware — protects the small subset of
+- **AWQ**: one-shot, activation-aware; it protects the small subset of
   weight channels that correspond to large-magnitude activations via a
   per-channel scaling factor, not a learned per-weight rounding decision.
 
@@ -490,9 +489,9 @@ Sources: [intel/auto-round GitHub](https://github.com/intel/auto-round), [intel/
 | Export format | Best-suited runtime | vLLM/SGLang on SM80 |
 |---|---|---|
 | `auto_round` | CPU, Intel GPU, CUDA, HPU; supports 2/3/4/8-bit and mixed precision | Supported via native AutoRound integration in vLLM/SGLang (Intel-SGLang collaboration announced) |
-| `auto_gptq` | Symmetric CUDA quant, 2/3/4/8-bit | Routes to Marlin on SM80 when symmetric — the common path for W4A16 on this card |
+| `auto_gptq` | Symmetric CUDA quant, 2/3/4/8-bit | Routes to Marlin on SM80 when symmetric; the common path for W4A16 on this card |
 | `auto_awq` | Asymmetric CUDA 4-bit only | Also Marlin-compatible on SM80; AWQ/GPTQ both require `--sym` for Marlin |
-| `gguf` | CPU / llama.cpp ecosystem, experimental in AutoRound | Not a vLLM/SGLang path — relevant only if the deployment target is llama.cpp, which our own benchmark comparison already shows losing to vLLM+speculation by ~3x on this card (`KNOWLEDGE.md` §3) |
+| `gguf` | CPU / llama.cpp ecosystem, experimental in AutoRound | Not a vLLM/SGLang path; relevant only if the deployment target is llama.cpp, which our own benchmark comparison already shows losing to vLLM+speculation by ~3x on this card (`KNOWLEDGE.md` §3) |
 | `llm_compressor` / compressed-tensors | vLLM-native compressed-tensors format | Directly supported in vLLM, including on SM80 |
 
 ### Memory needs for a 168 GB source model
@@ -501,26 +500,26 @@ Sources: [intel/auto-round GitHub](https://github.com/intel/auto-round), [intel/
   (not weights) to CPU, at a documented cost of ~20% more tuning time
   (project README frames it as up to ~30% slower for ~20 GB VRAM saved).
   This does not by itself make a 168 GB model quantizable on one 64 GB
-  card — it trims activation memory, not the resident weight footprint.
+  card; it trims activation memory, not the resident weight footprint.
 - **`device_map`**: accepts `auto`, a specific device, or (for large models)
   a per-layer dict. AutoRound's own docs demonstrate quantizing
   DeepSeek-V3-BF16 (1.4T parameters) using **five 80GB GPUs** with an
-  explicit `device_map` — i.e. the documented pattern for a DeepSeek-scale
+  explicit `device_map`; i.e. the documented pattern for a DeepSeek-scale
   MoE is "spread the full model across enough aggregate VRAM to hold it,"
   not "quantize from a single small GPU with heavy offload." A filed
   GitHub issue notes `device_map=auto` can fail to balance memory evenly
-  on multi-GPU setups for even a much smaller (8B) model — for a
+  on multi-GPU setups for even a much smaller (8B) model; for a
   168 GB-class model, an explicit per-layer `device_map` is the safer
   starting point over `auto`.
 - **128 GB DGX Spark GB10, unified memory**: 168 GB of FP8 source weights
   alone exceed 128 GB before any calibration-activation or optimizer-state
   memory is added. This is not workable without CPU offload of weights
-  (beyond what `low_gpu_mem_usage` covers) or a lower-memory quant path —
+  (beyond what `low_gpu_mem_usage` covers) or a lower-memory quant path;
   the RTN fast path with model-file-streaming (see below) is the relevant
   option here, not the default 200-iteration mode.
 - **64 GB single CMP 170HX with CPU offload**: workable only via heavy
   CPU-RAM staging and slow, since the whole 168 GB source cannot be
-  resident — expect this to be disk/RAM-bandwidth-bound and much slower
+  resident; expect this to be disk/RAM-bandwidth-bound and much slower
   than the 4-card option, and it exercises exactly the low-P2P-bandwidth
   PCIe path this document already flags as weak on our rig.
 - **Our 4x64 GiB rig (256 GiB aggregate)**: the best fit we have. 168 GB of
@@ -537,7 +536,7 @@ describe as bit-exact-compatible with the standard flow's output format,
 just skipping the SignSGD tuning loop entirely. RTN mode also unlocks a
 **low-disk-memory flow**: for models without local files already
 downloaded, it streams and quantizes one shard at a time, deleting each
-source shard after processing — directly relevant for a 168 GB checkpoint
+source shard after processing; directly relevant for a 168 GB checkpoint
 where holding both the FP8 source and INT4 output on disk simultaneously
 may not be desirable. RTN also supports `--layer_config` for per-layer
 bit overrides and `--ignore_layers`, with automatic detection of layers to
@@ -545,29 +544,29 @@ skip (MoE gates, MTP layers) based on the model config.
 
 **Confirmed on HuggingFace**: [`Intel/DeepSeek-V4-Flash-W4A16-AutoRound`](https://huggingface.co/Intel/DeepSeek-V4-Flash-W4A16-AutoRound)
 exists, made by the **Intel org**, and its model card states it was
-generated **"with RTN mode"** — i.e. the fast `--iters 0` path, not the
-200-iteration default — using
+generated **"with RTN mode"**, i.e. the fast `--iters 0` path rather than the
+200-iteration default, using
 `--ignore_layers compressor,indexer.weights_proj --layer_config "{'wo_a':{bits:16}}"`.
 vLLM support is linked via [vllm-project/vllm#45645](https://github.com/vllm-project/vllm/pull/45645).
 A sibling [`Intel/DeepSeek-V4-Pro-W4A16-AutoRound`](https://huggingface.co/Intel/DeepSeek-V4-Pro-W4A16-AutoRound)
 also exists but explicitly states vLLM/SGLang are **not** currently
-supported for that larger Pro variant — confirming AutoRound's own
+supported for that larger Pro variant; this confirms AutoRound's own
 `deepseek_v4` architecture support is real and upstream-tracked, but not
 uniformly wired into serving engines across every DeepSeek-V4 size yet.
 The model's tags confirm `deepseek_v4` architecture recognition
 (`DeepseekV4ForCausalLM`) and `auto-round`/`4-bit` tags in the
-`transformers`/`safetensors` ecosystem. This is strong direct precedent
+`transformers`/`safetensors` ecosystem. This is direct precedent
 that **AutoRound already handles this architecture family**, though our
 target is the Vision-Exp fork with a vision tower and 3 DSpark draft
-layers layered on top — those additions are not covered by the vanilla
+layers layered on top; those additions are not covered by the vanilla
 DeepSeek-V4-Flash artifact and would need their own `--ignore_layers`/
 `--layer_config` treatment (vision tower and draft layers are exactly the
 kind of small-but-precision-sensitive components the Intel recipe already
 carves out for the base text model).
 
-A second, independently produced quant —
+A second, independently produced quant,
 [`canada-quant/DeepSeek-V4-Flash-W4A16-FP8`](https://huggingface.co/canada-quant/DeepSeek-V4-Flash-W4A16-FP8)
-(recipe published at [canada-quant/dsv4-flash-w4a16-fp8](https://github.com/canada-quant/dsv4-flash-w4a16-fp8)) —
+(recipe published at [canada-quant/dsv4-flash-w4a16-fp8](https://github.com/canada-quant/dsv4-flash-w4a16-fp8)),
 uses INT4 for routed experts and FP8 block-128 for attention, produced on
 8x H200, and reports loading on Hopper and consumer Blackwell; it notes
 the Intel artifact "explicitly excluded vLLM and SGLang at the time,"
@@ -579,7 +578,7 @@ already be closing.
 Intel's own stated reference point is **37 minutes for a 72B model on a
 single GPU** in the iterative "light" mode. For RTN (`--iters 0`) on a
 170 GB-class MoE, there is no per-block gradient-descent loop to dominate
-wall time — the job becomes **I/O- and packing-bound**: reading ~168 GB of
+wall time; the job becomes **I/O- and packing-bound**: reading ~168 GB of
 source shards, computing per-group scales, and writing ~95 GB of packed
 INT4 output. At realistic disk/NVMe throughput (a few GB/s) this is a
 low-single-digit-hours job (rough estimate: 1-3 hours), not a multi-day
@@ -596,13 +595,13 @@ quant as RTN rather than the 200-iteration default).
 llm-compressor is vLLM's own quantization tool for producing
 `compressed-tensors` checkpoints (AWQ, GPTQ, W8A8/W8A16 schemes) with
 first-class vLLM loading support. Its practical advantage over AutoRound
-for our purposes is **zero export/format friction** — output lands
+for our purposes is **zero export/format friction**: output lands
 directly in vLLM's native `compressed-tensors` format without needing an
 extra format-conversion step. Its disadvantage for this specific task is
 that `deepseek_v4`-architecture support (MoE routing, MTP/draft layers,
 vision-tower handling) is not confirmed as upstream-supported in the way
 Intel has already demonstrated for AutoRound with a working, published
-checkpoint — this document did not find an equivalent public
+checkpoint; this document did not find an equivalent public
 llm-compressor DeepSeek-V4 MoE quant to compare against directly. Given
 that a working AutoRound RTN artifact for the base model already exists
 and is vLLM-loadable, AutoRound is the lower-risk near-term path; revisit

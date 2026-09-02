@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "date": "2026-08-28",
+    "instance": "<instance-17>",
+    "offer": "<offer-b>",
+    "gpu": "CMP 170HX 64GB",
+    "driver": "610.57.04",
+    "stack": "Ithrial/ninfer-cmp170hx (native cmake build, CMAKE_CUDA_ARCHITECTURES=80)",
+    "model": "neroued/Qwen3.8-27B-NInfer qwen3_8_27b.ninfer (16.96 GiB)",
+    "protocol": "streaming /v1/chat/completions (fork has no /v1/completions), usage.completion_tokens counted, temp 0, warmup 1 + 3 samples; fork ignores ignore_eos so decode runs may stop at EOS",
+    "serve_flags": "--max-context 65536 --kv-capacity 65536 --max-concurrency 1 --kv-dtype int8 --spec mtp --draft-tokens 3 --lm-head-draft",
+    "onstart": "onstart-v11-ninfer.sh"
+  },
+  "results": {
+    "decode256_tok_s": 39.62,
+    "decode900_tok_s": 41.19,
+    "ttft_ms_63tok": 1.8,
+    "prefill_tok_s_6k6": 419176.9,
+    "gpu_peak": {"util": 100, "power_w": 247.4, "mem_mib": 20110, "clk_mhz": 1410, "temp_c": 72}
+  },
+  "conclusions": {
+    "fork_status": "BUILDS and RUNS on sm_80: CMAKE_CUDA_ARCHITECTURES=80 native build completed (the nvfp4_small_t.cu compile takes ~20 min on its own - not a hang, just slow template instantiation), serve boots, model loads, bench completes.",
+    "vs_vllm": "decode is 3.5x slower than vLLM DFlash2 k=7 on the same offer/node (39.6-41.2 vs 140.5 tok/s decode256): the fork's groupwise-int + w8 kernels for sm_80 do not compete with syv DFlash2 on decode.",
+    "prefill": "prefill is ~194x faster than vLLM (419k vs 2161 tok/s) and TTFT is ~59x lower (1.8ms vs 107ms) - the fork's prefill path is excellent; decode is the gap.",
+    "caveats": "63-token chat prompt vs vLLM's 11-token raw prompt; prefill_long ran with 8 output tokens vs vLLM's 11; acceptance metrics not exposed in serve log grep."
+  }
+}

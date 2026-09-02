@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "date": "2026-08-28",
+    "instance": "<instance-16>",
+    "offer": "<offer-b>",
+    "gpu": "CMP 170HX 64GB",
+    "driver": "610.57.04",
+    "stack": "syv-ai/qwen38-27b-rtx3090 @ vLLM 0.27.1, patched",
+    "protocol": "streaming /v1/completions, usage.completion_tokens counted, temp 0, ignore_eos, warmup 1 + 3 samples",
+    "purpose": "Ninfer trick A/B: lm-head-draft (MTP_DRAFT_VOCAB=0) and fp8-KV long context",
+    "onstart": "qwen38-vast-onstart-v10.sh"
+  },
+  "boots": {
+    "A": {
+      "config": "dflash2 k=7 CTX=fast bf16 64k, MAX_SEQS=1, GPU_UTIL=0.90, KV unpinned",
+      "decode256_tok_s": 140.54,
+      "decode900_tok_s": 126.56,
+      "ttft_ms_11tok": 106.6,
+      "prefill_tok_s_6k6": 2161.0,
+      "gpu_peak": {"util": 100, "power_w": 261.9, "mem_mib": 57562, "clk_mhz": 1410, "temp_c": 67}
+    },
+    "B": {
+      "config": "mtp k=4 CTX=fast bf16 64k (truncated 40k draft head), MAX_SEQS=1, GPU_UTIL=0.90",
+      "decode256_tok_s": 133.13,
+      "decode900_tok_s": 119.82,
+      "ttft_ms_11tok": 80.5,
+      "prefill_tok_s_6k6": 2155.2,
+      "gpu_peak": {"util": 100, "power_w": 258.4, "mem_mib": 57978, "clk_mhz": 1410, "temp_c": 68}
+    },
+    "C": {
+      "config": "mtp k=4 CTX=fast MTP_DRAFT_VOCAB=0 (full 248k shared lm_head drafting = Ninfer --lm-head-draft)",
+      "decode256_tok_s": 119.22,
+      "decode900_tok_s": 113.11,
+      "ttft_ms_11tok": 67.0,
+      "prefill_tok_s_6k6": 2145.2,
+      "gpu_peak": {"util": 100, "power_w": 256.1, "mem_mib": 57956, "clk_mhz": 1410, "temp_c": 69}
+    },
+    "D": {
+      "config": "dflash2 k=7 CTX=long fp8 KV 131072 ctx (host-KV capability analogue), MAX_SEQS=1, GPU_UTIL=0.90, KV unpinned",
+      "decode256_tok_s": 135.81,
+      "decode900_tok_s": 121.20,
+      "ttft_ms_11tok": 109.9,
+      "prefill_tok_s_6k6": 1740.9,
+      "gpu_peak": {"util": 100, "power_w": 261.6, "mem_mib": 57562, "clk_mhz": 1410, "temp_c": 68}
+    }
+  },
+  "conclusions": {
+    "lm_head_draft": "HURTS: C vs B decode256 119.2 vs 133.1 tok/s (-10.4%), decode900 113.1 vs 119.8 (-5.6%). The truncated 40k draft head is the right design on this stack; the wider acceptance of the full 248k head does not pay for the 6x wider draft GEMM.",
+    "fp8_kv_long": "Costs 3.4% decode256 vs bf16 fast (135.8 vs 140.5) and 19.5% prefill (1741 vs 2161), buys 131k context on a single card. Host-KV offload itself is unnecessary at 64GB VRAM.",
+    "node_variance": "Boot A re-measured the v9 config at 140.5 vs 147.7 tok/s on a different physical card; same config, same protocol. Treat ~5% as cross-node spread."
+  },
+  "acceptance_metrics_note": "Server-side SpecDecoding metrics from the final log: boot B/C mean acceptance 2.38-2.52 (k=4, mtp), boot D mean acceptance 2.49-2.61 (k=7, dflash2)."
+}
