@@ -90,6 +90,14 @@ image replaces a from-source build that takes about 60 minutes:
 docker pull ghcr.io/pixelml/club-170hx:vllm-deepseek-v4-sm80-20260902
 ```
 
+The package is public. Pushed digest:
+`sha256:90a1419e8ceaad3542153ef4e2a1d94a69b9af03cce7b0a1b267dd1dad55b9d7`.
+For exact reproducibility, pull by digest instead of tag:
+
+```bash
+docker pull ghcr.io/pixelml/club-170hx@sha256:90a1419e8ceaad3542153ef4e2a1d94a69b9af03cce7b0a1b267dd1dad55b9d7
+```
+
 This image is text-path only; it does not run the vision encoder path.
 For the fork lineage, patch list, launch command, security scan, and a
 `vast-onstart.sh` script for one-command bring-up on a rented box, see
