@@ -1,0 +1,44 @@
+{
+  "instance": "<instance-12>",
+  "endpoint": "http://<rented-host-ip>:50649",
+  "model": "models/Qwen3.8-27B-W4A16-AutoRound (prepare.sh requant of lued/Qwen3.8-27B-INT8-W8A16-MTP)",
+  "draft": "local models/Qwen3.8-27B-DFlash2-W4A16",
+  "config": "SPEC=dflash2 CTX=fast MAX_SEQS=1 DFLASH_TOKENS=7 GPU_UTIL=0.90 KV_MEM= (empty: GPU_UTIL-sized pool), max_model_len=65536, kv bf16, FLASH_ATTN",
+  "kv_pool": "GPU_UTIL-sized: 33.63 GiB available for KV (vs 5.2 GiB pinned in v6)",
+  "decode": {
+    "protocol": "greedy, streaming, single request, 88-token prompt, 256 max tokens, ignore_eos, 1 warmup + 3 samples",
+    "pass1": {
+      "mean_output_tok_s": 43.34,
+      "mean_ttft_ms": 613.3,
+      "output_tokens": 103
+    },
+    "pass2": {
+      "mean_output_tok_s": 43.29,
+      "mean_ttft_ms": 610.4,
+      "output_tokens": 103
+    }
+  },
+  "prefill": {
+    "protocol": "8192-token prompt, 1 output token, non-streaming, 1 warmup + 2 samples",
+    "pass1": {
+      "mean_prefill_tok_s": 1712.3,
+      "latency_s_8k": 4.78
+    },
+    "pass2": {
+      "mean_prefill_tok_s": 1705.2
+    }
+  },
+  "spec_decode": {
+    "mean_acceptance_length": 2.51,
+    "per_position_acceptance": [
+      0.634,
+      0.426,
+      0.178,
+      0.129,
+      0.089,
+      0.04,
+      0.02
+    ]
+  },
+  "note": "decode slightly below v6 (43.3 vs 47.5 tok/s) - the empty KV_MEM= also disabled the fast-path pin; single-stream decode is bandwidth-bound so pool size does not lift throughput. Prefill is where the fix matters: full 64K context usable."
+}

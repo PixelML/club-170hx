@@ -1,0 +1,25 @@
+{
+  "run": "v9c",
+  "instance": "<instance-15>",
+  "offer": "<offer-a>",
+  "image": "nvidia/cuda:13.0.1-base-ubuntu24.04",
+  "endpoint": "http://<rented-host-ip>:40226",
+  "config": {
+    "model": "dbirks/Qwen3.8-27B-W4A16-AutoRound + fast variant (int4-GPTQ lm_head/MTP)",
+    "draft": "Qwen3.8-27B-DFlash2-W4A16",
+    "spec": "dflash2", "dflash_tokens": 7, "ctx": "fast", "max_seqs": 1,
+    "gpu_util": 0.90, "kv_mem": "", "port": 18020
+  },
+  "bench": {
+    "decode256": {"prompt_tokens": 11, "mean_ttft_ms": 76.0, "mean_total_s": 1.803, "mean_out_tok": 256.0, "decode_tok_s": 147.67},
+    "decode900": {"prompt_tokens": 11, "mean_ttft_ms": 93.1, "mean_total_s": 6.776, "mean_out_tok": 900.0, "decode_tok_s": 134.52},
+    "prefill_6603tok": {"prompt_tokens": 6603, "mean_ttft_ms": 3062.2, "mean_total_s": 3.126, "mean_out_tok": 8.0, "prefill_tok_s": 2156.3}
+  },
+  "spec_decoding": {
+    "mean_acceptance_length_range": [2.56, 2.80],
+    "per_position_acceptance_rate_example": [0.693, 0.413, 0.232, 0.114, 0.057, 0.033, 0.016]
+  },
+  "gpu_peak": {"util_pct": 100.0, "power_w": 255.14, "mem_used_mib": 57782, "sm_clock_mhz": 1455, "temp_c": 73},
+  "protocol_note": "Tokens counted from usage.completion_tokens (stream_options include_usage). v6/v8 numbers counted SSE events, undercounting by the acceptance length (~2.5-3x).",
+  "timestamp": "2026-08-28T12:54:00Z"
+}
