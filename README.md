@@ -28,6 +28,7 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 | Choose an AI workload | [Workload matrix](docs/WORKLOADS.md) |
 | Read the consolidated lessons | [What we learned](docs/LESSONS.md) |
 | See every model tried on this card | [Model status](docs/MODEL-STATUS.md) |
+| Run a specific model: quick start, settings, troubleshooting | [Model guides](docs/models/README.md) |
 | Read an executed experiment notebook | [Notebooks](notebooks/README.md) |
 
 ## Notebooks
