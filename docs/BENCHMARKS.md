@@ -81,9 +81,11 @@ The precompiled runtime image lacked `vllm._C` for this path; a source build was
 Detailed receipts, launch scripts, and patches live in
 [PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX).
 
-Two runtimes ran on this checkpoint. The text path answers the performance
-question. The vision path answers the correctness question. Do not combine
-their numbers.
+Three runs exist on this checkpoint. The text-only vLLM run and the
+vision-enabled vLLM run (Path 3, below) share the same SM80 fork and the
+same PP4 + DSpark k=6 recipe; the third, older TP4 reference run is kept
+as history. Do not combine numbers across runs without checking which
+one produced them.
 
 ### Text path: PP4 + DSpark k=6 (benchmark in progress)
 
@@ -120,7 +122,57 @@ source revision was unavailable from the running image. The numbers stay
 visible as measured learning, but they are superseded by the normalized run.
 Snapshot: [result summary](../results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md).
 
-### Vision-correctness milestone
+### Vision on vLLM, SM80 (Path 3, measured)
+
+**Setup:** the same SM80 vLLM fork and PP4 + DSpark k=6 recipe as the text
+path above, with five additional fixes that let the vision path boot (eager
+weight-load host-RAM pressure, a missing multimodal-processor plan-API
+shim, the processor never returning `input_ids`, a missing
+`process_weights_after_loading()` call that left broadcast weights
+unfinalized, and a CUDA-graph capture path that nulled `input_ids` on
+non-first pipeline ranks). Full detail, commits, and tracebacks are in the
+executed notebook's appendix and in
+[docs/LESSONS.md](LESSONS.md).
+
+| Metric | Value | Status |
+|---|---:|---|
+| Functional gates (`/v1/models`, deterministic greedy, image keyword match) | PASS, 10/10 image keyword match | Measured 2026-09-02 |
+| Golden corpus, text (20 rows) | 15/20 keyword match, 10/20 exact-match vs. DGX Spark reference | Measured 2026-09-02, known limitation |
+| Decode, c=1, text-only | 163.1 tok/s aggregate (median of 3) | Measured 2026-09-02 |
+| Decode, c=2, text-only | 116.6 tok/s aggregate (median of 3) | Measured 2026-09-02 |
+| Decode, c=4, text-only | server crashed on rep 3 of 3 | Measured 2026-09-02 |
+| Decode, c=8 / c=16, text-only | not measured | Not measured, server stayed down after the c=4 crash |
+| Decode, c=1, text+one-image | 45.3 tok/s aggregate (median of 3) | Measured 2026-09-02 |
+| Decode, c=2, text+one-image | 78.2 tok/s aggregate (median of 3) | Measured 2026-09-02 |
+| Decode, c=4 through c=16, text+one-image | not attempted | Not attempted, given the text-only crash at c=4 |
+| Uncached prefill, 2,941 input tokens | 2,352 tok/s warm (918 tok/s first cold prefill) | Measured 2026-09-02 |
+| Warm TTFT | 0.386 s | Measured 2026-09-02 |
+
+**The c=4 crash.** During the text-only concurrency ladder, at c=4, rep 3
+of 3, the vLLM `EngineCore` process died with `RuntimeError: cancelled` in
+the shared-memory broadcast queue (`shm_broadcast.py`, `acquire_read`). All
+4 in-flight requests received `HTTP 500`, and the server container exited
+on its own (exit code 0). Per the standing operating instruction for this
+endpoint, the session did not restart it. It came back up later under
+infrastructure outside this session's control; once it answered
+`/v1/models` again, the text+image ladder ran clean at c=1 and c=2, and
+c=4 and above were deliberately left alone given the crash history at
+that level. c=8 and c=16 text-only stayed unmeasured. GPUs stayed at
+42-47 C through the crash and after, with no Xid or ECC events.
+
+**Text exact-match gap.** The golden corpus's text rows show a real
+correctness gap against the DGX Spark reference (10/20 exact-match, 4/20
+`finish_reason` mismatches) that is not a crash or stability signal. Image
+correctness is solid (10/10 keyword match). The likely cause is SM80
+kernel numerics plus the `dspark` speculative-decode draft model changing
+greedy continuations at temperature 0; see
+[docs/LESSONS.md](LESSONS.md) for the full discussion.
+
+Full protocol, the chart, and the appendix are in the executed notebook:
+[notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb](../notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb).
+Raw receipts: [results/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm/](../results/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm/).
+
+### Vision-correctness milestone (history)
 
 **Result:** the first real-image inference of this checkpoint on Ampere (SM80)
 hardware. The runtime is the reference TP4 (tensor parallel 4) implementation
@@ -154,14 +206,17 @@ SM80 fallback patches on the reference path:
 runtime serves one request at a time, does not stream, has no speculative
 decoding, and dequantizes to BF16 on the fly. Its decode rate says nothing
 about what the vLLM text path can reach. Do not place 0.9 tok/s beside any
-other row on this page.
+other row on this page. This milestone predates Path 3 and is kept as
+history; the vLLM-served vision benchmark is the section above.
 
-### SM80 compatibility gaps in the upstream Vision vLLM path
+### SM80 compatibility gaps in the upstream Vision vLLM path (route not taken)
 
 The pinned upstream Vision vLLM source assumes SM90-class kernels in several
-places. Each gap below stopped a four-rank PP4 boot at a different stage. The
-gaps were found one at a time, in this order, because each one only appears
-after the previous one is fixed.
+places. Each gap below stopped a four-rank PP4 boot at a different stage,
+on the pinned reference Vision head (Route B), a different code path from
+the SM80 text-path fork that Path 3 (above) later reverse-ported vision
+onto successfully. The gaps were found one at a time, in this order,
+because each one only appears after the previous one is fixed.
 
 | # | Stage | Failure | Root cause | Status |
 |---|---|---|---|---|
@@ -172,8 +227,11 @@ after the previous one is fixed.
 | 4 | First multimodal request | `vision MoE routing requires input_ids` under pipeline parallel | Structural: the vision MoE router reads `input_ids` to route image tokens, and non-first pipeline ranks receive hidden states only, never `input_ids` | Unresolved. The route is frozen; image requests are not served on the PP4 vLLM path |
 
 Gaps 1–3 are capability-gated so that the SM90+ path is byte-identical. Gap 4
-is why the performance numbers on this page are text-only and the vision
-milestone runs on the TP4 reference runtime instead.
+stopped Route B for good; it is why the TP4 reference runtime carried the
+vision-correctness milestone until Path 3 (a separate fork with its own
+`requires_raw_input_tokens` handling, see the section above and
+[docs/LESSONS.md](LESSONS.md)) solved the equivalent problem on the SM80
+vLLM path.
 
 ### Negative results, four cards
 

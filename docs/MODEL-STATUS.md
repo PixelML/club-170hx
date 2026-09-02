@@ -22,7 +22,8 @@ evidence; read the number next to its source.
 | DeepSeek-V4-Flash-0731 | Native MXFP4 experts + FP8 e4m3 attention | vLLM (SM8x fork, full source build), PP3, DSpark k=5 | 3 (180 W, local) | Measured | 83.3 tok/s aggregate decode (technical 73.4 / prose 72.4 / code 116.6), 2,965 tok/s prefill at 5,399 tokens, acceptance 5.07-5.32 | [PixelML/DeepSeek-V4-Flash-0731-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | Same, community 4-card reference config | vLLM (SM8x fork), PP4, DSpark k=5 | 4 | Measured (upstream reference, not this club's own run) | 98.1 tok/s aggregate decode, 5,321 tok/s prefill (77k context), full 1,047,736-token context verified | [allover326/deepseek-v4-cmp170hx](https://github.com/allover326/deepseek-v4-cmp170hx) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 e4m3, 48 shards | SM80 vLLM fork, PP4, layer partition 11,11,11,10, DSpark k=6 (text path) | 4 | Measured 2026-09-02 | Decode c=1 97.4 tok/s (median of 3; 57.6–123.5); aggregate c=4 165.5 tok/s (median of 3; 140.3–203.2); aggregate c=16 failed (device-side assert, reproduced twice); uncached prefill (2,941 tokens) 2,352 tok/s warm (362 tok/s first cold prefill); warm TTFT 0.394 s. Earlier superseded ladder: 101.21 tok/s @ c=1, 169.65 tok/s @ c=4, 325.5 tok/s prefill | [PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) |
-| DeepSeek-V4-Flash-Vision-Exp | FP8 -> BF16 fallback (reference runtime + 4 SM80 patches) | Reference TP4 runtime, batch 1 | 4 | Measured (correctness, not performance) | **PASS**: first real-image completion of this checkpoint on Ampere hardware, 0.88-0.93 tok/s decode (this is a correctness result; do not read it as a performance number) | [PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 e4m3, 48 shards | Same SM80 vLLM fork, PP4, DSpark k=6, vision path (Path 3, 5 boot fixes) | 4 | Measured 2026-09-02, partial | Vision gates PASS (10/10 image keyword match); text golden corpus 15/20 keyword, 10/20 exact-match (known limitation). Text-only decode 163.1 tok/s @ c=1, 116.6 tok/s @ c=2, server crashed at c=4 (EngineCore died, not restarted). Text+image decode 45.3 tok/s @ c=1, 78.2 tok/s @ c=2 (aggregate, measured after the server came back up); c=4 and above not attempted. Uncached prefill 2,352 tok/s warm; warm TTFT 0.386 s | [notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb](../notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb), [docs/BENCHMARKS.md](BENCHMARKS.md#vision-on-vllm-sm80-path-3-measured) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 -> BF16 fallback (reference runtime + 4 SM80 patches) | Reference TP4 runtime, batch 1 (history) | 4 | Measured (correctness, not performance) | **PASS**: first real-image completion of this checkpoint on Ampere hardware, 0.88-0.93 tok/s decode (this is a correctness result; do not read it as a performance number). Superseded as the vision-correctness milestone by the vLLM Path 3 row above, kept here as history | [PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) |
 | GLM-5.3-Flash | UD-IQ4_XS GGUF | llama.cpp (unslothai DSA fork, sm_80) | 4 | Measured | 17.73 tok/s median decode (c=1), ~17.5-17.7 tok/s at c=2/4, 21/26 evaluation tasks, 41/41 soak reps clean | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 | GLM-5.3-Flash | NVFP4 (LibertAIDAI) | vLLM fork (SM121 image only) | — | Negative | Does not run on SM80: sparse-MLA path targets SM12x FlashInfer backends only | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 | GLM-5.3-Flash | EXL3/TR3 4bpw | ExLlamaV3 (SM121 fork image) | — | Negative | Fits VRAM on paper (~40.9 GiB/card at TP=4) but ships SM121-only kernel binaries; no SM80 build exists | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
@@ -43,12 +44,20 @@ needs either CPU offload (blocked by seccomp in containers, expected to work
 bare metal) or enough VRAM to hold it directly; the second path is why this
 model is a natural first test once four 64 GiB cards are locally available.
 
-**DeepSeek-V4-Flash-Vision-Exp text path.** The placeholders in this row are
-filled by a normalized benchmark run using the same protocol as the
-DeepSeek-V4-Flash-0731 measurement: greedy 400-token completions, three
-repetitions, tokens counted from `usage.completion_tokens`. Until that run's
-receipts merge, treat the row as in progress, and read the earlier ladder
-(101.21-169.65 tok/s) as historical, not current.
+**DeepSeek-V4-Flash-Vision-Exp text path.** The row above is filled by a
+normalized benchmark run using the same protocol as the DeepSeek-V4-Flash-0731
+measurement: greedy 400-token completions, three repetitions, tokens counted
+from `usage.completion_tokens`. Read the earlier ladder (101.21-169.65 tok/s)
+as historical, not current.
+
+**DeepSeek-V4-Flash-Vision-Exp vision path.** Vision on vLLM SM80 is now
+measured, not in progress: functional gates and image correctness pass, the
+text-only decode ladder ran through c=2 before a c=4 crash, and the
+text+image ladder ran through c=2 once the server came back up. c=8/c=16
+text-only and c=4-and-up text+image are honestly reported as not measured.
+The reference TP4 runtime row above stays in the table as the historical
+first-PASS milestone; it no longer needs to carry the "only vision evidence"
+weight now that a vLLM-served measurement exists.
 
 **GLM-5.3-Flash.** No quantization/runtime pairing that both fits CMP 170HX's
 VRAM and has a working SM80 kernel path exists for any vLLM-served format as

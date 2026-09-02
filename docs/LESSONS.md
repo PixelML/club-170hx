@@ -242,6 +242,81 @@ behavior at idle, not a fault, and should not be read as a passthrough
 problem either. See [Hardware — PCIe link status](HARDWARE.md#pcie-link-status)
 for the full note.
 
+## f.1 Vision on vLLM SM80: five boot fixes, one crash, one correctness gap
+
+DeepSeek-V4-Flash-Vision-Exp's vision path reuses the SM80 PP4 + DSpark k=6
+fork that already serves the text path (see section c), reverse-ported with
+five additional fixes. This section is the detail behind
+[BENCHMARKS.md](BENCHMARKS.md#vision-on-vllm-sm80-path-3-measured) and
+[MODEL-STATUS.md](MODEL-STATUS.md).
+
+**The five fixes, in the order they were found, across two boot rounds:**
+
+1. **Eager-load host RAM pressure.** The default eager safetensors load
+   strategy reads each shard fully into host RAM. Loading a 156 GiB
+   checkpoint against about 74 GiB free timed out the first boot attempt
+   at 7 of 48 shards. Fix: use the default streaming `safe_open` load
+   instead of `--safetensors-load-strategy eager`, and raise the engine
+   ready/iteration timeouts.
+2. **Missing plan API.** The pinned model code's multimodal processor
+   called a `_plan_prompt_updates` method this fork's vLLM version does
+   not carry. Fix: a compatibility shim in
+   `vllm/multimodal/processing/processor.py`.
+3. **Processor input_ids.** `DeepseekV4VLProcessor.__call__` never
+   tokenized text or returned `input_ids`, causing `KeyError: 'input_ids'`
+   deep in profiling. Fix: override `_call_hf_processor` to tokenize and
+   merge `input_ids` in, and override `_hf_processor_applies_updates` to
+   return `False` so vLLM does not assume the processor already expanded
+   image placeholders.
+4. **Broadcast-weights ordering.** `DeepseekV4ForCausalLM.load_weights()`
+   never called `self.process_weights_after_loading()`, so
+   `finalize_mhc_broadcast_weights()` never ran and `hc_attn_fn_broadcast`
+   stayed `None`, tripping an assertion during image profiling. Fix: added
+   the missing call, matching the pinned reference's own load order.
+5. **CUDA-graph input_ids guard.** `cudagraph_utils.py`'s graph-capture path
+   unconditionally nulled `input_ids` on every non-first pipeline-parallel
+   rank. DeepSeek V4 Vision's MoE gate needs raw `input_ids` on every rank
+   for image-token routing (`requires_raw_input_tokens = True`); the normal
+   forward path already guarded this, the capture path did not. Fix: added
+   the matching guard to `cudagraph_utils.py`. This was the fifth and final
+   fix; the next boot attempt reached READY.
+
+**The c=4 crash (measured 2026-09-02).** During the text-only concurrency
+ladder, at c=4, rep 3 of 3, the vLLM `EngineCore` process died mid-batch:
+`RuntimeError: cancelled` raised from
+`distributed/device_communicators/shm_broadcast.py`, `acquire_read`. All 4
+in-flight requests received `HTTP 500 EngineDeadError`; the container exited
+cleanly (exit code 0) and the API stopped responding. Per the standing
+operating instruction for this endpoint, the session did not restart it
+itself. This is a second, independent concurrency ceiling for this fork: the
+sibling text-only recipe already has its own c=16 device-side assert on the
+draft-decode path (see section d and the failure-modes table below). Both
+point at the same underlying issue — this fork's multi-process
+pipeline-parallel executor is not yet robust under concurrent load once
+request count and pipeline depth combine past a recipe-specific threshold —
+but the vision-capable build's ceiling sits lower, at c=4, likely from the
+extra per-layer broadcast and raw-input-tokens bookkeeping fix 4 and fix 5
+above added. All 4 GPUs stayed at 42-47 C through the crash and after; no
+Xid or ECC events; GPU memory and utilization returned to 0 within seconds.
+The server came back up later in the same session under infrastructure
+outside the benchmarking session's control; that session did not restart it
+either, and used the recovered server only to measure the text+image ladder
+at c=1 and c=2, leaving c=4 and above alone given the crash history.
+
+**Text exact-match gap.** The golden corpus's 20 text-only rows show 15/20
+keyword match but only 10/20 exact-match against the DGX Spark reference
+outputs, with 4/20 `finish_reason` mismatches (`length` vs. `stop`). This is
+a correctness gap against the corpus's own bar (100% text exact-match
+expected at temperature 0), not a stability or crash signal — image
+correctness on the same run is solid (10/10 keyword match). The likely
+cause is a combination of two effects, neither yet isolated from the other:
+SM80 kernel numerics differing from the DGX Spark reference (see section a),
+and this fork's `dspark` speculative-decode draft model changing greedy
+continuations at temperature 0 (see section d's note on DSpark's
+non-reproducibility). Both affect exact-token continuation without
+necessarily changing keyword-level correctness. Not root-caused or fixed as
+of this writing.
+
 ## g. Failure modes and recovery
 
 | Signal | Meaning | Recovery |
@@ -249,6 +324,7 @@ for the full note.
 | Xid 79, "fallen off the bus" | Card left the PCIe bus; PCI config reads as an invalid header | Function-level reset, secondary-bus reset, runtime power changes, and remove/rescan all failed in the measured case. A true cold power cycle (standby rails discharged) was required |
 | Xid 154, "Node Reboot Required" | Follow-on to a bus-drop event | Full VM/host reboot |
 | Xid 43 (software-classified) | Draft-path embedding assert at high concurrency (measured at c=16 on a DSpark ladder) | Not a hardware or ECC fault; restart the server process |
+| `RuntimeError: cancelled` in `shm_broadcast.py acquire_read` | `EngineCore` process died mid-batch under concurrent load (measured at c=4 on the vision-path fork, see section f.1); not an Xid or ECC event | Not a hardware fault; the container exits cleanly (code 0). Restart the server process to recover; do not restart automatically if a standing instruction says otherwise |
 | NVRM VA-space corruption after an OOM kill storm | Kernel log shows NVRM assertion failures on every GPU (`pool_alloc.c`, `vaspace_api.c`); `cuInit` returns `CUDA_ERROR_NO_DEVICE` host-wide | Reloading `nvidia_uvm` alone does not clear it. Full sequence: `rmmod nvidia_uvm nvidia` then `modprobe nvidia nvidia_uvm` restores all devices without a VM reboot |
 | `--gpus all` assigns zero devices after a crash | Stale cgroup state left behind by an OOM crash; reproduced in a minimal test container | Use an explicit device list (for example `--gpus '"device=0,1,2,3"'`) instead of `all` |
 | Ranks stuck in D state during NFS-backed weight load | `wchan folio_wait_bit_common`: uninterruptible page wait while `mmap`-ing shards over NFS; `rchar` stays near-static because `mmap` page faults do not increment it | This is loading, not hanging. Confirm with a bounded read-throughput sample (physical reads increasing) before treating it as stuck |

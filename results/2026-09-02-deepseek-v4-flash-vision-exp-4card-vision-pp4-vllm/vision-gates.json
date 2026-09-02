@@ -1,5 +1,11 @@
 {
-  "status": "not run",
-  "note": "Gates pending. This recipe (vision on vLLM PP4/DSpark, SM80) has not booted a server; the reference-runtime prior-evidence receipt is separate and lives under prior-evidence/vision-ready.json.",
-  "rows": []
+  "status": "measured, PASS",
+  "utc": "2026-09-02T12:00:00Z",
+  "note": "Functional gates run against the live Path 3 server (4x CMP 170HX, PP4, DSpark k=6). Server was already up from a prior boot session; this session did not start or stop it.",
+  "rows": [
+    {"gate": "/v1/models", "result": "PASS", "detail": "deepseek-v4-flash-vision-exp listed"},
+    {"gate": "deterministic text (temperature 0, 'The capital of France is')", "result": "PASS", "detail": "identical ' Paris' completion across 3 reps"},
+    {"gate": "golden corpus, image rows (10 fixtures)", "result": "PASS", "detail": "10/10 keyword match"},
+    {"gate": "golden corpus, text rows (20 prompts)", "result": "PARTIAL", "detail": "15/20 keyword match, 10/20 exact-match vs. the DGX Spark reference, 4/20 finish_reason mismatch (see docs/LESSONS.md for discussion)"}
+  ]
 }
