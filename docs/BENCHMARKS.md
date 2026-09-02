@@ -200,9 +200,10 @@ milestone runs on the TP4 reference runtime instead.
 ### Cross-platform context: two-node DGX Spark
 
 The same checkpoint at the same revision runs on a two-node DGX Spark kit
-(GB10, vLLM, TP=2, `fp8_ds_mla` KV cache). Measured there: c=1 48.7 tok/s,
-c=16 106.8 tok/s aggregate, 2,941-token uncached prefill 1,566 tok/s, warm
-streaming TTFT 0.323 s, vision PASS, 0 errors in 93 requests. Results and
+(GB10, vLLM, TP=2, `fp8_ds_mla` KV cache). Published there (merged evidence): c=1 36.9 tok/s, c=6 112.7 tok/s
+aggregate, uncached prefill 1,789 tok/s, streaming TTFT 0.239 s, vision PASS.
+A later normalized run on the 2,941-token / 400-token protocol (c=1 48.7,
+c=16 106.8 aggregate) is in that repository's open PR and is not yet merged. Results and
 receipts: [PixelML/DeepSeek-V4-Flash-Vision-Exp-DGX-Spark](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-DGX-Spark).
 
 This is context, not a head-to-head comparison. The platforms differ in
