@@ -31,14 +31,34 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 
 I traded out three RTX 3090s and rebuilt this node around four CMP 170HXs. The reason was simple: the four cards expose 256 GiB of aggregate HBM in one box. The lab still has RTX 3090 cards and DGX Spark systems, giving us useful comparison points for consumer CUDA, low-cost SM80/HBM, and GB10. DGX Spark notes live in [club-dgx-spark](https://github.com/PixelML/club-dgx-spark).
 
-**Measured on 2026-08-30:** all four cards enumerated in one Ubuntu guest with driver 610.43.03 and reported 65,536 MiB each. This is a bring-up inventory, not a four-card performance benchmark. Under the current build (four cards in an open frame with one 80 mm blower on a printed duct), a later idle snapshot the same day showed 37–38 °C cores, 41–51 °C memory temperatures, and about 141 W for the group at zero utilization. Cooling and power details are in [Cooling and power](docs/COOLING-AND-POWER.md).
+**Measured on 2026-08-30:** all four cards enumerated in one Ubuntu guest with driver 610.43.03 and reported 65,536 MiB each. Under the current build (four cards in an open frame with one 80 mm blower on a printed duct), an idle snapshot the same day showed 37–38 °C cores, 41–51 °C memory temperatures, and about 141 W for the group at zero utilization. Cooling and power details are in [Cooling and power](docs/COOLING-AND-POWER.md).
+
+### Four-card results: DeepSeek-V4-Flash-Vision-Exp
+
+The four cards now serve `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` (FP8, 48 shards, revision `86f746b3`). Two runtimes ran on the same checkpoint. Each runtime answers a different question.
+
+1. **Text path, performance.** The SM80 vLLM fork with pipeline parallel 4 (layer partition `11,11,11,10`) and DSpark speculative decoding at `k=6`. A normalized benchmark is in progress. Placeholders below are filled from that run; the earlier ladder numbers (101.21 tok/s at c=1, 169.65 tok/s at c=4) came from an earlier run with unverified provenance and are superseded.
+2. **Vision path, correctness.** The reference TP4 runtime with SM80 fallback patches completed the first real-image inference of this checkpoint on Ampere hardware. It decodes at about 0.9 tok/s and is a correctness result, not a performance result.
+
+| Measurement | Value | Status |
+|---|---:|---|
+| Decode, c=1 (text path, PP4, DSpark k=6) | `{{C1}}` tok/s | Benchmark in progress |
+| Aggregate, c=4 | `{{C4}}` tok/s | Benchmark in progress |
+| Aggregate, c=16 | `{{C16}}` tok/s | Benchmark in progress |
+| Uncached prefill, 2,941 input tokens | `{{PREFILL}}` tok/s | Benchmark in progress |
+| Warm TTFT | `{{TTFT}}` s | Benchmark in progress |
+| Real-image completion (vision path, TP4 reference runtime) | PASS, 0.9 tok/s decode | Correctness evidence only |
+
+The upstream Vision vLLM path needed four SM80 patches before the engine reached readiness. Three are fixed with fallbacks; one is structural and unresolved. The gap table, the vision milestone, and the negative results are in [Benchmarks](docs/BENCHMARKS.md#deepseek-v4-flash-vision-exp-four-cards). The SM80 vLLM fork and patch set build on the work of [allover326](https://github.com/allover326/vllm-dsa-mtp-sm80).
+
+**Cross-platform context.** The same checkpoint at the same revision also runs on a two-node DGX Spark kit (GB10, vLLM, TP=2): c=1 48.7 tok/s, c=16 106.8 tok/s aggregate, 2,941-token uncached prefill 1,566 tok/s, vision PASS. Results: [DeepSeek-V4-Flash-Vision-Exp-DGX-Spark](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-DGX-Spark). The two platforms use different runtimes, parallelism, and memory budgets. Read the numbers as context, not as a head-to-head comparison.
 
 ## Verified baseline
 
 The current hardware and repeatable software baseline is:
 
 - 4 × CMP 170HX installed, each reporting 64 GiB VRAM;
-- published load tests on one- and three-card topologies;
+- published load tests on one-, three-, and four-card topologies;
 - Ubuntu 22.04 guest on a Proxmox Q35 VM with SeaBIOS;
 - Linux 6.8 and NVIDIA 610.43.03 open kernel modules;
 - pinned `cmpunlocker` v0.1 patch set;
@@ -62,15 +82,20 @@ detailed ledger is not public.
 | GLM-5.3-Flash | NVFP4 | 3 cards | — | — | — | Not compatible: SM121-format weights on SM80; AWQ INT4 ≈ 66 GiB/card does not fit 3 × 64 GiB | [Negative result](docs/BENCHMARKS.md#negative-results-matter) |
 | Qwen3.8-27B | NVFP4 · vLLM | 1 card × 3 runs @ 180 W | — | — | — | Pending evidence repair: [repo PR 1](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
 | DeepSeek-V4-Flash-0731 | FP8 · vLLM pipeline | 3 cards | — | — | — | Pending evidence repair: [repo PR 1](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX/pull/1) | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
-| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 | **59.78 tok/s warm** · 56.6 sustained | **169.65 tok/s @ c=4** · 325.5 tok/s prefill | Text passed; image rejected (HTTP 400) | Provisional measured text baseline; vision and immutable runtime pin still blocked | [Result summary](results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 · DSpark k=6 | `{{C1}}` tok/s @ c=1 | `{{C4}}` tok/s @ c=4 · `{{C16}}` tok/s @ c=16 · `{{PREFILL}}` tok/s prefill | Text passed; image not served on this path | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Benchmarks](docs/BENCHMARKS.md#deepseek-v4-flash-vision-exp-four-cards) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 cards · PP4 · DSpark k=6 | 59.78 tok/s warm (single stream) | 101.21 tok/s @ c=1 · 169.65 tok/s @ c=4 · 325.5 tok/s prefill | Text passed; image rejected (HTTP 400) | Earlier run, provenance unverified, superseded | [Result summary](results/2026-08-31-deepseek-v4-flash-vision-exp-cmp170hx.md) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 → BF16 fallback · reference TP4 runtime + SM80 patches | 4 cards · TP4 · batch 1 | 0.9 tok/s | — | Real-image completion PASS; prefill OOM above ~1,024 tokens | Correctness evidence only, not a performance result | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Benchmarks](docs/BENCHMARKS.md#vision-correctness-milestone) |
 
 `—` = not presented without sanitized stable evidence. Pending and provisional
 rows are not decision-grade; they remain visible so measured learning is not
 lost, but their status and blockers must stay explicit.
 
-The Vision-Exp row is intentionally visible but not labeled publication-safe:
-the key text numbers are measured, while the SM80 runtime does not yet wire the
-vision tower and its source revision was unavailable from the measured image.
+The three Vision-Exp rows describe one checkpoint on two runtimes. The first
+row is the in-progress normalized text benchmark. The second row keeps the
+earlier ladder visible; the numbers are measured, but the runtime source
+revision was unavailable from the running image and the protocol differed from
+the single-stream baseline, so the row is superseded. The third row is the
+vision-correctness milestone; its decode rate is not a performance claim.
 
 ## Repository map
 
