@@ -20,24 +20,39 @@ Example: `2026-09-02-deepseek-v4-flash-vision-exp-4card-pp4-vllm.ipynb`.
 
 ## Required sections
 
-Every notebook uses the same six sections, in this order. `notebooks/TEMPLATE.ipynb`
-has the section headers and helper cells already in place.
+Every notebook reads top to bottom in four sections, in this order.
+`notebooks/TEMPLATE.ipynb` and `notebooks/TEMPLATE-vision.ipynb` have the
+section headers and helper cells already in place. A reader who stops after
+section 1 gets the verdict; a reader who stops after section 3 can
+reproduce the run; nobody has to read the appendix unless they want the
+failure history.
 
-1. **Identity and pins** — model name and revision, shard count, image digest,
-   runtime source commit and patches, torch/vLLM (or other engine) versions,
-   topology, and hardware. State each pin as measured; do not guess a version.
-2. **Preflight and safety** — the safety limits and stop conditions from
-   `AGENTS.md` (thermal ceilings, Xid/ECC checks, storage checks), and
-   confirmation that the run followed them.
-3. **Load gate** — the readiness and deterministic-output check that must
-   pass before any measurement counts.
-4. **Functional gates** — protocol-level checks: sampling settings, token
-   accounting method, fixture sizes, and any pass/fail gate other than the
-   load gate.
-5. **Measurements** — the tables and charts for the experiment's metrics.
-6. **Publication and limitations** — what the result does and does not show,
-   known failures, and links to the evidence source and any related
-   comparison repository.
+1. **TL;DR.** Nothing above this but the notebook title and the `LIVE`
+   status cell. One key-metrics table (pass/fail, headline throughput
+   numbers, cold boot time, power) and one pins table (model revision,
+   runtime commit, image tag, driver, topology, quantization). Keep this
+   section short enough to screenshot.
+2. **Visible results.** Every chart, every results table, and, for a
+   vision notebook, the fixture images shown inline next to the model's
+   answer. This is where a reader checks the claim in section 1 against
+   the evidence.
+3. **Reproduce.** Hardware requirements (card, VRAM per card, card count,
+   PCIe, power, cooling), the `docker pull` and `docker run` commands, the
+   snapshot download, the launch command, the bench command, and the
+   expected boot time. A reader with the right hardware can run this
+   section and get the same numbers.
+4. **Appendix.** Collapsed under a `<details>` heading so it stays out of
+   the main scroll. Every failed attempt with its exact error class and
+   its fix or its dead end, how the approach evolved, safety/preflight
+   notes, cost and limitations, and links to the evidence source. Long
+   narrative belongs here, not in sections 1 to 3.
+
+Identity/pins, preflight, load gate, functional gates, measurements, and
+publication/limitations are still the content categories from the older
+six-section convention; they now nest inside these four sections instead
+of each getting a top-level heading. Preflight and load-gate detail move
+to the appendix; a one-line preflight confirmation ("stayed within limits")
+is enough in section 1 or 3.
 
 ## The LIVE flag
 
@@ -84,7 +99,9 @@ evidence repository.
 
 ## Adding a notebook
 
-1. Copy `notebooks/TEMPLATE.ipynb` to the new file name.
+1. Copy `notebooks/TEMPLATE.ipynb` to the new file name, or
+   `notebooks/TEMPLATE-vision.ipynb` for an experiment that exercises image
+   input.
 2. Copy the sanitized receipts for the experiment into
    `results/<experiment>/` (README, RESULTS.md or equivalent, raw JSON,
    harness script, protocol script, telemetry, and a log tail).

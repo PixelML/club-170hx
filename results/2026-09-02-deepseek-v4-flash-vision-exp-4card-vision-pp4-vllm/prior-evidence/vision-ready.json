@@ -1,0 +1,48 @@
+{
+  "gate": "vision-ready",
+  "timestamp_utc": "2026-09-01T15:38:00Z",
+  "model_id": "deepseek-v4-flash-vision-exp-cmp-170hx",
+  "endpoint": "private OpenAI-compatible, internal network only",
+  "topology": "TP4, 4x CMP 170HX (SM80, 64 GiB each)",
+  "gates": {
+    "v1_models": {
+      "http": 200,
+      "model_id": "deepseek-v4-flash-vision-exp-cmp-170hx"
+    },
+    "text_completion": {
+      "http": 200,
+      "latency_s": 10.7,
+      "answer": "OK",
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 2
+      }
+    },
+    "image_completion": {
+      "http": 200,
+      "prompt_tokens": 135,
+      "completion_tokens": 20,
+      "answer": "The dominant colors are pink, yellow, blue, and green, blending smoothly in a gradient.",
+      "fixture": "64x64 PNG gradient (red-to-green vertical, blue constant); colors absent from prompt"
+    }
+  },
+  "fixes": [
+    "b70923c block-scale broadcast + pure-torch hadamard",
+    "f4e9772 image placeholder import fix",
+    "5d0d1ca native multimodal encoding route"
+  ],
+  "health": {
+    "gpu_mem_per_card_mib": 44408,
+    "temps_c": [
+      38,
+      39
+    ],
+    "power_w": [
+      39,
+      43
+    ],
+    "xid_ecc": "none",
+    "restarts": 0,
+    "oom": false
+  }
+}
