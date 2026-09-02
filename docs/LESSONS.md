@@ -229,6 +229,19 @@ card near 88 W of a 250 W budget and dropping clocks to about 1140 MHz
 part of the stack for low throughput; it reports `Active` only when the
 platform itself is asserting the signal.
 
+**Measured 2026-09-02 (four-card test node): PCIe Gen1 is the card's own
+advertised ceiling, not a passthrough bug.** Host-side `lspci -vv` on the
+hypervisor shows every CMP 170HX card's `LnkCap` reporting `Speed 2.5GT/s,
+Width x16` — the card's own PCIe capability register caps at Gen1, so a
+Gen1 link observed in a guest reflects the card/vBIOS, not a hypervisor
+misconfiguration. One card of the four trained at x8 instead of its
+advertised x16, a real width downgrade that points to a riser or slot
+issue on that card specifically. Consumer GeForce cards on the same host
+showed x1 width at 2.5GT/s at idle; that is expected ASPM power-saving
+behavior at idle, not a fault, and should not be read as a passthrough
+problem either. See [Hardware — PCIe link status](HARDWARE.md#pcie-link-status)
+for the full note.
+
 ## g. Failure modes and recovery
 
 | Signal | Meaning | Recovery |
