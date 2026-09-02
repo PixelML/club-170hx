@@ -34,7 +34,11 @@ cell. It holds, in this order and nothing else:
    states that plainly instead of showing a fake image.
 4. The pull command, one code line (`hf download ...` or `docker pull ...`).
 5. One link line: the release, the evidence repository, or the
-   Hugging Face collection.
+   Hugging Face collection. When the model has a guide page under
+   `docs/models/`, that link line points there instead — the guide is
+   the durable how-to (settings, troubleshooting, current numbers); this
+   notebook is the executed proof that one specific run happened. A model
+   with no guide page yet keeps the release/evidence/collection link.
 
 No pins, no protocol text, no prose paragraph belongs in this cell. If the
 notebook has an embedded video, that cell comes second, right after the
