@@ -29,11 +29,13 @@ docker pull nvidia/cuda:13.0.2-cudnn-devel-ubuntu22.04
 
 ```bash
 pip install -U huggingface_hub
-hf download lued/Qwen3.8-27B-INT8-W8A16-MTP --revision <pin-before-use> --local-dir <weights>
+hf download dbirks/Qwen3.8-27B-W4A16-AutoRound --revision <pin-before-use> --local-dir <weights>
 hf download syvai/Qwen3.8-27B-DFlash2-W4A16 --revision <pin-before-use> --local-dir <draft>
 ```
 
-The evidence repository does not carry a pinned revision hash for either repo in the sanitized notes reviewed for this page — pin one from your own `hf download` output before relying on it.
+`dbirks/Qwen3.8-27B-W4A16-AutoRound` is the main checkpoint for this recipe (the onstart scripts in the evidence repository confirm it; `lued/Qwen3.8-27B-INT8-W8A16-MTP` is a different, unrelated checkpoint and does not apply here). Neither the base nor the draft `hf download` call in the onstart scripts pins a revision — pin one from your own `hf download` output before relying on it.
+
+Package versions measured for this recipe: vLLM 0.27.1, torch 2.13.0, flashinfer 0.6.16.post3, flashinfer-cubin 0.6.13.
 
 ### 3. Launch
 
@@ -70,6 +72,7 @@ Qwen3.8-27B is text-only on this recipe; no image-input example applies.
 - **KV cache:** BF16 is the default and the faster choice. FP8 KV was measured at -3.4% decode and -19.5% prefill versus BF16 KV at 131k context on the same server — FP8 KV buys long context, it does not come free.
 - **Power:** 180 W local reaches 95% of the 255 W rented card's decode rate at 71% of the power draw. Prefill reaches 91% of the 255 W rate at 180 W. TTFT is worse locally (about 190 ms vs. 76 ms), attributed to the PCIe Gen2 x4 host link, not the power cap.
 - **Context:** 65,536 measured on the rented single-card run; 131,072 measured for the FP8-KV comparison. Not tested beyond that on this checkpoint.
+- **Concurrency:** every run in this guide used `--max-num-seqs 1`. Multi-stream throughput is untested for this recipe.
 
 ## Troubleshooting
 
@@ -114,8 +117,9 @@ Peak core temperature 51°C, peak memory temperature 61°C across the three runs
 
 - **Evidence repository:** [PixelML/Qwen3.8-27B-CMP-170HX](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX).
 - **GHCR image:** none published for this recipe as of this writing.
-- **Checkpoints:** `lued/Qwen3.8-27B-INT8-W8A16-MTP` (main), `syvai/Qwen3.8-27B-DFlash2-W4A16` (draft) — pin an exact revision before use; none is recorded in the sanitized evidence reviewed for this page.
-- **Patch series:** DFlash2 patches from the syv-ai reference stack, applied at container start.
+- **Checkpoints:** [dbirks/Qwen3.8-27B-W4A16-AutoRound](https://huggingface.co/dbirks/Qwen3.8-27B-W4A16-AutoRound) (main), [syvai/Qwen3.8-27B-DFlash2-W4A16](https://huggingface.co/syvai/Qwen3.8-27B-DFlash2-W4A16) (draft) — pin an exact revision before use; neither onstart script in the evidence repository records one.
+- **Package pins:** vLLM 0.27.1, torch 2.13.0, flashinfer 0.6.16.post3, flashinfer-cubin 0.6.13.
+- **Patch series:** DFlash2 patches from the syv-ai reference stack ([syv-ai/qwen38-27b-rtx3090](https://github.com/syv-ai/qwen38-27b-rtx3090)), applied at container start.
 
 ## Changelog
 
