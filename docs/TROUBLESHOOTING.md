@@ -49,6 +49,34 @@ Recovery order:
 
 Repeated warm reboots can waste time when the root port or endpoint no longer enumerates.
 
+## Driver recovery ladder
+
+**Symptom.** After a crashed GPU job, CUDA initialization fails in every
+container with `CUDA driver initialization failed`
+(`cudaErrorDevicesUnavailable`) even though `nvidia-smi` still lists the
+cards. The kernel log carries NVRM `_scrubWaitAndSave: Timed out` lines or
+an `nvGpuOpsReportFatalError ... global fatal error` line. Work down this
+ladder in order; the kernel log decides which rung applies.
+
+1. **Module reload — works for scrub timeouts (measured 2026-09-03, about
+   3 minutes).** Stop `nvidia-persistenced`, unload the driver stack with
+   `rmmod nvidia_uvm nvidia_drm nvidia_modeset nvidia`, then reload it with
+   `modprobe nvidia && modprobe nvidia_uvm`. Verify recovery before resuming
+   real work: run a container that prints `torch.cuda.device_count()` and
+   executes a small tensor operation on every card.
+2. **Guest VM reboot — required when the kernel log shows Xid 154
+   ("GPU recovery action changed ... OS Reboot") or the UVM global fatal
+   error (measured 2026-09-02).** The module reload does not clear this
+   state. Reboot the guest VM; on a PCI-passthrough guest the host does not
+   need to reboot.
+
+**Prevention.** Do not restart a server while another CUDA job's workers are
+still exiting — overlapping teardown races leave
+`cudaErrorDevicesUnavailable` behind. Bind an explicit device list
+(`--gpus '"device=0,1,2,3"'`; the inner quotes are required) instead of
+`--gpus all`. Avoid host-OOM eager model loads: the measured out-of-memory
+event caused the MMU faults (Xid 31) that preceded the fatal error above.
+
 ## A card is physically cold
 
 A cold card during an expected workload usually means it is not drawing workload power. Check, in order:
