@@ -77,6 +77,17 @@ still exiting — overlapping teardown races leave
 `--gpus all`. Avoid host-OOM eager model loads: the measured out-of-memory
 event caused the MMU faults (Xid 31) that preceded the fatal error above.
 
+**Power cap is also reset by both rungs of this ladder.** A module reload
+or a guest reboot returns every card to the vBIOS default power limit
+(250 W on this fleet), not the club's 180 W policy. This happened on
+2026-09-02 and produced a benchmark ladder measured at the wrong power
+cap by accident. After either recovery step, run
+`scripts/qc/set-powercap.sh` and confirm
+`nvidia-smi --query-gpu=power.limit --format=csv` reads 180.00 W on all
+four cards before resuming any benchmark. The `nvidia-powercap` systemd
+unit re-applies the cap on normal boot, but a module reload does not go
+through that unit and needs the manual check.
+
 ## A card is physically cold
 
 A cold card during an expected workload usually means it is not drawing workload power. Check, in order:
