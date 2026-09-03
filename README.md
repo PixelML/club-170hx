@@ -47,6 +47,7 @@ outputs. The schema and the LIVE-replay convention are in
 | 2026-08-30 | DeepSeek-V4-Flash-0731, 3x CMP 170HX, PP3 vLLM | 83.3 tok/s aggregate decode, DSpark k=5, 180 W/card | [notebooks/2026-08-30-deepseek-v4-flash-0731-3card-pp3-vllm.ipynb](notebooks/2026-08-30-deepseek-v4-flash-0731-3card-pp3-vllm.ipynb) | — |
 | 2026-08-30 | Qwen3.8-27B W4A16 AutoRound + DFlash2, 1x CMP 170HX vLLM | Best local 140.3 tok/s decode at 180 W (95% of a 255 W rented card's decode at 71% of the power cap) | [notebooks/2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb](notebooks/2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb) | [mp4](assets/video/qwen38-27b-motion/qwen38-27b-motion-1080x1920.mp4) |
 | 2026-08-31 | GLM-5.3-Flash compatibility, CMP 170HX (negative result) | NVFP4 incompatible on SM80; llama.cpp UD-IQ4_XS fallback runs at 17.73 tok/s (c=1) | [notebooks/2026-08-31-glm-5.3-flash-compatibility-cmp170hx.ipynb](notebooks/2026-08-31-glm-5.3-flash-compatibility-cmp170hx.ipynb) | — |
+| 2026-09-02 | GLM-5.3-Flash, 4x CMP 170HX, EXL3 4.05bpw, exllamav3 + TabbyAPI | 26.9-44.8 tok/s aggregate decode (c=1-c=8); 20/20 golden corpus; single-request context capped at ~2,048 tokens under the standing Q8 KV cache | [notebooks/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi.ipynb](notebooks/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi.ipynb) | — |
 
 ## Four-card rig update
 

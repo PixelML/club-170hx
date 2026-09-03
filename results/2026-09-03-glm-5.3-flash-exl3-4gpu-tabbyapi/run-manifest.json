@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "date_utc": "2026-09-02",
+  "runtime": {
+    "engine": "exllamav3",
+    "version": "1.4.6+cu128.torch2.10.0",
+    "server": "TabbyAPI (OpenAI-compatible)"
+  },
+  "model": {
+    "repo": "turboderp/GLM-5.3-Flash-exl3",
+    "branch": "4.05bpw",
+    "revision": "2a30229e67012798ba9f0cd832bb78abf4c363d5",
+    "format": "EXL3",
+    "bits_per_weight": 4.05,
+    "arch_class": "Glm5NextForConditionalGeneration"
+  },
+  "serve_config": {
+    "gpu_split_gb": [48, 48, 48, 48],
+    "parallelism": "manual gpu_split (NOT tensor_parallel; TP raises NotImplementedError for Glm5NextForConditionalGeneration in exllamav3 1.4.6)",
+    "max_seq_len": 32768,
+    "cache_size": 32768,
+    "cache_mode": "Q8",
+    "reasoning": true,
+    "drafting": "disabled (n-gram speculative decoding tested, no throughput benefit)"
+  },
+  "host": {
+    "gpus": "4x CMP 170HX 64 GiB",
+    "vram_footprint_mib": {
+      "gpu0": 48468,
+      "gpu1": 47982,
+      "gpu2": 47982,
+      "gpu3": "12084-12116"
+    },
+    "vram_total_pool_gib": 256
+  },
+  "known_limitation": {
+    "id": "dsa-q8-cache-context-cap",
+    "summary": "GLM-5.3-Flash uses DeepSeek Sparse Attention (DSA) with index_topk=2048 (from the model's config.json). exllamav3 activates the sparse-attention path once context exceeds ~2048 tokens, and that path asserts against a quantized MLA cache: assert qc is None, \"sparse DSA over a quantized MLA cache is not supported yet; use an fp16 cache\". With cache_mode Q8 (the standing config), any single request whose context exceeds ~2048 tokens fails that request with a 503; the server process itself stays up.",
+    "workaround": "cache_mode: FP16 removes the assertion and was confirmed to still fit the same gpu_split [48,48,48,48] with headroom, but was not load-tested at concurrency and is flagged as unvalidated future work, not a standing recommendation."
+  },
+  "boot_topology_note": {
+    "attempts": [
+      {"gpu_split_gb": [64, 64, 64, 64], "outcome": "OOM at first inference; uneven fill left no KV-cache headroom on GPU0/1 while GPU3 stayed empty"},
+      {"gpu_split_gb": [40, 40, 40, 40], "outcome": "too tight; insufficient VRAM for weights plus cache"},
+      {"gpu_split_gb": [48, 48, 48, 48], "outcome": "working split; GPU3 stays under-loaded (~12 GiB vs ~48 GiB on GPU0-2), a known characteristic of exllamav3's naive sequential-fill autosplit, not a functional problem"}
+    ],
+    "note": "Full failure ladder documented in the sibling evidence repository, not repeated here."
+  },
+  "reasoning_finding": {
+    "summary": "GLM-5.3-Flash defaults to reasoning_effort: max with <think>...</think> tags in its chat template. With TabbyAPI's reasoning config left false, chain-of-thought leaks unparsed into the visible content field and burns the whole token budget with no final answer. Setting reasoning: true routes it into a separate reasoning_content field.",
+    "max_tokens_32": "reproducibly not enough even with reasoning correctly parsed; the model spends the whole budget thinking and returns content: null",
+    "max_tokens_128": "same prompt (capital of France, answer with just the city name) cleanly returns content: \"Paris\"",
+    "recommendation": "max_tokens >= 128 for short factual answers with reasoning enabled"
+  },
+  "golden_corpus": {
+    "n_prompts": 20,
+    "n_passed": 20,
+    "categories": ["short_factual", "reasoning", "code", "json", "multilingual"],
+    "scoring": "keyword-match",
+    "max_tokens": 512
+  },
+  "harness_note": "greedy decoding, exactly 400 completion tokens, 1 warmup + 3 measured reps per concurrency level, tokens counted from the final usage object"
+}

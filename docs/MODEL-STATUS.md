@@ -25,7 +25,8 @@ evidence; read the number next to its source.
 | DeepSeek-V4-Flash-Vision-Exp | FP8 e4m3, 48 shards | SM80 vLLM fork, PP4, layer partition 11,11,11,10, DSpark k=6 (text path) | 4 | Measured 2026-09-02 | Decode c=1 97.4 tok/s (median of 3; 57.6–123.5); aggregate c=4 165.5 tok/s (median of 3; 140.3–203.2); aggregate c=16 failed (device-side assert, reproduced twice); uncached prefill (2,941 tokens) 2,352 tok/s warm (362 tok/s first cold prefill); warm TTFT 0.394 s. Earlier superseded ladder: 101.21 tok/s @ c=1, 169.65 tok/s @ c=4, 325.5 tok/s prefill | [PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 e4m3, 48 shards | Same SM80 vLLM fork, PP4, DSpark k=6, vision path (Path 3, 5 boot fixes) | 4 | Measured 2026-09-02, partial | Vision gates PASS (10/10 image keyword match); text golden corpus 15/20 keyword, 10/20 exact-match (known limitation). Text-only decode 119 tok/s median of 5 reps (peak 162) @ c=1 — DSpark acceptance variance (0.20-0.83) drives the spread — 116.6 tok/s @ c=2, server crashed at c=4 (EngineCore died, not restarted). Text+image decode 45.3 tok/s @ c=1, 78.2 tok/s @ c=2 (aggregate, measured after the server came back up); c=4 and above not attempted. Uncached prefill 2,352 tok/s warm; warm TTFT 0.386 s | [notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb](../notebooks/2026-09-02-deepseek-v4-flash-vision-exp-4card-vision-pp4-vllm.ipynb), [docs/BENCHMARKS.md](BENCHMARKS.md#vision-on-vllm-sm80-path-3-measured) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 -> BF16 fallback (reference runtime + 4 SM80 patches) | Reference TP4 runtime, batch 1 (history) | 4 | Measured (correctness, not performance) | **PASS**: first real-image completion of this checkpoint on Ampere hardware, 0.88-0.93 tok/s decode (this is a correctness result; do not read it as a performance number). Superseded as the vision-correctness milestone by the vLLM Path 3 row above, kept here as history | [PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) |
-| GLM-5.3-Flash | UD-IQ4_XS GGUF | llama.cpp (unslothai DSA fork, sm_80) | 4 | Measured | 17.73 tok/s median decode (c=1), ~17.5-17.7 tok/s at c=2/4, 21/26 evaluation tasks, 41/41 soak reps clean | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
+| GLM-5.3-Flash | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI, manual `gpu_split` | 4 | Measured 2026-09-02 | 26.9-44.8 tok/s aggregate decode (c=1-c=8), 20/20 golden corpus; single-request context capped at ~2,048 tokens under the standing Q8 KV cache (DSA/Q8 assertion, 503 past that) | [docs/models/glm-5.3-flash.md](models/glm-5.3-flash.md), [results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi](../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md), full attempt history in [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
+| GLM-5.3-Flash | UD-IQ4_XS GGUF | llama.cpp (unslothai DSA fork, sm_80) | 4 | Measured; superseded by the EXL3 row above | 17.73 tok/s median decode (c=1), ~17.5-17.7 tok/s at c=2/4, 21/26 evaluation tasks, 41/41 soak reps clean | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 | GLM-5.3-Flash | NVFP4 (LibertAIDAI) | vLLM fork (SM121 image only) | — | Negative | Does not run on SM80: sparse-MLA path targets SM12x FlashInfer backends only | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 | GLM-5.3-Flash | EXL3/TR3 4bpw | ExLlamaV3 (SM121 fork image) | — | Negative | Fits VRAM on paper (~40.9 GiB/card at TP=4) but ships SM121-only kernel binaries; no SM80 build exists | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 | GLM-5.3-Flash | AWQ-INT4 (cyankiwi) | Upstream vLLM (if `glm5_next` were supported) | — | Negative | 198.1 GiB measured; fits on paper at TP=4 (~49.5 GiB/card) but `glm5_next` is absent from the upstream vLLM model registry; no runtime path exists yet | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
@@ -62,9 +63,16 @@ weight now that a vLLM-served measurement exists.
 
 **GLM-5.3-Flash.** No quantization/runtime pairing that both fits CMP 170HX's
 VRAM and has a working SM80 kernel path exists for any vLLM-served format as
-of this writing. The one working pairing found (UD-IQ4_XS GGUF on the sm_80
-llama.cpp fork) is the only measured row; every vLLM-path row above is a
-documented negative result kept for the record, not a gap in testing.
+of this writing; every vLLM-path row above is a documented negative result
+kept for the record, not a gap in testing. Two non-vLLM lanes now work: EXL3
+4.05bpw on exllamav3 1.4.6 + TabbyAPI (2026-09-02, 26.9-44.8 tok/s, the
+recommended recipe) and UD-IQ4_XS GGUF on the sm_80 llama.cpp fork
+(2026-08-30, 17.73 tok/s, now superseded). The EXL3 recipe's standing Q8 KV
+cache caps single-request context at about 2,048 tokens — GLM-5.3-Flash's
+DeepSeek Sparse Attention path does not support a quantized MLA cache in
+this exllamav3 build, and a request over that limit fails with a 503 while
+the server stays up. See [docs/models/glm-5.3-flash.md](models/glm-5.3-flash.md)
+for the full recipe and the caveat.
 
 **Ninfer sm_80 fork.** A genuine, buildable sm_80 port of a Blackwell-targeted
 engine. A controlled A/B against the vLLM DFlash2 recipe on 2026-09-02
