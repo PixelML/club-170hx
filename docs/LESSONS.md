@@ -381,8 +381,9 @@ telemetry stream.
 | Signal | Meaning | Recovery |
 |---|---|---|
 | Xid 79, "fallen off the bus" | Card left the PCIe bus; PCI config reads as an invalid header | Function-level reset, secondary-bus reset, runtime power changes, and remove/rescan all failed in the measured case. A true cold power cycle (standby rails discharged) was required |
-| Xid 154, "Node Reboot Required" | Follow-on to a bus-drop event | Full VM/host reboot |
-| Xid 43 (software-classified) | Draft-path embedding assert at high concurrency (measured at c=16 on a DSpark ladder) | Not a hardware or ECC fault; restart the server process |
+| Xid 31 | MMU fault — usually a bad kernel or an out-of-memory path (measured 2026-09-02 after a host-OOM eager model load) | Stop-and-verify: if followed by the UVM global fatal error, use the [driver recovery ladder](TROUBLESHOOTING.md#driver-recovery-ladder); run the [tensor-core correctness gate](QC.md#stage-3b-tensor-core-correctness-gate) before trusting the card again |
+| Xid 154, "Node Reboot Required" | Follow-on to a bus-drop event; also the recovery action logged by the UVM global fatal error ("GPU recovery action changed ... OS Reboot"), where it follows Xid 31 MMU faults instead | Full VM/host reboot after a bus drop; when it follows MMU faults with no bus drop, rebooting the guest VM clears it and the host stays up (measured 2026-09-02, see the [driver recovery ladder](TROUBLESHOOTING.md#driver-recovery-ladder)) |
+| Xid 43 (software-classified) | Generically a software-caused channel reset; here a draft-path embedding assert at high concurrency (measured at c=16 on a DSpark ladder) | Not a hardware or ECC fault; restart the server process |
 | `RuntimeError: cancelled` in `shm_broadcast.py acquire_read` | `EngineCore` process died mid-batch under concurrent load on the vision-path fork (section f.1); crash point measured at c=4 (180 W, first run) and again at c=4 on warmup or mid-c=8 depending on power cap (section f.2, 250 W crashes at c=4, 180 W crashes mid-c=8); not an Xid or ECC event, not thermal (41-58 C at every observed crash) | Not a hardware fault; the container exits cleanly (code 0). Restart the server process to recover; stay at c=2 or below until this is fixed; do not restart automatically if a standing instruction says otherwise |
 | NVRM VA-space corruption after an OOM kill storm | Kernel log shows NVRM assertion failures on every GPU (`pool_alloc.c`, `vaspace_api.c`); `cuInit` returns `CUDA_ERROR_NO_DEVICE` host-wide | Reloading `nvidia_uvm` alone does not clear it. Full sequence: `rmmod nvidia_uvm nvidia` then `modprobe nvidia nvidia_uvm` restores all devices without a VM reboot |
 | `--gpus all` assigns zero devices after a crash | Stale cgroup state left behind by an OOM crash; reproduced in a minimal test container | Use an explicit device list (for example `--gpus '"device=0,1,2,3"'`) instead of `all` |
@@ -390,6 +391,22 @@ telemetry stream.
 | NCCL store timeout (600 s) | One rank stalls on an NFS page-in for a large shard while its peers reach the rendezvous store first; the skew exceeds the store timeout and `torchrun` SIGTERMs the stalled rank | Root cause is storage-read skew across ranks, not a network or NCCL defect; stage weights locally (section e) to remove the skew |
 | Container seccomp blocks `pidfd_getfd` | A CPU-offload worker process needs `pidfd_getfd`; common container seccomp profiles deny it | Works on bare metal; inside a container, either allow the syscall or avoid the code path that needs CPU offload (fits when the table it offloads is small enough for VRAM) |
 | `RuntimeError: Triton Error [CUDA]: an illegal memory access was encountered` in `prepare_dflash_inputs` (`spec_decode/dflash/speculator.py`) | Second, distinct stability bug on the vision-path fork: the DSpark/DFlash draft-input-preparation Triton kernel faults on the drafter rank while building a long-context fixture (measured at `max-model-len 262144`, failing between 65,000 and 131,000 prompt tokens); cascades to `c10::AcceleratorError` then `EngineDeadError`; not the same code path as the `shm_broadcast acquire_read` crash above, and not thermal or Xid (peak 51 °C, zero Xid/ECC lines) | Not a hardware fault; the container exits cleanly (code 0). Restart the server process to recover; treat prompts above 65,000 tokens as unverified on this recipe until the kernel is patched or bisected; do not restart automatically if a standing instruction says otherwise |
+
+- **Driver recovery after a crashed GPU job: module reload first, guest VM
+  reboot when the log says so (measured 2026-09-02 and 2026-09-03).** When
+  CUDA init fails in every container after a crash
+  (`CUDA driver initialization failed` / `cudaErrorDevicesUnavailable`), let
+  the kernel log pick the recovery rung: NVRM scrub-timeout lines clear with
+  a full driver-stack reload (stop `nvidia-persistenced`;
+  `rmmod nvidia_uvm nvidia_drm nvidia_modeset nvidia`;
+  `modprobe nvidia nvidia_uvm`; about 3 minutes), but Xid 154
+  "GPU recovery action changed ... OS Reboot" or the UVM global fatal error
+  survives the reload and needs a guest VM reboot — on a passthrough guest
+  the host stays up. Prevention: never restart a server while another job's
+  workers are still exiting, pin an explicit `--gpus '"device=0,1,2,3"'`
+  device list (inner quotes required), and avoid host-OOM eager loads — the
+  Xid 31 MMU faults that preceded the fatal error came from one. Full
+  ladder: [TROUBLESHOOTING.md](TROUBLESHOOTING.md#driver-recovery-ladder).
 
 ## h. QC
 
