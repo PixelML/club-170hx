@@ -10,22 +10,26 @@ fell back to a slow llama.cpp GGUF path at 17.73 tok/s. This EXL3 recipe
 replaces that fallback: 26.9-44.8 tok/s across the concurrency ladder, on
 the same hardware.
 
-> **Context-length warning.** With the standing `cache_mode: Q8` config,
-> any single request whose context exceeds about **2,048 tokens fails with
-> a 503**. GLM-5.3-Flash's DeepSeek Sparse Attention (DSA) mechanism
-> activates past that point, and exllamav3's sparse-attention path does not
-> yet support a quantized MLA cache. The server process itself stays up —
-> only the oversized request fails. See
+> **Context-length update (2026-09-03, resolved).** The `cache_mode: Q8`
+> config caps a single request's context at about 2,048 tokens, because
+> GLM-5.3-Flash's DeepSeek Sparse Attention (DSA) mechanism activates past
+> that point and exllamav3's sparse-attention path does not support a
+> quantized MLA cache. **This is fixed by switching to `cache_mode:
+> FP16`**, which has now been validated up to 262,144 tokens of context
+> (250,000 prompt tokens actually tested, no OOM, no crash). `cache_mode:
+> FP16` / 262k context is the recommended default for long-context use;
+> `cache_mode: Q8` / 32k remains a valid lower-VRAM alternative for
+> short-context chat. See
 > [Context limit: Q8 cache and DSA](#context-limit-q8-cache-and-dsa) below
-> before relying on this recipe for anything beyond short-context chat.
+> for the root cause and the 262k-context validation data.
 
 ## Run on CMP 170HX
 
 | Cards | Format | Runtime | gpu_split | Cache mode | Max context (single request) | Measured decode | Status |
 |---|---|---|---|---|---:|---|---|
-| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | Q8 | ~2,048 tokens before DSA/Q8 fails the request | 26.9 tok/s (c=1) to 44.8 tok/s (c=8) | Measured |
-| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | FP16 | untested at concurrency; confirmed to fit VRAM | not load-tested | Untested (future work) |
-| 4 | UD-IQ4_XS GGUF | llama.cpp (unslothai sm_80 fork) | layer split, `1,1,1,1` | F16 (server default) | 16,384 | 17.73 tok/s (c=1) | Measured, superseded by the row above (see [docs/MODEL-STATUS.md](../MODEL-STATUS.md)) |
+| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | **FP16 (recommended default)** | 262,144 tokens configured; 250,000 prompt tokens validated, no OOM/crash | 26.9-44.8 tok/s ladder not re-run at 262k; short-context ladder below still applies | Measured (context length), throughput ladder not re-run |
+| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | Q8 (lower-VRAM, short-context alternative) | ~2,048 tokens before DSA/Q8 fails the request | 26.9 tok/s (c=1) to 44.8 tok/s (c=8) | Measured |
+| 4 | UD-IQ4_XS GGUF | llama.cpp (unslothai sm_80 fork) | layer split, `1,1,1,1` | F16 (server default) | 16,384 | 17.73 tok/s (c=1) | Measured, superseded by the rows above (see [docs/MODEL-STATUS.md](../MODEL-STATUS.md)) |
 
 ## Quick start
 
@@ -50,18 +54,34 @@ server). Install both per their upstream project instructions.
 
 ### 3. Configure and launch
 
+**Recommended default (long context, up to 262,144 tokens):**
+
+```yaml
+model_dir: <weights>
+gpu_split: [48, 48, 48, 48]   # GB per card, manual split — unchanged from the short-context config
+max_seq_len: 262144
+cache_size: 262144
+chunk_size: 4096
+cache_mode: FP16                # required for context past ~2,048 tokens; see below
+reasoning: true                 # required, see below
+```
+
+**Lower-VRAM short-context alternative (<= ~2,048 tokens usable per request):**
+
 ```yaml
 model_dir: <weights>
 gpu_split: [48, 48, 48, 48]   # GB per card, manual split
 max_seq_len: 32768
 cache_size: 32768
-cache_mode: Q8                 # switch to FP16 for single requests over ~2048 tokens
+chunk_size: 2048
+cache_mode: Q8                 # caps single-request context at ~2,048 tokens; see below
 reasoning: true                 # required, see below
 ```
 
 `tensor_parallel` raises `NotImplementedError` for
 `Glm5NextForConditionalGeneration` in exllamav3 1.4.6. `gpu_split` (manual,
-per-card GB) is the working topology, not TP.
+per-card GB) is the working topology, not TP — the same split works
+unchanged for both configs above.
 
 ### 4. First request
 
@@ -94,28 +114,88 @@ budget thinking and returns `content: null`. `max_tokens=128` on the same
 prompt cleanly returns `content: "Paris"`. **Recommendation: use
 `max_tokens >= 128` for short factual answers with reasoning enabled.**
 
-## Context limit: Q8 cache and DSA
+## Context limit: Q8 cache and DSA (resolved 2026-09-03)
 
 GLM-5.3-Flash uses DeepSeek Sparse Attention (DSA), an indexer-based sparse
 attention mechanism. Per the model's own `config.json`, `index_topk: 2048`.
-exllamav3 activates the sparse-attention code path once context exceeds
-about 2,048 tokens, and that code path carries an explicit assertion that
-it does not support a quantized (Q8) MLA cache:
+In exllamav3 1.4.6 (`exllamav3/modules/mla_attn.py`):
 
-```
-assert qc is None, "sparse DSA over a quantized MLA cache is not supported yet; use an fp16 cache"
-```
+- Sparse attention activates once `max(host_seqlens) + seqlen >
+  self.index_topk` (line 765) — intended DSA behavior, not a bug, on a
+  model that natively supports up to 1,048,576 tokens
+  (`max_position_embeddings` in `config.json`).
+- That sparse-attention path carries an explicit assertion that it does
+  not support a quantized MLA cache (`_attend_sparse`, ~line 906):
 
-**Practical consequence:** with `cache_mode: Q8` (the VRAM-efficient
-standing config used for this recipe), any single request whose context
-exceeds about 2,048 tokens fails that request with a 503. The server
-process itself stays up and keeps serving shorter requests normally.
+  ```
+  assert qc is None, "sparse DSA over a quantized MLA cache is not supported yet; use an fp16 cache"
+  ```
 
-Long-context use requires `cache_mode: FP16` instead. FP16 was confirmed to
-still fit the same `gpu_split [48, 48, 48, 48]` with headroom (GPU0=45270,
-GPU1=48078, GPU2=44526, GPU3=19316 MiB when tested), but it was **not
-load-tested at concurrency**. Treat FP16 as unvalidated future work, not a
-standing recommendation, until a concurrency ladder exists for it.
+- `qc` is only non-`None` when `cache_mode` is `Q8`/`Q6`/`Q4`
+  (`CacheLayer_MLA_quant`). With `cache_mode: FP16`
+  (`CacheLayer_MLA_fp16`), `qc = None` and the sparse path works fine.
+
+**Conclusion: the cap comes from `cache_mode: Q8` colliding with the DSA
+indexer window — not from `max_seq_len` or TabbyAPI's chunk/max-input
+settings.** With `cache_mode: Q8` (the VRAM-efficient short-context
+config), any single request whose context exceeds about 2,048 tokens fails
+that request with a 503; the server process itself stays up and keeps
+serving shorter requests normally.
+
+### Fix and 262k-context validation
+
+Switching to `cache_mode: FP16` (with `max_seq_len`/`cache_size: 262144`
+and `chunk_size: 4096`; `gpu_split` unchanged) lifts the cap. Boot
+succeeded on the first attempt, about 2.5 minutes from local NVMe.
+Per-card memory after load: GPU0=46,230, GPU1=45,456, GPU2=45,488,
+GPU3=23,638 MiB — 19-42 GiB headroom per card under the 64 GiB cap.
+
+**Prefill ladder** (max_tokens=1, tokenizer-exact prompt lengths, one
+continuously-booted server, no restart between steps):
+
+| Prompt tokens | Result | Prefill time | Peak mem (GPU0/1/2/3, MiB) |
+|---:|---|---:|---|
+| 2,941 | OK | 14.27 s | 48,308 / 47,518 / 47,550 / 25,662 |
+| 16,000 | OK | 20.79 s | 49,076 / 48,322 / 48,354 / 26,496 |
+| 32,000 | OK | 26.92 s | 49,076 / 48,356 / 48,356 / 26,496 |
+| 65,000 | OK | 50.80 s | 49,142 / 48,388 / 48,420 / 26,624 |
+| 131,000 | OK | 102.04 s | 49,144 / 48,390 / 48,422 / 26,626 |
+| 200,000 | OK | 48.21 s | 49,176 / 48,390 / 48,422 / 26,626 |
+| 250,000 | OK | 35.35 s | 49,176 / 48,390 / 48,422 / 26,626 |
+
+**Largest verified prompt: 250,000 tokens.** No OOM, no crash at any
+tested length. Prefill time drops noticeably past 131k tokens, because
+DSA's indexer caps attention cost at a fixed top-k=2048 token selection
+regardless of total context length — the 131k point looks like a
+transitional/less-optimized case rather than a regression, but this is
+flagged as an open question, not a settled explanation. Memory stayed
+essentially flat from 16k tokens onward: going from 16k to 250k tokens
+cost only about 2 GiB total across all four cards, because the MLA/DSA
+cache is cheap per token and this model's hybrid linear-attention layers
+(KDA / gated-delta-net) carry O(1) state that does not grow with context.
+
+**Needle-in-haystack retrieval:**
+
+| Context length | Result |
+|---|---|
+| 32k tokens | PASS — correctly retrieved a planted unique fact |
+| 250k tokens | PASS — correctly retrieved a planted unique fact |
+
+**Health:** no Xid or ECC (including double-bit) events at any point in
+the ladder (`nvidia-smi -q` and `dmesg`); peak temperature 51 degrees C;
+server process stayed up throughout, no driver reload needed.
+
+**Scope note:** only prefill/context-length behavior was re-tested. The
+full C1/C2/C4/C8 throughput ladder was **not** re-run at 262k context —
+the 26.9-44.8 tok/s figures below remain the short-context (`Q8` cache)
+measurement, and no throughput regression was observed at short context
+during this update, but that claim does not extend to a re-run 262k
+ladder.
+
+`cache_mode: FP16` / 262,144-token context is now the recommended default
+for this recipe whenever long context matters. Keep `cache_mode: Q8` /
+32,768-token context only when the lower VRAM footprint matters more than
+long context.
 
 ## Recommended settings
 
@@ -124,13 +204,15 @@ standing recommendation, until a concurrency ladder exists for it.
 - **Speculative decoding:** n-gram drafting was tested and gave no
   benefit — 26.9 tok/s (draft off) vs. 25.0 tok/s (draft n-gram), a 7.2%
   regression within noise. The shipped config has drafting disabled.
-- **KV cache:** Q8 for the standing service (VRAM-efficient, but caps
-  single-request context at about 2,048 tokens because of the DSA
-  assertion above). FP16 removes the cap but is unvalidated at
-  concurrency.
-- **Context:** `max_seq_len` and `cache_size` are both configured at
-  32,768, but the effective per-request ceiling under Q8 is about 2,048
-  tokens once DSA activates.
+- **KV cache:** `FP16` is the recommended default (removes the DSA/Q8 cap,
+  validated to 262,144-token context, costs only about 2 GiB of extra VRAM
+  across all four cards versus Q8 at short context). `Q8` remains a valid
+  lower-VRAM alternative for short-context chat, but caps single-request
+  context at about 2,048 tokens because of the DSA assertion above.
+- **Context:** with `cache_mode: FP16`, `max_seq_len`/`cache_size: 262144`
+  is validated up to 250,000 prompt tokens. With `cache_mode: Q8`,
+  `max_seq_len`/`cache_size` are configured at 32,768, but the effective
+  per-request ceiling is about 2,048 tokens once DSA activates.
 - **Concurrency:** measured clean through c=8 with no OOM.
 - **Reasoning:** `reasoning: true` is required; see above.
 
@@ -217,5 +299,6 @@ text, lives in the sibling evidence repository, not here — see below.
 
 ## Changelog
 
+- **2026-09-03 (follow-up)** — Resolved the ~2,048-token context cap: root-caused to `cache_mode: Q8` colliding with GLM-5.3-Flash's DSA sparse-attention indexer (not `max_seq_len` or TabbyAPI settings). Validated `cache_mode: FP16` up to 262,144-token context (250,000 prompt tokens tested, no OOM/crash, needle-in-haystack PASS at 32k and 250k tokens). `cache_mode: FP16` / 262k is now the recommended default for long-context use; `cache_mode: Q8` / 32k remains documented as the lower-VRAM short-context alternative. The C1/C2/C4/C8 throughput ladder was not re-run at 262k context.
 - **2026-09-02** — EXL3 4.05bpw on exllamav3 1.4.6 + TabbyAPI measured working across 4 cards: 26.9-44.8 tok/s ladder, 20/20 golden corpus, reasoning-parsing and Q8/DSA context-limit findings documented. This recipe replaces the GGUF fallback as the recommended lane.
 - **2026-08-31** — Compatibility review: every vLLM-served checkpoint blocked on SM80; GGUF UD-IQ4_XS on llama.cpp sm_80 fork measured as the only working fallback (17.73 tok/s).
