@@ -1,0 +1,22 @@
+{
+  "power_cap_w": 180,
+  "load_condition": "full run window: concurrency ladder C1-C8 + prefill/TTFT, 1 Hz samples, ~10.5 min (565 samples)",
+  "per_gpu_watts": [
+    {"gpu": 0, "mean_w": 56.7, "peak_w": 139.5, "peak_temp_c": 51},
+    {"gpu": 1, "mean_w": 58.8, "peak_w": 172.6, "peak_temp_c": 49},
+    {"gpu": 2, "mean_w": 56.4, "peak_w": 168.4, "peak_temp_c": 49},
+    {"gpu": 3, "mean_w": 49.8, "peak_w": 102.5, "peak_temp_c": 45}
+  ],
+  "total": {"mean_w": 221.6, "peak_w": 352.4},
+  "note": "Peak per-card power (172.6 W) stayed under the 180 W cap at every sample. Total peak (352.4 W) is a coincident-peak artifact of summing each card's own peak moment, not a real 4-card simultaneous draw -- no single 1 s sample summed above 302 W across all four cards. Raw samples: power-temp-sample-180w.csv.",
+  "comparison_250w": {
+    "load_condition": "C4 load run, 1s samples over 60s, measured 2026-09-02 at the vBIOS default 250 W (accidental, cap not set that session)",
+    "per_gpu_watts": [
+      {"gpu": 0, "mean_w": 65.4, "peak_w": 120.0},
+      {"gpu": 1, "mean_w": 63.0, "peak_w": 101.4},
+      {"gpu": 2, "mean_w": 56.2, "peak_w": 97.4},
+      {"gpu": 3, "mean_w": 50.1, "peak_w": 78.9}
+    ],
+    "total": {"mean_w": 234.7, "peak_w": 302.3}
+  }
+}

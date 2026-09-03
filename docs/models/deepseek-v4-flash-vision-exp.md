@@ -192,6 +192,10 @@ Same recipe (4x CMP 170HX, PP4, DSpark k=6, fp8 KV), relaunched with
 `--max-model-len 262144`. Prefill ladder, greedy, `max_tokens=1`, one
 warmup plus three reps per level, unique prompt prefix per rep.
 
+**Power cap: 250 W.** This ladder ran after a card reboot and before the
+180 W cap was re-applied. The numbers below are 250 W; 180 W re-measure
+pending.
+
 | Prompt tokens | Status | Median wall time (s) | Median prefill tok/s |
 |---:|---|---:|---:|
 | 2,941 | PASS | 1.24 | 2,397 |

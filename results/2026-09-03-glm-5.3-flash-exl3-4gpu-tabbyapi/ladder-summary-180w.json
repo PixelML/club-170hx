@@ -1,0 +1,11 @@
+{
+  "power_cap_w": 180,
+  "protocol": "greedy, exactly 400 completion tokens, 1 warmup + 3 measured reps per concurrency level, tokens counted from the final usage object -- identical protocol to ladder.json (250 W), re-run against the same standing server without a restart",
+  "levels": [
+    {"concurrency": 1, "reps": 3, "aggregate_tok_s_mean": 25.2, "per_request_tok_s_mean": 25.2},
+    {"concurrency": 2, "reps": 3, "aggregate_tok_s_mean": 35.3, "per_request_tok_s_mean": 18.0},
+    {"concurrency": 4, "reps": 3, "aggregate_tok_s_mean": 43.2, "per_request_tok_s_mean": 11.0},
+    {"concurrency": 8, "reps": 3, "aggregate_tok_s_mean": 44.6, "per_request_tok_s_mean": 8.2}
+  ],
+  "notes": "No OOM through c=8. Power and temperature sampled at 1 Hz across the full run window (ladder + prefill/TTFT): no growth trend, peak 51 C, no Xid/ECC events. Delta vs. the 250 W run (ladder.json): C1 -6.3%, C2 +13.5%, C4 +3.6%, C8 -0.4% -- read as run-to-run noise, not a directional power effect. Raw reps: see ladder-180w.json."
+}

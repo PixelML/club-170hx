@@ -7,8 +7,16 @@ club's first working, benchmarked lane for this model. An earlier
 found every vLLM-served checkpoint blocked on SM80 (no `glm5_next` support
 upstream, sparse-MLA attention backends targeting SM90+/SM12x only) and
 fell back to a slow llama.cpp GGUF path at 17.73 tok/s. This EXL3 recipe
-replaces that fallback: 26.9-44.8 tok/s across the concurrency ladder, on
-the same hardware.
+replaces that fallback: 25.2-44.6 tok/s across the concurrency ladder at
+the club's standing 180 W per-card power cap, on the same hardware.
+
+> **Power cap correction (2026-09-03).** The first ladder (26.9-44.8 tok/s)
+> ran at the vBIOS default 250 W by accident — no cap had been set that
+> session. A re-measure at the verified 180 W cap found no consistent
+> throughput difference (within run-to-run noise at every level). **180 W
+> is the canonical cap and the numbers in this document are the 180 W
+> re-measure**, except where a table explicitly says otherwise. See
+> [Power](#power) below for the full comparison.
 
 > **Context-length update (2026-09-03, resolved).** The `cache_mode: Q8`
 > config caps a single request's context at about 2,048 tokens, because
@@ -25,10 +33,10 @@ the same hardware.
 
 ## Run on CMP 170HX
 
-| Cards | Format | Runtime | gpu_split | Cache mode | Max context (single request) | Measured decode | Status |
-|---|---|---|---|---|---:|---|---|
-| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | **FP16 (recommended default)** | 262,144 tokens configured; 250,000 prompt tokens validated, no OOM/crash | 26.9-44.8 tok/s ladder not re-run at 262k; short-context ladder below still applies | Measured (context length), throughput ladder not re-run |
-| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | Q8 (lower-VRAM, short-context alternative) | ~2,048 tokens before DSA/Q8 fails the request | 26.9 tok/s (c=1) to 44.8 tok/s (c=8) | Measured |
+| Cards | Format | Runtime | gpu_split | Cache mode | Power cap | Max context (single request) | Measured decode | Status |
+|---|---|---|---|---|---|---:|---|---|
+| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | **FP16 (recommended default)** | 250 W (accidental default; 180 W re-measure pending) | 262,144 tokens configured; 250,000 prompt tokens validated, no OOM/crash | 25.2-44.6 tok/s ladder not re-run at 262k; short-context ladder below still applies | Measured (context length), throughput ladder not re-run |
+| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | Q8 (lower-VRAM, short-context alternative) | **180 W (verified, canonical)** | ~2,048 tokens before DSA/Q8 fails the request | 25.2 tok/s (c=1) to 44.6 tok/s (c=8) | Measured |
 | 4 | UD-IQ4_XS GGUF | llama.cpp (unslothai sm_80 fork) | layer split, `1,1,1,1` | F16 (server default) | 16,384 | 17.73 tok/s (c=1) | Measured, superseded by the rows above (see [docs/MODEL-STATUS.md](../MODEL-STATUS.md)) |
 
 ## Quick start
@@ -187,10 +195,10 @@ server process stayed up throughout, no driver reload needed.
 
 **Scope note:** only prefill/context-length behavior was re-tested. The
 full C1/C2/C4/C8 throughput ladder was **not** re-run at 262k context —
-the 26.9-44.8 tok/s figures below remain the short-context (`Q8` cache)
-measurement, and no throughput regression was observed at short context
-during this update, but that claim does not extend to a re-run 262k
-ladder.
+the 25.2-44.6 tok/s figures below (180 W, canonical) remain the
+short-context (`Q8` cache) measurement, and no throughput regression was
+observed at short context during this update, but that claim does not
+extend to a re-run 262k ladder.
 
 `cache_mode: FP16` / 262,144-token context is now the recommended default
 for this recipe whenever long context matters. Keep `cache_mode: Q8` /
@@ -225,6 +233,17 @@ Executed notebook:
 
 ### Concurrency ladder (greedy, exactly 400 completion tokens, 1 warmup + 3 measured reps)
 
+**180 W (2026-09-03, verified cap — canonical):**
+
+| Concurrency | Aggregate tok/s (mean of 3 reps) | Mean per-request tok/s |
+|---|---:|---:|
+| C1 | 25.2 | 25.2 |
+| C2 | 35.3 | 18.0 |
+| C4 | 43.2 | 11.0 |
+| C8 | 44.6 | 8.2 |
+
+**250 W (2026-09-02, accidental default — retained for comparison):**
+
 | Concurrency | Aggregate tok/s (mean of 3 reps) | Mean per-request tok/s |
 |---|---:|---:|
 | C1 | 26.9 | 26.9 |
@@ -232,21 +251,68 @@ Executed notebook:
 | C4 | 41.7 | 10.5 |
 | C8 | 44.8 | 8.3 |
 
-No OOM through C8. Memory and temperature watched continuously (2s
-samples) through the whole ladder: no growth trend, peak 49 °C, no
+**Delta (180 W vs 250 W):** C1 -6.3%, C2 +13.5%, C4 +3.6%, C8 -0.4%. Each
+cap has one run of three reps, not five; the C2 gap is best read as
+run-to-run noise, not a real power effect. No level shows a directional,
+monotonic speed penalty from the lower cap. 180 W is kept as the standing
+default; this data does not support raising it for a throughput gain.
+
+No OOM through C8 at either cap. Memory and temperature watched
+continuously through both ladders: no growth trend, peak 51 °C, no
 Xid/ECC events.
 
 ### Prefill / TTFT (2,941-token prompt, exact token count verified against the tokenizer)
 
 Measured with `cache_mode` temporarily set to FP16 to avoid the Q8/DSA
-assertion above; reverted to Q8 for standing service afterward.
+assertion above; reverted to Q8 for standing service afterward (the
+2026-09-03 180 W re-measure ran with the standing config already on
+FP16 — see the power-cap-correction note above).
+
+**180 W (2026-09-03, canonical), prompt re-tokenized to 2,954 tokens post
+chat-template:**
+
+| Rep | Prompt time (s) | Prefill tok/s |
+|---|---:|---:|
+| 0 (cold) | 0.44 | 313.6 |
+| 1 (warm) | 0.39 | 353.9 |
+| 2 (warm) | 0.38 | 363.2 |
+
+Warm mean (reps 1-2): 358.5 tok/s. TTFT (same prompt, streaming, wall
+time to first content-bearing chunk) ranged 0.73-1.78 s across three reps;
+treat as a range, not a point estimate — no other load ran against the
+server during the measurement window.
+
+**250 W (2026-09-02):**
 
 | Item | Value |
 |---|---:|
 | Cold (first request post-boot) | 5.57 s prompt time |
 | Warm (reps 2-3, usage-reported) | mean prompt_time 0.39 s -> ~354 tok/s prefill throughput |
 
-### Power (measured during a C4 load run, 1s samples over 60s)
+Prefill throughput is not power-cap sensitive at this prompt length: the
+180 W warm mean (358.5 tok/s) matches the 250 W warm figure (~354 tok/s)
+within noise.
+
+### Power
+
+**180 W (2026-09-03, canonical), 1 Hz samples across the full ladder +
+prefill/TTFT window (~10.5 min):**
+
+| GPU | Mean W | Peak W | Peak temp (C) |
+|---|---:|---:|---:|
+| 0 | 56.7 | 139.5 | 51 |
+| 1 | 58.8 | 172.6 | 49 |
+| 2 | 56.4 | 168.4 | 49 |
+| 3 | 49.8 | 102.5 | 45 |
+| **Total** | **221.6** | **352.4** | — |
+
+Peak per-card power (172.6 W) stayed under the 180 W cap at every sample.
+The total peak (352.4 W) is a coincident-peak artifact of summing each
+card's own peak moment, not a real 4-card simultaneous draw — no single
+1 s sample summed above 302 W across all four cards.
+
+**250 W (2026-09-02, accidental default, measured during a C4 load run,
+1s samples over 60s):**
 
 | GPU | Mean W | Peak W |
 |---|---:|---:|
@@ -300,5 +366,6 @@ text, lives in the sibling evidence repository, not here — see below.
 ## Changelog
 
 - **2026-09-03 (follow-up)** — Resolved the ~2,048-token context cap: root-caused to `cache_mode: Q8` colliding with GLM-5.3-Flash's DSA sparse-attention indexer (not `max_seq_len` or TabbyAPI settings). Validated `cache_mode: FP16` up to 262,144-token context (250,000 prompt tokens tested, no OOM/crash, needle-in-haystack PASS at 32k and 250k tokens). `cache_mode: FP16` / 262k is now the recommended default for long-context use; `cache_mode: Q8` / 32k remains documented as the lower-VRAM short-context alternative. The C1/C2/C4/C8 throughput ladder was not re-run at 262k context.
-- **2026-09-02** — EXL3 4.05bpw on exllamav3 1.4.6 + TabbyAPI measured working across 4 cards: 26.9-44.8 tok/s ladder, 20/20 golden corpus, reasoning-parsing and Q8/DSA context-limit findings documented. This recipe replaces the GGUF fallback as the recommended lane.
+- **2026-09-03** — Power cap correction: the 2026-09-02 ladder ran at the vBIOS default 250 W by accident. Re-measured the identical protocol at the verified 180 W club-standard cap: 25.2-44.6 tok/s, no consistent throughput difference from the 250 W run outside noise. 180 W values are now canonical; 250 W values are retained and labeled for comparison. See [Concurrency ladder](#concurrency-ladder-greedy-exactly-400-completion-tokens-1-warmup--3-measured-reps) and [Power](#power) above.
+- **2026-09-02** — EXL3 4.05bpw on exllamav3 1.4.6 + TabbyAPI measured working across 4 cards: 26.9-44.8 tok/s ladder (later found to have run at the vBIOS default 250 W — see 2026-09-03 entry), 20/20 golden corpus, reasoning-parsing and Q8/DSA context-limit findings documented. This recipe replaces the GGUF fallback as the recommended lane.
 - **2026-08-31** — Compatibility review: every vLLM-served checkpoint blocked on SM80; GGUF UD-IQ4_XS on llama.cpp sm_80 fork measured as the only working fallback (17.73 tok/s).

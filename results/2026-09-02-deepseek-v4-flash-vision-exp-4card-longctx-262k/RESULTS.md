@@ -97,6 +97,7 @@ Prefill throughput scaled up through the tested range (2,397 -> 4,665 -> 5,182 -
 
 ## Power and thermal summary
 
+- **Power cap: 250 W.** This run happened after a card reboot and before the 180 W cap was re-applied. 180 W re-measure pending.
 - Sampled continuously via `nvidia-smi --query-gpu=power.draw,temperature.gpu,memory.used --format=csv -l 1` across all 4 cards for the duration of the run (3,037 rows, `receipts/nvidia-smi-longctx.csv`).
 - Max temperature observed: 51 °C. Min: 33 °C. No card approached the 80 °C stop threshold at any point.
 - No Xid or ECC events in `dmesg` for the run window.

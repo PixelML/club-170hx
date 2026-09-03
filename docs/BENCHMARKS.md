@@ -12,7 +12,7 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 
 | Workload | Quant / runtime | Cards | Context | Concurrency | Prefill | Decode | Aggregate | TTFT | ITL | Quality / success | Power / thermals | Energy | Status | Evidence |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
-| GLM-5.3-Flash | EXL3 4.05bpw · exllamav3 1.4.6 + TabbyAPI | 4 · manual `gpu_split` | 32,768 (max_seq_len); ~2,048 effective per request under Q8 cache | c=1/2/4/8, 1 warmup + 3 reps | ~354 tok/s warm (2,941 in) | 26.9 tok/s (c=1) | 44.8 tok/s (c=8) | 0.39 s warm / 5.57 s cold | — | 20/20 golden corpus (keyword-match) | 234.7 W mean / 302.3 W peak (4-card total, C4); peak 49 °C, no Xid/ECC | — | Publication-safe | [Result card](../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) · [Guide](models/glm-5.3-flash.md) |
+| GLM-5.3-Flash | EXL3 4.05bpw · exllamav3 1.4.6 + TabbyAPI | 4 · manual `gpu_split` | 32,768 (max_seq_len); ~2,048 effective per request under Q8 cache | c=1/2/4/8, 1 warmup + 3 reps | ~358.5 tok/s warm (2,954 in, 180 W) | 25.2 tok/s (c=1, 180 W) | 44.6 tok/s (c=8, 180 W) | 0.73–1.78 s (180 W) | — | 20/20 golden corpus (keyword-match) | **180 W cap (verified, canonical):** 221.6 W mean / 352.4 W peak (4-card total, coincident-peak artifact); peak 51 °C, no Xid/ECC. 250 W (2026-09-02, accidental default, retained for comparison): 26.9 tok/s (c=1) / 44.8 tok/s (c=8), 234.7 W mean / 302.3 W peak, peak 49 °C. | — | Publication-safe | [Result card](../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) · [Guide](models/glm-5.3-flash.md) |
 | GLM-5.3-Flash | UD-IQ4_XS · llama.cpp (0069971) | 4 · layer split | 16,384 | c=1; ladder 1/2/4; soak c=2 | — | 17.73 tok/s median (c=1) | ~17.5–17.7 tok/s (c=2/4) | — | — | 21/26 local tasks · 41/41 soak reps | Snapshot only: 40.10–44.49 W, core 41–43 °C, mem 45–55 °C, VRAM 32,656–42,312 / 65,536 MiB; limit not queried | Snapshot proxy only, not integrated | Publication-safe; superseded by the EXL3 row above | [Run manifest](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) · [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) |
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
 | Qwen3.8-27B | W4A16 AutoRound + DFlash2 k=7 · vLLM | 1 (3 cards tested) | 64k | c=1 | 1,946 tok/s | 136.38 tok/s (256 tok) / 122.00 (900 tok) | — | 190.8 ms | — | 3 cards, 3 runs | 180 W cap; peak 51 °C core / 61 °C memory | — | Measured 2026-08-30 | [Repo](https://github.com/PixelML/Qwen3.8-27B-CMP-170HX) |
@@ -20,13 +20,26 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 | DeepSeek-V4-Flash-0731 | FP8 · SM80 vLLM fork · PP3 · DSpark k=5 | 3 | 16,384 | c=1, three prompt classes | 2,965 tok/s (5,399 in) | 83.3 tok/s aggregate (73.4 / 72.4 / 116.6) | — | — | — | 400 tok × 3 classes | 180 W cap | acceptance 5.07–5.32 | Measured 2026-08-30 | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 16,384 | c=1; ladder 1/2/4/8/16 | 2,352 tok/s warm (362 tok/s first cold prefill) (2,941 input tokens) | 97.4 tok/s (median of 3; 57.6–123.5) (c=1) | 165.5 tok/s (median of 3; 140.3–203.2) @ c=4; failed (device-side assert, reproduced twice) @ c=16 | 0.394 s warm | — | Text passed; image not served on this path | — | — | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Section](#deepseek-v4-flash-vision-exp-four-cards) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 → BF16 fallback · reference TP4 runtime + SM80 patches | 4 · TP4 | ≤ ~1,024 input tokens (OOM above) | batch 1 | 512 tokens in ~8.7–9.8 s | 0.88–0.93 tok/s (3 × 401 tokens) | — | ~2.05–2.08 s proxy | — | Real-image completion PASS; no-image and wrong-image controls PASS | — | — | Correctness evidence only, not a performance result | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Milestone](#vision-correctness-milestone) |
-| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 262,144 (max-model-len; 65,000 verified) | c=1, prefill ladder only | 5,261 tok/s @ 65,000 in (2,397 @ 2,941 in) | not measured (crash before decode phase) | — | 12.36 s wall @ 65,000 in (proxy) | — | Needle/decode/vision untested — engine crash at 131,000-token fixture build | Peak 51 °C, no Xid/ECC | — | Partial; engine crash above 65k, not restarted | [Results](results/2026-09-02-deepseek-v4-flash-vision-exp-4card-longctx-262k/RESULTS.md) · [Section](models/deepseek-v4-flash-vision-exp.md#long-context-max-model-len-262144-measured-2026-09-02) |
+| DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 262,144 (max-model-len; 65,000 verified) | c=1, prefill ladder only | 5,261 tok/s @ 65,000 in (2,397 @ 2,941 in) | not measured (crash before decode phase) | — | 12.36 s wall @ 65,000 in (proxy) | — | Needle/decode/vision untested — engine crash at 131,000-token fixture build | 250 W cap (post-reboot, before 180 W was re-applied); 180 W re-measure pending; peak 51 °C, no Xid/ECC | — | Partial; engine crash above 65k, not restarted | [Results](results/2026-09-02-deepseek-v4-flash-vision-exp-4card-longctx-262k/RESULTS.md) · [Section](models/deepseek-v4-flash-vision-exp.md#long-context-max-model-len-262144-measured-2026-09-02) |
 
 ## GLM-5.3-Flash EXL3 4.05bpw, four cards, exllamav3 + TabbyAPI (publication-safe)
 
-**Measured 2026-09-02:** 4 × 64 GiB CMP 170HX, manual `gpu_split: [48, 48, 48, 48]` GB per card (not tensor-parallel — TP raises `NotImplementedError` for `Glm5NextForConditionalGeneration` in exllamav3 1.4.6), `max_seq_len: 32768`, `cache_size: 32768`, `cache_mode: Q8`, `reasoning: true`, drafting disabled. Model: `turboderp/GLM-5.3-Flash-exl3`, branch `4.05bpw`, revision `2a30229e67012798ba9f0cd832bb78abf4c363d5`. Runtime: exllamav3 1.4.6+cu128.torch2.10.0, served via TabbyAPI. This replaces the UD-IQ4_XS GGUF row below as the recommended recipe for this checkpoint family.
+**Measured 2026-09-02, re-measured at the correct power cap 2026-09-03:** 4 × 64 GiB CMP 170HX, manual `gpu_split: [48, 48, 48, 48]` GB per card (not tensor-parallel — TP raises `NotImplementedError` for `Glm5NextForConditionalGeneration` in exllamav3 1.4.6), `max_seq_len: 32768`, `cache_size: 32768`, `cache_mode: Q8`, `reasoning: true`, drafting disabled. Model: `turboderp/GLM-5.3-Flash-exl3`, branch `4.05bpw`, revision `2a30229e67012798ba9f0cd832bb78abf4c363d5`. Runtime: exllamav3 1.4.6+cu128.torch2.10.0, served via TabbyAPI. This replaces the UD-IQ4_XS GGUF row below as the recommended recipe for this checkpoint family.
+
+**Power cap correction (2026-09-03):** the 2026-09-02 ladder ran at the vBIOS default 250 W by accident — no per-card cap had been set that session. A re-measure at the verified 180 W club-standard cap found no consistent throughput difference outside run-to-run noise. **180 W is the canonical cap; the table below is the 180 W re-measure**, with the 250 W figures kept alongside for comparison.
 
 **Context-length update (resolved 2026-09-03):** with `cache_mode: Q8`, any single request whose context exceeds about 2,048 tokens fails with a 503 — GLM-5.3-Flash's DeepSeek Sparse Attention path (`index_topk: 2048`) does not support a quantized MLA cache in this exllamav3 build. Switching to `cache_mode: FP16` lifts the cap: validated up to 262,144-token context (250,000 prompt tokens tested, no OOM/crash), now the recommended default for long context. The concurrency ladder below is at `cache_mode: Q8` / short context and was not re-run at 262k. Full detail: [docs/models/glm-5.3-flash.md](models/glm-5.3-flash.md#context-limit-q8-cache-and-dsa-resolved-2026-09-03).
+
+**180 W (verified cap, canonical):**
+
+| Concurrency | Aggregate tok/s (mean of 3 reps) | Mean per-request tok/s |
+|---|---:|---:|
+| C1 | 25.2 | 25.2 |
+| C2 | 35.3 | 18.0 |
+| C4 | 43.2 | 11.0 |
+| C8 | 44.6 | 8.2 |
+
+**250 W (accidental default, 2026-09-02, retained for comparison):**
 
 | Concurrency | Aggregate tok/s (mean of 3 reps) | Mean per-request tok/s |
 |---|---:|---:|
@@ -35,15 +48,15 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 | C4 | 41.7 | 10.5 |
 | C8 | 44.8 | 8.3 |
 
-| Metric | Value |
-|---|---:|
-| Prefill, warm (2,941-token prompt) | ~354 tok/s |
-| TTFT, cold / warm | 5.57 s / 0.39 s |
-| Golden corpus (20 prompts, keyword-match) | 20/20 |
-| n-gram speculative decoding | -7.2% vs. no draft (shipped with drafting disabled) |
-| Power, C4 load run (4-card total) | 234.7 W mean / 302.3 W peak |
-| Peak core temperature | 49 °C, no Xid/ECC through c=8 |
-| Per-card VRAM | GPU0 48,468 / GPU1 47,982 / GPU2 47,982 / GPU3 12,084–12,116 MiB |
+| Metric | Value (180 W, canonical) | Value (250 W, comparison) |
+|---|---:|---:|
+| Prefill, warm (2,954-token prompt post chat-template) | ~358.5 tok/s | ~354 tok/s |
+| TTFT | 0.73–1.78 s (3 reps) | 5.57 s cold / 0.39 s warm |
+| Golden corpus (20 prompts, keyword-match) | 20/20 | 20/20 |
+| n-gram speculative decoding | -7.2% vs. no draft (shipped with drafting disabled) | — |
+| Power (4-card total) | 221.6 W mean / 352.4 W peak (coincident-peak artifact) | 234.7 W mean / 302.3 W peak (C4 load run) |
+| Peak core temperature | 51 °C, no Xid/ECC | 49 °C, no Xid/ECC through c=8 |
+| Per-card VRAM | GPU0 48,468 / GPU1 47,982 / GPU2 47,982 / GPU3 12,084–12,116 MiB | (unchanged) |
 
 Reasoning must be enabled (`reasoning: true`) or chain-of-thought leaks into `content`; `max_tokens >= 128` is needed for short factual answers even with reasoning parsed correctly (`max_tokens=32` reproducibly returns `content: null`). Full write-up, boot-topology notes, and the executed notebook: [docs/models/glm-5.3-flash.md](models/glm-5.3-flash.md), [notebooks/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi.ipynb](../notebooks/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi.ipynb), [results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/](../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md).
 
