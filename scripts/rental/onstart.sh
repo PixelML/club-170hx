@@ -31,7 +31,8 @@ for i in $(seq 0 $((NUM_GPUS_DETECTED - 1))); do
     echo "[onstart] WARNING: could not set power cap on GPU $i (host may not permit it)" | tee -a "$RECEIPTS/power-cap.log"
 done
 
-# --- Image is already running as the container; verify tag/digest in-place ---
+# --- No nested docker: the instance itself runs $IMAGE as its container ---
+# (rented with --image "$IMAGE"). Verify the installed tool versions in place.
 {
   echo "image_ref=$IMAGE"
   python3 -c "import json;print(json.dumps({'python':__import__('sys').version}))" 2>/dev/null || true
