@@ -29,25 +29,39 @@ and enough `disk_gb` (need >= 450 for weights + image + receipts).
 
 ## 2. Rent
 
-Rent using the image directly as the instance's container (avoids nested
-docker — the recipe's `docker run` commands in the queue run other
-containers *inside* this one only if the offer's Vast template supports
-docker-in-docker; the club-170hx recipe instead launches `vllm serve`
-processes as additional bind-mounted containers via the onstart script,
-so verify `docker info` works inside the rented container before running
-the queue):
+**Decision (confirmed 2026-09-04): no nested docker.** The image has no
+`docker`/`dockerd` binary in it (`docker run --rm --entrypoint /bin/bash
+<image> -c 'which docker dockerd'` returns nothing), so the instance is
+rented with the club-170hx image itself as the instance's container, and
+`vllm serve` is exec'd directly inside it (no `docker run` inside the
+rental). `launch_tp4.sh` / `launch_pp4.sh` / `launch_tp8.sh` and
+`run_queue.sh` already assume this (nohup + PID file, plain log files
+under `/workspace/logs`, not `docker logs`).
+
+**Exact rental command** (offer `49884606` as of 2026-09-04: 8x CMP
+170HX, PCIe Gen2 x16 / 6.4 GB/s, 65.5 GB/card, 512 GB RAM, 3238 GB disk,
+$3.293/hr, driver/CUDA 13.3, verified=false — re-run
+`scripts/rental/find_offer.sh 8` first, since offer IDs are single-use
+and availability changes; use the top `pcie_bw_gbs` row):
 
 ```bash
-vastai create instance <OFFER_ID> \
+vastai create instance 49884606 \
   --image ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903 \
   --disk 450 \
-  --onstart-cmd "$(cat scripts/rental/onstart.sh)"
+  --ssh --direct \
+  --onstart scripts/rental/onstart.sh
 ```
 
-If the offer's template does not support docker-in-docker, rent a plain
-docker-capable Vast template instead and run the club image manually
-inside it (`docker pull ... && docker run ...` per `launch_tp4.sh` etc.)
-rather than fighting nested docker.
+`--onstart <file>` (not `--onstart-cmd "$(cat ...)"`) avoids CLI arg
+length limits — `onstart.sh` is ~90 lines. `--ssh --direct` gives a
+direct SSH endpoint for running `run_queue.sh` interactively and for
+`collect.sh`'s scp-back step (`vastai show instances-v1` / `vastai ssh-url
+<id>` after creation resolves the host/port).
+
+At $3.293/hr the 4.5 h / $17 session cap (2026-09-04 balance-adjusted)
+caps the rental at roughly 4.3 h of wall time before the $ cap binds —
+budget accordingly and destroy the moment the queue ends or the cap
+nears, per the hard rules below.
 
 ## 3. Checkpoint download gate
 
