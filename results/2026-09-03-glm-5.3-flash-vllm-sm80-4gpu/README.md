@@ -3,7 +3,7 @@
 Measured 2026-09-03, 180 W per-card club-standard cap. Runtime: the
 PixelML `sm80vllm` fork, branch `glm53-sm80` (wtdcode/vllm-backport
 GLM enablement vendored onto the club image lineage; provenance in
-`docs/SM80.md` on that branch). Image `glm53-sm80:test`
+`docs/SM80.md` on that branch). Image `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903` (local build tag `glm53-sm80:test`)
 (f7fe5d02c295), built from `docker/Dockerfile.glm53-sm80` (full source
 build, `TORCH_CUDA_ARCH_LIST=8.0`).
 
@@ -75,7 +75,7 @@ docker run -d --name glm53-vllm --gpus '"device=0,1,2,3"' \
   -e NCCL_VERSION=2.28.3-1 -e TORCH_CUDA_ARCH_LIST=8.0 \
   -e VLLM_TARGET_DEVICE=cuda \
   --mount type=bind,src=<weights>,dst=/model,readonly \
-  glm53-sm80:test \
+  ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903 \
   vllm serve /model --served-model-name glm-5.3-flash \
   --tensor-parallel-size 4 --max-model-len 524288 \
   --gpu-memory-utilization 0.92 --max-num-seqs 16 \

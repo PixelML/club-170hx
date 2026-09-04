@@ -37,7 +37,7 @@ the club's standing 180 W per-card power cap, on the same hardware.
 |---|---|---|---|---|---|---:|---|---|
 | 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | **FP16 (recommended default)** | 250 W (accidental default; 180 W re-measure pending) | 262,144 tokens configured; 250,000 prompt tokens validated, no OOM/crash | 25.2-44.6 tok/s ladder not re-run at 262k; short-context ladder below still applies | Measured (context length), throughput ladder not re-run |
 | 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | Q8 (lower-VRAM, short-context alternative) | **180 W (verified, canonical)** | ~2,048 tokens before DSA/Q8 fails the request | 25.2 tok/s (c=1) to 44.6 tok/s (c=8) | Measured |
-| 4 | AWQ W4A16 (compressed-tensors, wtdcode) | vLLM sm80 (`glm53-sm80` branch, TP4 + MTP-3) | `--tensor-parallel-size 4` (TP4) | KV auto (fp8 KV rejected by the Triton MLA backend) | **180 W (canonical)** | 524,288 | **56.4 tok/s median c=1 (peak 56.9)**; c=8 aggregate 37.0 (below EXL3, see caveats) | Measured 2026-09-03 — see [results/2026-09-04-glm-5.3-flash-vllm-sm80-4gpu](../../results/2026-09-04-glm-5.3-flash-vllm-sm80-4gpu/README.md) |
+| 4 | AWQ W4A16 (compressed-tensors, wtdcode) | vLLM sm80 (`glm53-sm80` branch, TP4 + MTP-3) | `--tensor-parallel-size 4` (TP4) | KV auto (fp8 KV rejected by the Triton MLA backend) | **180 W (canonical)** | 524,288 | **56.4 tok/s median c=1 (peak 56.9)**; c=8 aggregate 37.0 (below EXL3, see caveats) | Measured 2026-09-03 — see [results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md) |
 
 ## Quick start
 
@@ -371,7 +371,7 @@ at 524,288-token context** (EXL3: 25.2 tok/s c=1, ~2k-262k context).
   `--speculative-config '{"method":"mtp","num_speculative_tokens":3}'`,
   Triton sparse-MLA + Triton fp8 MQA-logits fallbacks, Marlin WNA16 MoE.
   Full launch command in the
-  [receipts](../../results/2026-09-04-glm-5.3-flash-vllm-sm80-4gpu/README.md).
+  [receipts](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md).
 - **MTP depth sweep (c=1, 5 reps):** k=2 → 51.1, **k=3 → 56.4**,
   k=5 → 47.1 tok/s median. k=3 is optimal, matching the DSpark
   acceptance-cliff pattern in `docs/LESSONS.md` §d.
@@ -394,7 +394,7 @@ at 524,288-token context** (EXL3: 25.2 tok/s c=1, ~2k-262k context).
 
 ## Changelog
 
-- **2026-09-04** — vLLM sm80 lane measured: `glm53-sm80` branch serves GLM-5.3-Flash with MTP-3 at 56.4 tok/s median c=1 (peak 56.9), 2.1x EXL3, at 524,288-token context. c=8 aggregate (37.0) remains below EXL3 pending a PP4+MTP patch port. Receipts: [results/2026-09-04-glm-5.3-flash-vllm-sm80-4gpu](../../results/2026-09-04-glm-5.3-flash-vllm-sm80-4gpu/README.md).
+- **2026-09-04** — vLLM sm80 lane measured: `glm53-sm80` branch serves GLM-5.3-Flash with MTP-3 at 56.4 tok/s median c=1 (peak 56.9), 2.1x EXL3, at 524,288-token context. c=8 aggregate (37.0) remains below EXL3 pending a PP4+MTP patch port. Receipts: [results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md).
 - **2026-09-03 (follow-up)** — Resolved the ~2,048-token context cap: root-caused to `cache_mode: Q8` colliding with GLM-5.3-Flash's DSA sparse-attention indexer (not `max_seq_len` or TabbyAPI settings). Validated `cache_mode: FP16` up to 262,144-token context (250,000 prompt tokens tested, no OOM/crash, needle-in-haystack PASS at 32k and 250k tokens). `cache_mode: FP16` / 262k is now the recommended default for long-context use; `cache_mode: Q8` / 32k remains documented as the lower-VRAM short-context alternative. The C1/C2/C4/C8 throughput ladder was not re-run at 262k context.
 - **2026-09-03** — Power cap correction: the 2026-09-02 ladder ran at the vBIOS default 250 W by accident. Re-measured the identical protocol at the verified 180 W club-standard cap: 25.2-44.6 tok/s, no consistent throughput difference from the 250 W run outside noise. 180 W values are now canonical; 250 W values are retained and labeled for comparison. See [Concurrency ladder](#concurrency-ladder-greedy-exactly-400-completion-tokens-1-warmup--3-measured-reps) and [Power](#power) above.
 - **2026-09-02** — EXL3 4.05bpw on exllamav3 1.4.6 + TabbyAPI measured working across 4 cards: 26.9-44.8 tok/s ladder (later found to have run at the vBIOS default 250 W — see 2026-09-03 entry), 20/20 golden corpus, reasoning-parsing and Q8/DSA context-limit findings documented. This recipe replaces the GGUF fallback as the recommended lane.
