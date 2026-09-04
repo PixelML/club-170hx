@@ -66,6 +66,12 @@ dequantize fine on SM80; FP8/FP4 **tensor-core compute** does not exist here.
 
 ## c. Topology: pipeline parallel vs tensor parallel
 
+For the card/link-level mechanism behind this section (why the PCIe link is
+Gen1, why x8 slots are not a fault, why PP has a fundamentally different
+communication shape than TP, and the GLM-5.3-Flash PP4 vs TP4 numbers), see
+[TOPOLOGY-AND-PARALLELISM.md](TOPOLOGY-AND-PARALLELISM.md). This section keeps
+the per-checkpoint findings for DeepSeek-V4-Flash-0731.
+
 The tested CMP 170HX fabric has **no NVLink and no P2P over PCIe Gen2 x4**
 (about 1.0 GB/s measured bus bandwidth between cards). This one fact decides
 the topology choice.

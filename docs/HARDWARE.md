@@ -62,6 +62,10 @@ suspicion; the 2026-09-02 health gate traced it to lane sharing instead).
 For comparison, consumer GeForce cards on the same host show x1 width at
 2.5GT/s at idle; that is normal ASPM power-saving behavior, not a fault.
 
+For the bandwidth this link width implies, the PP-vs-TP topology choice it
+forces, and the no-P2P/host-memory finding, see
+[Topology and parallelism](TOPOLOGY-AND-PARALLELISM.md).
+
 ## Known-good measured configuration
 
 **Measured inventory:** four cards enumerated in one Ubuntu guest on 2026-08-30 and exposed 65,536 MiB each, for 256 GiB aggregate. Four-card workload performance remains untested.
