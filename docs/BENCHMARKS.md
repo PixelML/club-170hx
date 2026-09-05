@@ -2,6 +2,8 @@
 
 Results here are application measurements on the tested CMP 170HX setup. They are not vendor specifications or theoretical estimates. This page is the normalized comparison index; raw manifests, commands, and receipts stay in the model repositories.
 
+A benchmark is not complete when it has only prose and numbers. Every row here is backed by a runnable artifact: an executed notebook in [`notebooks/`](../notebooks/README.md) with dated receipts under [`results/`](../results/README.md), or a self-contained reproduction folder in [`recipes/`](../recipes/README.md). Both carry clean recorded outputs, structured source data, a generated chart, and a final editable API request.
+
 ## Evidence tiers
 
 A row is **publication-safe** only when the full sanitized receipt chain (manifest, commands, redacted outputs, exact model/runtime pins) is merged in the owning model repository. Rows whose receipts are unmerged are **pending evidence repair**: their owning tickets repair the evidence chain, and the numbers are not decision-grade until then. The README scoreboard mirrors these statuses.

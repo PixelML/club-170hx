@@ -1,0 +1,30 @@
+{
+  "title": "Qwen3.8-27B + DFlash2 on CMP 170HX",
+  "subtitle": "Three independent cards · 180 W · vLLM 0.27.1 · usage-token-counted",
+  "x_column": "card",
+  "panels": [
+    {
+      "title": "Decode throughput",
+      "y_label": "output tok/s",
+      "series": [
+        {"label": "256 output tokens", "column": "decode_256_tok_s"},
+        {"label": "900 output tokens", "column": "decode_900_tok_s"}
+      ]
+    },
+    {
+      "title": "Long-prompt prefill",
+      "y_label": "input tok/s",
+      "series": [
+        {"label": "6,603-token prefill", "column": "prefill_tok_s"}
+      ]
+    },
+    {
+      "title": "Time to first token",
+      "y_label": "milliseconds · lower is better",
+      "series": [
+        {"label": "TTFT", "column": "ttft_ms", "color": "#F2789F"}
+      ]
+    }
+  ],
+  "footer": "MEASURED 2026-08-30 · 1 warmup + 3 samples · final usage.completion_tokens · source: results/summary.csv"
+}
