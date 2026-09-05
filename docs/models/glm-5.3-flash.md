@@ -40,7 +40,7 @@ author's NVFP4 checkpoint, is a net loss on our AWQ one.
 | AWQ W4A16 (compressed-tensors) | 4 | 45.5 per PP stage at PP4 | 4 | ~178 weights + KV | PCIe Gen1 tolerated under PP4; TP4 needs a healthy link on every rank | measured |
 | EXL3 | 4.05 | 48 configured (`gpu_split`), 12-48 used | 4 | ~153 used | manual split, not tensor-parallel | measured |
 | UD-IQ4_XS GGUF | ~4.25 | fits | 4 | — | any | measured, superseded |
-| NVFP4 | 4 | 181 GiB checkpoint on disk | 4 | pending | pending | **untested (pending)** — boot in flight; also needs ~181 GiB of free staging space |
+| NVFP4 | 4 | 181 GiB checkpoint on disk | 4 | — | — | **not claim-ready** — attempted 2026-09-05 and did not boot: out of memory during the mixture-of-experts kernel-format conversion. `LibertAIDAI/GLM-5.3-Flash-NVFP4` @ `caca4e6a4ebb`, MIT |
 | AWQ-INT4 (cyankiwi) | 4 | ~49.5 at TP4 | 4 | 198.1 | — | negative: `glm5_next` absent from the upstream vLLM model registry |
 | EXL3/TR3 | 4 | ~40.9 at TP4 | 4 | — | — | negative: ships SM121-only kernel binaries |
 | Official FP8 / BF16 | 8 / 16 | 76+ (FP8) | — | — | — | negative: does not fit |
@@ -55,7 +55,7 @@ For the recipe of record, verified on 2026-09-05 unless stated otherwise.
 | Sampling, throughput bench (P2) | temperature 0.7, `ignore_eos`, 512 output tokens, 5 reps | measured 2026-09-05 |
 | `max_tokens` for short factual answers | **>= 128** | measured — this model reasons before answering; a 32-token budget returns an empty answer |
 | Max context tested | 131,042 prompt tokens (server configured to 393,216) | measured 2026-09-05 |
-| Reasoning / thinking mode | `chat_template_kwargs: {"enable_thinking": <bool>}` | **untested (pending)** — the probe returned no `reasoning_content` in any arm and the two sweep arms are statistically identical, so the switch is not yet proven to change the served path on this build |
+| Reasoning / thinking mode | not switchable on this checkpoint | **negative result, measured 2026-09-05** — the probe sent `enable_thinking` and `thinking`, true and false, plus the server default, and got no `reasoning_content` back in any case. Do not expect a thinking toggle here |
 | Prefix caching | off (`--no-enable-prefix-caching`) | measured — this is why warm TTFT equals cold TTFT throughout section 6 |
 | KV dtype | `auto` | measured — fp8 KV is rejected by the Triton MLA backend on this build |
 | Draft depth | native MTP, `num_speculative_tokens=3` | measured — full sweep in section 6 |
@@ -70,7 +70,7 @@ completion budget. `cache_mode: FP16` is the recommended default there;
 
 | Hardware | Format | Runtime | Image tag / digest | Topology | Settings | Decode c=1 | Best aggregate | Status |
 |---|---|---|---|---|---|---|---|---|
-| 4x CMP 170HX, 180 W | AWQ W4A16 | vLLM sm80, `pp-dflash2/glm53-flash-487ecf187-20260905` | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905` / `sha256:62f612b4...693bfb` | **PP4, partition 14,12,12,7** | MTP k=3, max-model-len 393,216, prefix caching off, util 0.90, micro-batch cap 2, sidecar block 256 | **87.6 tok/s** (P1 math, clean) / **67.9** (P2 median) | 78.4 tok/s at c=16 *(degraded link)* | **measured — recipe of record** |
+| 4x CMP 170HX, 180 W | AWQ W4A16 | vLLM sm80, `pp-dflash2/glm53-flash-487ecf187-20260905` | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905` / `sha256:62f612b4...693bfb` | **PP4, partition 14,12,12,7** | MTP k=3, max-model-len 393,216, prefix caching off, util 0.90, max-num-seqs 8, micro-batch cap 2, sidecar block 256 | **87.6 tok/s** (P1 math, clean) / **67.9** (P2 median) | 78.4 tok/s at c=16 *(degraded link)* | **measured — recipe of record** |
 | 4x CMP 170HX, 180 W | AWQ W4A16 | vLLM sm80, `glm53-sm80` | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903` | TP4 | MTP k=3, max-model-len 524,288 | 60.4 tok/s (P2 median, peak 77.9) | 37.0 tok/s at c=8 | **superseded** — link-bound, see section 8 |
 | 4x CMP 170HX, 180 W | EXL3 4.05 bpw | exllamav3 1.4.6 + TabbyAPI | — | manual `gpu_split [48,48,48,48]` | `cache_mode: FP16`, 262,144 context, `reasoning: true` | 25.2 tok/s | 44.6 tok/s at c=8 | measured 2026-09-03 |
 | 4x CMP 170HX | UD-IQ4_XS GGUF | llama.cpp SM80 fork | — | — | — | 17.73 tok/s | ~17.7 at c=4 | measured, superseded |
@@ -98,6 +98,8 @@ docker run -d --name <container> --gpus '"device=0,1,2,3"' \
   -e VLLM_PP_LAYER_PARTITION=14,12,12,7 \
   -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
   -e TORCH_CUDA_ARCH_LIST=8.0 \
+  -e VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2 \
+  -e VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256 \
   -v <weights>:/weights:ro \
   ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905 \
   --model /weights --served-model-name GLM-5.3-Flash \
@@ -105,6 +107,7 @@ docker run -d --name <container> --gpus '"device=0,1,2,3"' \
   --max-model-len 393216 \
   --gpu-memory-utilization 0.90 \
   --no-enable-prefix-caching \
+  --max-num-seqs 8 --max-num-batched-tokens 4096 \
   --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
   --limit-mm-per-prompt '{"image":0,"video":0}'
 
@@ -197,8 +200,9 @@ Receipt: `receipts/k3/sweep/context_sweep.json`.
 **Decode is flat from 2k to 131k tokens** — roughly 75-79 tok/s across nearly two
 orders of magnitude of context. Warm equals cold at every length because prefix
 caching is off in this recipe. The sweep alternated a thinking-on and a
-thinking-off arm; the two are statistically identical and are reported as one
-curve pending the thinking-switch verification named in section 3.
+thinking-off arm; they are statistically identical because the switch does not
+work on this checkpoint (section 3), so they are one configuration measured
+twice, not an A/B, and are reported as a single curve.
 
 ![context sweep](../../assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.png)
 
@@ -255,24 +259,34 @@ separates drafter quality from drafter/checkpoint mismatch — is **untested
 
 | Metric | Value |
 |---|---|
-| Boots served / attempted, this recipe | 3 / 3 |
-| Boot seconds | 1,029 / 1,025 / 1,046 to `Application startup complete` |
-| Engine init (profile + KV + warmup) | 320.4 s |
+| Boots served / attempted, this recipe | **5 / 5**, plus 2 / 2 on the earlier port run |
+| Boot seconds | 995, 1,029, 1,077, 1,263, 1,140 to `Application startup complete` |
+| Engine init (profile + KV + warmup) | 320.4 s on the measured boot |
 | Memory per PP stage after load | 45.45 GiB |
-| GPU health before and after every boot | 4/4 `rev a1`, zero Xid, zero ECC |
+| Idle memory per card | 51.6-54.2 GiB of 64 GiB |
+| Power cap | 180 W verified on all four cards throughout |
+| GPU health before and after every boot | 4/4 at the expected PCI revision, zero Xid, zero ECC |
 | Peak temperature under load | untested (pending) — not sampled |
 
 ### 6.7 Cells still open
 
 | Cell | Reason |
 |---|---|
-| Lossless check (greedy, speculation on vs off, 20 fixed prompts) | needs a speculation-off boot to diff against |
-| Sustained stability (3 rounds of c=8 back to back, health after each) | not yet run |
-| Power and temperature under load | not sampled on this boot |
-| NVFP4 checkpoint, PP4 + MTP k=3 and + DFlash2 k=7 | first boot in flight |
-| Thinking-switch verification | the two sweep arms are identical; the switch is not proven to change the served path |
+| Lossless check (greedy, speculation on vs off, 20 fixed prompts) | harness written; blocked by the node fault below |
+| Sustained stability (3 rounds of c=8 back to back, health after each) | harness written; blocked by the node fault below |
+| Quality battery per bucket | harness and datasets staged; blocked by the node fault below |
+| Power and temperature under load | not sampled on the measured boot |
+| NVFP4 checkpoint, any topology | **not claim-ready** — attempted and did not boot, out of memory in the mixture-of-experts kernel-format conversion |
 | Accepted tokens per pass vs context length | no `SpecDecoding metrics` line fell inside a sample window during the sweep |
-| 258k-token context point | prompt calibration overshot the 393,216-token limit |
+| 258k-token context point | the request exceeded the 393,216-token server limit after prompt calibration |
+
+**Node fault after the measurement window.** Every number on this page was
+measured on healthy cards, before the fault. Afterwards all four accelerators
+raised a fault requiring an OS-level recovery action and the driver could no
+longer initialise anywhere on the node. The management interface still reported
+the cards as healthy, which is misleading in this state — check driver
+initialisation, not the management interface, before trusting a "healthy" read.
+The remaining cells are blocked on hardware recovery, not on a missing harness.
 
 ## 7. Quality
 

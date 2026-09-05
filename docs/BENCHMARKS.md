@@ -29,8 +29,9 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 Pipeline parallelism with `VLLM_PP_LAYER_PARTITION=14,12,12,7` (45 hidden
 layers, sparse-MLA counts 3/3/3/2 per stage), native MTP at
 `num_speculative_tokens=3`, `--max-model-len 393216`,
-`--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, micro-batch cap
-2, sidecar block size 256, `--limit-mm-per-prompt image:0,video:0`. Checkpoint
+`--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, `--max-num-seqs 8`,
+`--max-num-batched-tokens 4096`, `VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2`,
+`VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256`, `--limit-mm-per-prompt image:0,video:0`. Checkpoint
 `wtdcode/GLM-5.3-Flash-AWQ-W4A16` @ `abd7b07719111f137e1de8a0c1b7e01c11b74d1a`.
 Image `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905`
 (`sha256:62f612b49614523e6a46e1493d35d3efd1f363917129d38cc923a31053693bfb`).

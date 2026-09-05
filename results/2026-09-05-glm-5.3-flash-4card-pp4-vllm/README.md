@@ -20,9 +20,9 @@ Guide page: [`docs/models/glm-5.3-flash.md`](../../docs/models/glm-5.3-flash.md)
 | Topology | PP4, `VLLM_PP_LAYER_PARTITION=14,12,12,7` (45 hidden layers) |
 | Speculation | native MTP, `num_speculative_tokens=3` |
 | Context | `--max-model-len 393216`; KV pool 1,194,627 tokens (3.04x) |
-| Other flags | `--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, micro-batch cap 2, sidecar block size 256, `--limit-mm-per-prompt image:0,video:0` |
+| Other flags | `--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, `--max-num-seqs 8`, `--max-num-batched-tokens 4096`, `VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2`, `VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256`, `--limit-mm-per-prompt image:0,video:0` |
 | Hardware | 4x CMP 170HX (SM80, 64 GiB each), 180 W per-card cap, no NVLink, no P2P |
-| Boot | 1,029 s to `Application startup complete`; 3/3 boots served for this recipe |
+| Boot | 5/5 boots served for this recipe (995, 1,029, 1,077, 1,263, 1,140 s to `Application startup complete`), plus 2/2 on the earlier port run; idle memory 51.6-54.2 GiB per card of 64; 180 W cap verified on all four throughout |
 
 ## Hardware caveat that applies to every link-bound number here
 
@@ -94,6 +94,13 @@ literals and container names replaced by `<endpoint>`, `<path>`, `<addr>` and
 ## Untested (pending)
 
 Lossless check, sustained stability, quality battery, power and temperature
-under load, both NVFP4 cells, the thinking-switch verification, the 258k context
-point, and accepted-tokens-per-pass versus context length. Reasons are in
-section 2.8 of the notebook.
+under load, the 258k context point, and accepted-tokens-per-pass versus context
+length — the first three because a node-wide accelerator fault after the
+measurement window left the driver unable to initialise. Every number here
+predates that fault.
+
+Two cells came back as findings rather than gaps: the NVFP4 checkpoint is
+**not claim-ready** (attempted, out of memory in the mixture-of-experts
+kernel-format conversion), and the thinking switch is a **negative result** —
+not switchable on this checkpoint under any key or default. Reasons for all of
+them are in section 2.8 of the notebook.
