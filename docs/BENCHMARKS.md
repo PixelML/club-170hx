@@ -12,6 +12,7 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 
 | Workload | Quant / runtime | Cards | Context | Concurrency | Prefill | Decode | Aggregate | TTFT | ITL | Quality / success | Power / thermals | Energy | Status | Evidence |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| GLM-5.3-Flash | AWQ W4A16 (compressed-tensors) · vLLM sm80, PP4 partition 14,12,12,7 + native MTP k=3 | 4 · PP4 | 393,216 configured; 131,042 prompt tokens measured | c=1/2/4/8/16 | 1,128 tok/s at 4k, 1,752 tok/s at 16k (degraded link) | 87.6 tok/s (c=1, temp 0, median of 3, clean) / 67.9 tok/s (c=1, temp 0.7 + `ignore_eos`, median of 5) | 78.4 tok/s (c=16, degraded link) | 3.67 s at 4k, 9.44 s at 16k (warm, streaming, degraded link) | 10.1-13.4 ms/token across 336-131,042 prompt tokens | GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10 at the checkpoint's sampling defaults; functional gates PASS; no lossless verdict available (greedy is not reproducible with speculation on or off) | 48-53 C across 3 stability rounds; instantaneous samples 64.8-215.6 W against a 180.00 W enforced limit; integrated energy untested | — | Publication-safe; recipe of record | [Result card](../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md) · [Notebook](../notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb) · [Guide](models/glm-5.3-flash.md) |
 | GLM-5.3-Flash | EXL3 4.05bpw · exllamav3 1.4.6 + TabbyAPI | 4 · manual `gpu_split` | 32,768 (max_seq_len); ~2,048 effective per request under Q8 cache | c=1/2/4/8, 1 warmup + 3 reps | ~358.5 tok/s warm (2,954 in, 180 W) | 25.2 tok/s (c=1, 180 W) | 44.6 tok/s (c=8, 180 W) | 0.73–1.78 s (180 W) | — | 20/20 golden corpus (keyword-match) | **180 W cap (verified, canonical):** 221.6 W mean / 352.4 W peak (4-card total, coincident-peak artifact); peak 51 °C, no Xid/ECC. 250 W (2026-09-02, accidental default, retained for comparison): 26.9 tok/s (c=1) / 44.8 tok/s (c=8), 234.7 W mean / 302.3 W peak, peak 49 °C. | — | Publication-safe | [Result card](../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) · [Guide](models/glm-5.3-flash.md) |
 | GLM-5.3-Flash | UD-IQ4_XS · llama.cpp (0069971) | 4 · layer split | 16,384 | c=1; ladder 1/2/4; soak c=2 | — | 17.73 tok/s median (c=1) | ~17.5–17.7 tok/s (c=2/4) | — | — | 21/26 local tasks · 41/41 soak reps | Snapshot only: 40.10–44.49 W, core 41–43 °C, mem 45–55 °C, VRAM 32,656–42,312 / 65,536 MiB; limit not queried | Snapshot proxy only, not integrated | Publication-safe; superseded by the EXL3 row above | [Run manifest](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) · [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) |
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
@@ -21,6 +22,100 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 | DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 16,384 | c=1; ladder 1/2/4/8/16 | 2,352 tok/s warm (362 tok/s first cold prefill) (2,941 input tokens) | 97.4 tok/s (median of 3; 57.6–123.5) (c=1) | 165.5 tok/s (median of 3; 140.3–203.2) @ c=4; failed (device-side assert, reproduced twice) @ c=16 | 0.394 s warm | — | Text passed; image not served on this path | — | — | Benchmark in progress; supersedes the earlier ladder | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Section](#deepseek-v4-flash-vision-exp-four-cards) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 → BF16 fallback · reference TP4 runtime + SM80 patches | 4 · TP4 | ≤ ~1,024 input tokens (OOM above) | batch 1 | 512 tokens in ~8.7–9.8 s | 0.88–0.93 tok/s (3 × 401 tokens) | — | ~2.05–2.08 s proxy | — | Real-image completion PASS; no-image and wrong-image controls PASS | — | — | Correctness evidence only, not a performance result | [Repo](https://github.com/PixelML/DeepSeek-V4-Flash-Vision-Exp-CMP-170HX) · [Milestone](#vision-correctness-milestone) |
 | DeepSeek-V4-Flash-Vision-Exp | FP8 · SM80 vLLM fork | 4 · PP4 · DSpark k=6 | 262,144 (max-model-len; 65,000 verified) | c=1, prefill ladder only | 5,261 tok/s @ 65,000 in (2,397 @ 2,941 in) | not measured (crash before decode phase) | — | 12.36 s wall @ 65,000 in (proxy) | — | Needle/decode/vision untested — engine crash at 131,000-token fixture build | 250 W cap (post-reboot, before 180 W was re-applied); 180 W re-measure pending; peak 51 °C, no Xid/ECC | — | Partial; engine crash above 65k, not restarted | [Results](results/2026-09-02-deepseek-v4-flash-vision-exp-4card-longctx-262k/RESULTS.md) · [Section](models/deepseek-v4-flash-vision-exp.md#long-context-max-model-len-262144-measured-2026-09-02) |
+
+## GLM-5.3-Flash AWQ W4A16, four cards, vLLM sm80 PP4 + MTP k=3 (publication-safe, recipe of record)
+
+**Measured 2026-09-05.** 4 x 64 GiB CMP 170HX at the 180 W club cap, no NVLink.
+Pipeline parallelism with `VLLM_PP_LAYER_PARTITION=14,12,12,7` (45 hidden
+layers, sparse-MLA counts 3/3/3/2 per stage), native MTP at
+`num_speculative_tokens=3`, `--max-model-len 393216`,
+`--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, `--max-num-seqs 8`,
+`--max-num-batched-tokens 4096`, `VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2`,
+`VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256`, `--limit-mm-per-prompt image:0,video:0`. Checkpoint
+`wtdcode/GLM-5.3-Flash-AWQ-W4A16` @ `abd7b07719111f137e1de8a0c1b7e01c11b74d1a`.
+Image `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905`
+(`sha256:62f612b49614523e6a46e1493d35d3efd1f363917129d38cc923a31053693bfb`).
+
+This supersedes the TP4 vLLM lane. TP is link-bound on this fabric: with no
+NVLink, every all-reduce crosses PCIe and the topology runs at the width of its
+worst rank. When one card's link retrained from x8 to x1, TP4 fell from 70.5 to
+14.4 tok/s under an unchanged protocol while PP4 held 60.8 tok/s on the same
+box — about 4.2x more link-tolerant.
+
+**Link caveat.** Every aggregate, prefill and TTFT number in this section was
+measured with one card at PCIe Gen1 x1 against a slot ceiling of x8 (the other
+three at x8, x16, x16). They are lower bounds. c=1 decode is link-insensitive
+under PP4 — one hidden-state hop of roughly 50 KB per decode step.
+
+**Draft-depth sweep, c=1 decode, one boot per depth:**
+
+| | k=2 | **k=3** | k=5 | k=7 |
+|---|---:|---:|---:|---:|
+| Best clean workload, temp 0, median of 3 (tok/s) | 81.89 counting | **87.55 math** | 82.10 json | 91.44 math |
+| Median, temp 0.7 + `ignore_eos`, 5 reps (tok/s) | 56.54 | **67.91** | 51.26 | 38.13 |
+| Draft acceptance rate | 74.0% | 65.4% | 46.6% | 37.3% |
+| Mean accepted length | 2.48 | 2.96 | 3.33 | 3.61 |
+
+Per-verified-token cost on this box is not flat, so depth does not pay for
+itself: k=7 wins math alone and loses code, counting and prose. Acceptance, not
+depth, is the lever.
+
+**Decode vs context (c=1, 512 output tokens, 3 reps, medians):** 98.6 tok/s at
+336 prompt tokens, then flat at 74.9-81.5 tok/s from 2,024 through 131,042
+tokens. Prompt processing rises from 592 to 2,038 tok/s over the same range
+(degraded link). Warm TTFT equals cold TTFT at every length because prefix
+caching is off in this recipe. Chart:
+[`assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.png`](../assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.png).
+
+**Concurrency (4k prompt, 256 out, temp 0.7 + `ignore_eos`, degraded link):**
+c=1 30.2, c=2 49.8, c=4 44.4, c=8 75.5, c=16 78.4 tok/s aggregate; success rate
+1.0 at every level.
+
+**Quality and stability.** At the checkpoint's own sampling defaults
+(temperature 1.0, top_p 0.95): GSM8K 49/50, HumanEval 19/20 pass@1, structured
+output 10/10, with both failures inspected. Sustained stability: 3/3 rounds of
+c=8, 24/24 requests, zero Xid, 48-53 C, throughput rising across rounds.
+
+**No lossless verdict is available, and that is a finding.** Greedy output on
+this stack is not reproducible: speculation on disagrees with itself on 11 of 20
+prompts (60.98% token match) and speculation **off** disagrees with itself on 14
+of 20 (50.18%). Speculation is therefore not the cause. The on-versus-off row
+(10% identical, 33.59% token match) sits below both noise floors and cannot be
+read as a speculation effect. Do not build a regression check on bit-identical
+output from this stack.
+
+**What the drafter is worth:** the sweep now carries a measured k=0 row
+(speculation off): P1 best clean workload 42.94 tok/s, P2 median 41.95 tok/s,
+KV pool 1,331,200 tokens, boot 795 s. Speculation off is flat at 42-43 tok/s on
+every workload, so the drafter is what creates the spread between workloads,
+because acceptance is what varies. MTP k=3 is **1.62x** that on the P2 protocol
+and up to 2.06x per P1 workload.
+
+The uplift is quoted under the declared protocol — median of five repetitions,
+cold rep included, applied identically to both arms. Warm-only and peak
+aggregations give 1.77x and 2.20x from the same receipts and are not used,
+because they would compare the two arms on different rules.
+
+**NVFP4 is not viable on this pool** (measured, two attempts, same signature).
+SM80 has no native FP4, so the checkpoint widens on load to about 60 GiB
+resident per card against roughly 45 GiB of weight share on disk, and the
+mixture-of-experts conversion runs out of memory during weight load, before a
+KV budget exists. Neither utilisation (0.90, 0.85) nor context length (393,216,
+131,072) moves it: a hardware-generation limit, not a tuning problem.
+
+**Boots 8/8** for this recipe, 795-1,263 s.
+
+**Negative result kept:** the public DFlash2 block drafter at k=7, a large win on
+the upstream author's NVFP4 checkpoint, is a net loss on our AWQ W4A16 one —
+draft acceptance 41.6% against MTP k=3's 65.4%, code and prose roughly halved,
+degenerate text on the code workload, and a KV pool cut to 1.33x from 3.04x.
+This, not the card count and not PP4, is why the upstream headline figure does
+not reproduce here.
+
+Full tables, receipts and the failure history:
+[result card](../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md),
+[notebook](../notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb),
+[guide page](models/glm-5.3-flash.md).
 
 ## GLM-5.3-Flash EXL3 4.05bpw, four cards, exllamav3 + TabbyAPI (publication-safe)
 

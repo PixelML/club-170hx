@@ -1,401 +1,666 @@
 # GLM-5.3-Flash on CMP 170HX
 
-GLM-5.3-Flash serves on 4x CMP 170HX using the EXL3 4.05bpw quantization on
-exllamav3 1.4.6, behind TabbyAPI's OpenAI-compatible server. This is the
-club's first working, benchmarked lane for this model. An earlier
-[compatibility review](../../notebooks/2026-08-31-glm-5.3-flash-compatibility-cmp170hx.ipynb)
-found every vLLM-served checkpoint blocked on SM80 (no `glm5_next` support
-upstream, sparse-MLA attention backends targeting SM90+/SM12x only) and
-fell back to a slow llama.cpp GGUF path at 17.73 tok/s. This EXL3 recipe
-replaces that fallback: 25.2-44.6 tok/s across the concurrency ladder at
-the club's standing 180 W per-card power cap, on the same hardware.
+> **Status: research preview.** Sections 6 and 7 are now filled for the recipe
+> of record, including sustained stability and a held-out quality battery. Three
+> gaps keep the preview label rather than a full release: the quality battery
+> covers reasoning/math, coding and structured output but not long-context
+> retrieval or tool use; **no lossless verdict is available**, because greedy
+> output on this stack is not reproducible with speculation on or off; and the
+> NVFP4 format is `not claim-ready`. Each is named where it appears.
 
-> **Power cap correction (2026-09-03).** The first ladder (26.9-44.8 tok/s)
-> ran at the vBIOS default 250 W by accident — no cap had been set that
-> session. A re-measure at the verified 180 W cap found no consistent
-> throughput difference (within run-to-run noise at every level). **180 W
-> is the canonical cap and the numbers in this document are the 180 W
-> re-measure**, except where a table explicitly says otherwise. See
-> [Power](#power) below for the full comparison.
+## 1. Summary
 
-> **Context-length update (2026-09-03, resolved).** The `cache_mode: Q8`
-> config caps a single request's context at about 2,048 tokens, because
-> GLM-5.3-Flash's DeepSeek Sparse Attention (DSA) mechanism activates past
-> that point and exllamav3's sparse-attention path does not support a
-> quantized MLA cache. **This is fixed by switching to `cache_mode:
-> FP16`**, which has now been validated up to 262,144 tokens of context
-> (250,000 prompt tokens actually tested, no OOM, no crash). `cache_mode:
-> FP16` / 262k context is the recommended default for long-context use;
-> `cache_mode: Q8` / 32k remains a valid lower-VRAM alternative for
-> short-context chat. See
-> [Context limit: Q8 cache and DSA](#context-limit-q8-cache-and-dsa) below
-> for the root cause and the 262k-context validation data.
-
-## Run on CMP 170HX
-
-| Cards | Format | Runtime | gpu_split | Cache mode | Power cap | Max context (single request) | Measured decode | Status |
-|---|---|---|---|---|---|---:|---|---|
-| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | **FP16 (recommended default)** | 250 W (accidental default; 180 W re-measure pending) | 262,144 tokens configured; 250,000 prompt tokens validated, no OOM/crash | 25.2-44.6 tok/s ladder not re-run at 262k; short-context ladder below still applies | Measured (context length), throughput ladder not re-run |
-| 4 | EXL3, 4.05 bits/weight | exllamav3 1.4.6 + TabbyAPI | `[48, 48, 48, 48]` GB (manual, not tensor_parallel) | Q8 (lower-VRAM, short-context alternative) | **180 W (verified, canonical)** | ~2,048 tokens before DSA/Q8 fails the request | 25.2 tok/s (c=1) to 44.6 tok/s (c=8) | Measured |
-| 4 | AWQ W4A16 (compressed-tensors, wtdcode) | vLLM sm80 (`glm53-sm80` branch, TP4 + MTP-3) | `--tensor-parallel-size 4` (TP4) | KV auto (fp8 KV rejected by the Triton MLA backend) | **180 W (canonical)** | 524,288 | **56.4 tok/s median c=1 (peak 56.9)**; c=8 aggregate 37.0 (below EXL3, see caveats) | Measured 2026-09-03 — see [results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md) |
-
-## Quick start
-
-### 1. Download the weights
-
-```bash
-pip install -U huggingface_hub
-hf download turboderp/GLM-5.3-Flash-exl3 \
-  --revision 2a30229e67012798ba9f0cd832bb78abf4c363d5 \
-  --local-dir <weights>
-```
-
-The checkpoint is `turboderp/GLM-5.3-Flash-exl3`, branch `4.05bpw`,
-revision `2a30229e67012798ba9f0cd832bb78abf4c363d5` (EXL3 quantization at
-4.05 bits per weight).
-
-### 2. Install the runtime
-
-exllamav3 1.4.6+cu128.torch2.10.0, served through
-[TabbyAPI](https://github.com/theroyallab/tabbyAPI) (an OpenAI-compatible
-server). Install both per their upstream project instructions.
-
-### 3. Configure and launch
-
-**Recommended default (long context, up to 262,144 tokens):**
-
-```yaml
-model_dir: <weights>
-gpu_split: [48, 48, 48, 48]   # GB per card, manual split — unchanged from the short-context config
-max_seq_len: 262144
-cache_size: 262144
-chunk_size: 4096
-cache_mode: FP16                # required for context past ~2,048 tokens; see below
-reasoning: true                 # required, see below
-```
-
-**Lower-VRAM short-context alternative (<= ~2,048 tokens usable per request):**
-
-```yaml
-model_dir: <weights>
-gpu_split: [48, 48, 48, 48]   # GB per card, manual split
-max_seq_len: 32768
-cache_size: 32768
-chunk_size: 2048
-cache_mode: Q8                 # caps single-request context at ~2,048 tokens; see below
-reasoning: true                 # required, see below
-```
-
-`tensor_parallel` raises `NotImplementedError` for
-`Glm5NextForConditionalGeneration` in exllamav3 1.4.6. `gpu_split` (manual,
-per-card GB) is the working topology, not TP — the same split works
-unchanged for both configs above.
-
-### 4. First request
-
-```bash
-curl http://localhost:5000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model": "glm-5.3-flash",
-    "messages": [{"role": "user", "content": "What is the capital of France? Answer with just the city name."}],
-    "temperature": 0,
-    "max_tokens": 128
-  }'
-```
-
-Use the standard TabbyAPI OpenAI-compatible port; there is nothing model
-family specific about the endpoint itself.
-
-## Reasoning parsing (required)
-
-GLM-5.3-Flash defaults to `reasoning_effort: max` with `<think>...</think>`
-tags baked into its chat template. If TabbyAPI's `reasoning` config is left
-`false`, chain-of-thought leaks unparsed into the visible `content` field
-and burns the whole completion budget with no final answer ever produced.
-Setting `reasoning: true` routes the chain-of-thought into a separate
-`reasoning_content` field instead, leaving `content` for the final answer.
-
-`max_tokens=32` (a common quick smoke-test budget) is reproducibly **not
-enough**, even with reasoning correctly parsed — the model spends the whole
-budget thinking and returns `content: null`. `max_tokens=128` on the same
-prompt cleanly returns `content: "Paris"`. **Recommendation: use
-`max_tokens >= 128` for short factual answers with reasoning enabled.**
-
-## Context limit: Q8 cache and DSA (resolved 2026-09-03)
-
-GLM-5.3-Flash uses DeepSeek Sparse Attention (DSA), an indexer-based sparse
-attention mechanism. Per the model's own `config.json`, `index_topk: 2048`.
-In exllamav3 1.4.6 (`exllamav3/modules/mla_attn.py`):
-
-- Sparse attention activates once `max(host_seqlens) + seqlen >
-  self.index_topk` (line 765) — intended DSA behavior, not a bug, on a
-  model that natively supports up to 1,048,576 tokens
-  (`max_position_embeddings` in `config.json`).
-- That sparse-attention path carries an explicit assertion that it does
-  not support a quantized MLA cache (`_attend_sparse`, ~line 906):
-
-  ```
-  assert qc is None, "sparse DSA over a quantized MLA cache is not supported yet; use an fp16 cache"
-  ```
-
-- `qc` is only non-`None` when `cache_mode` is `Q8`/`Q6`/`Q4`
-  (`CacheLayer_MLA_quant`). With `cache_mode: FP16`
-  (`CacheLayer_MLA_fp16`), `qc = None` and the sparse path works fine.
-
-**Conclusion: the cap comes from `cache_mode: Q8` colliding with the DSA
-indexer window — not from `max_seq_len` or TabbyAPI's chunk/max-input
-settings.** With `cache_mode: Q8` (the VRAM-efficient short-context
-config), any single request whose context exceeds about 2,048 tokens fails
-that request with a 503; the server process itself stays up and keeps
-serving shorter requests normally.
-
-### Fix and 262k-context validation
-
-Switching to `cache_mode: FP16` (with `max_seq_len`/`cache_size: 262144`
-and `chunk_size: 4096`; `gpu_split` unchanged) lifts the cap. Boot
-succeeded on the first attempt, about 2.5 minutes from local NVMe.
-Per-card memory after load: GPU0=46,230, GPU1=45,456, GPU2=45,488,
-GPU3=23,638 MiB — 19-42 GiB headroom per card under the 64 GiB cap.
-
-**Prefill ladder** (max_tokens=1, tokenizer-exact prompt lengths, one
-continuously-booted server, no restart between steps):
-
-| Prompt tokens | Result | Prefill time | Peak mem (GPU0/1/2/3, MiB) |
-|---:|---|---:|---|
-| 2,941 | OK | 14.27 s | 48,308 / 47,518 / 47,550 / 25,662 |
-| 16,000 | OK | 20.79 s | 49,076 / 48,322 / 48,354 / 26,496 |
-| 32,000 | OK | 26.92 s | 49,076 / 48,356 / 48,356 / 26,496 |
-| 65,000 | OK | 50.80 s | 49,142 / 48,388 / 48,420 / 26,624 |
-| 131,000 | OK | 102.04 s | 49,144 / 48,390 / 48,422 / 26,626 |
-| 200,000 | OK | 48.21 s | 49,176 / 48,390 / 48,422 / 26,626 |
-| 250,000 | OK | 35.35 s | 49,176 / 48,390 / 48,422 / 26,626 |
-
-**Largest verified prompt: 250,000 tokens.** No OOM, no crash at any
-tested length. Prefill time drops noticeably past 131k tokens, because
-DSA's indexer caps attention cost at a fixed top-k=2048 token selection
-regardless of total context length — the 131k point looks like a
-transitional/less-optimized case rather than a regression, but this is
-flagged as an open question, not a settled explanation. Memory stayed
-essentially flat from 16k tokens onward: going from 16k to 250k tokens
-cost only about 2 GiB total across all four cards, because the MLA/DSA
-cache is cheap per token and this model's hybrid linear-attention layers
-(KDA / gated-delta-net) carry O(1) state that does not grow with context.
-
-**Needle-in-haystack retrieval:**
-
-| Context length | Result |
+| | |
 |---|---|
-| 32k tokens | PASS — correctly retrieved a planted unique fact |
-| 250k tokens | PASS — correctly retrieved a planted unique fact |
+| Model | GLM-5.3-Flash (45 hidden layers, sparse-MLA attention, one native MTP layer) |
+| Hardware pool | 4x CMP 170HX (SM80, 64 GiB HBM2e each, 256 GiB aggregate), 180 W per-card cap, no NVLink, no P2P over PCIe |
+| **Recipe of record** | **PP4 + native MTP k=3, AWQ W4A16, vLLM sm80** — 87.6 tok/s c=1 decode (P1 math, clean), 67.9 tok/s c=1 (P2 median), 78.4 tok/s best aggregate at c=16 |
+| Superseded | TP4 + MTP k=3, same checkpoint — 60.4 tok/s c=1 median. TP is link-bound on this fabric; see section 8 |
+| Alternative lane | EXL3 4.05 bits/weight on exllamav3 + TabbyAPI — 25.2 tok/s c=1, 44.6 tok/s at c=8, 262,144-token context validated |
+| Superseded fallback | UD-IQ4_XS GGUF on a llama.cpp SM80 fork — 17.73 tok/s c=1 |
+| A100-class comparison | untested — no A100 in the pool |
+| Quality, recipe of record | GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10, at the checkpoint's own sampling defaults |
+| Stability | 3/3 rounds of c=8, 24/24 requests, zero Xid, 48-53 C; boots 8/8 |
+| Drafter value | MTP k=3 is 1.62x speculation off under the declared protocol |
+| Release state | research preview |
+| Last measurement | 2026-09-05 (PP4 lane); 2026-09-03 (EXL3 lane) |
 
-**Health:** no Xid or ECC (including double-bit) events at any point in
-the ladder (`nvidia-smi -q` and `dmesg`); peak temperature 51 degrees C;
-server process stayed up throughout, no driver reload needed.
+Two facts shape every number on this page.
 
-**Scope note:** only prefill/context-length behavior was re-tested. The
-full C1/C2/C4/C8 throughput ladder was **not** re-run at 262k context —
-the 25.2-44.6 tok/s figures below (180 W, canonical) remain the
-short-context (`Q8` cache) measurement, and no throughput regression was
-observed at short context during this update, but that claim does not
-extend to a re-run 262k ladder.
+**Pipeline parallelism beats tensor parallelism here.** This node has no NVLink,
+so every TP all-reduce crosses PCIe and the topology runs at the width of its
+worst rank. PP4 moves one hidden state — roughly 50 KB — per decode step. When
+one card's link retrained from x8 to x1, the identical TP4 recipe fell from 70.5
+to 14.4 tok/s under the identical protocol while PP4 held 60.8 tok/s on the same
+box.
 
-`cache_mode: FP16` / 262,144-token context is now the recommended default
-for this recipe whenever long context matters. Keep `cache_mode: Q8` /
-32,768-token context only when the lower VRAM footprint matters more than
-long context.
+**Acceptance, not draft depth, is the lever.** Per-verified-token cost on this
+box is not flat, so deeper MTP drafts do not pay for themselves: k=3 is the
+record, and the community block drafter, which is a large win on the upstream
+author's NVFP4 checkpoint, is a net loss on our AWQ one.
 
-## Recommended settings
+## 2. Requirements
 
-- **Sampling for throughput benches:** greedy decoding, exactly 400
-  completion tokens, tokens counted from the final usage object.
-- **Speculative decoding:** n-gram drafting was tested and gave no
-  benefit — 26.9 tok/s (draft off) vs. 25.0 tok/s (draft n-gram), a 7.2%
-  regression within noise. The shipped config has drafting disabled.
-- **KV cache:** `FP16` is the recommended default (removes the DSA/Q8 cap,
-  validated to 262,144-token context, costs only about 2 GiB of extra VRAM
-  across all four cards versus Q8 at short context). `Q8` remains a valid
-  lower-VRAM alternative for short-context chat, but caps single-request
-  context at about 2,048 tokens because of the DSA assertion above.
-- **Context:** with `cache_mode: FP16`, `max_seq_len`/`cache_size: 262144`
-  is validated up to 250,000 prompt tokens. With `cache_mode: Q8`,
-  `max_seq_len`/`cache_size` are configured at 32,768, but the effective
-  per-request ceiling is about 2,048 tokens once DSA activates.
-- **Concurrency:** measured clean through c=8 with no OOM.
-- **Reasoning:** `reasoning: true` is required; see above.
+| Format | Bits | GiB per card | Cards needed | Aggregate GiB | Link assumption | Status |
+|---|---|---|---|---|---|---|
+| AWQ W4A16 (compressed-tensors) | 4 | 45.5 per PP stage at PP4 | 4 | ~178 weights + KV | PCIe Gen1 tolerated under PP4; TP4 needs a healthy link on every rank | measured |
+| EXL3 | 4.05 | 48 configured (`gpu_split`), 12-48 used | 4 | ~153 used | manual split, not tensor-parallel | measured |
+| UD-IQ4_XS GGUF | ~4.25 | fits | 4 | — | any | measured, superseded |
+| NVFP4 | 4 | ~60 GiB **resident per card** after load, vs ~45 GiB weight share on disk | — | — | — | **not viable on this pool** (measured, 2 attempts) — SM80 has no native FP4, so the checkpoint widens on load and the mixture-of-experts conversion runs out of memory before a KV budget exists. See section 8 |
+| AWQ-INT4 (cyankiwi) | 4 | ~49.5 at TP4 | 4 | 198.1 | — | negative: `glm5_next` absent from the upstream vLLM model registry |
+| EXL3/TR3 | 4 | ~40.9 at TP4 | 4 | — | — | negative: ships SM121-only kernel binaries |
+| Official FP8 / BF16 | 8 / 16 | 76+ (FP8) | — | — | — | negative: does not fit |
 
-## Benchmarks
+## 3. Recommended settings
 
-Measured 2026-09-02. Full receipts:
-[results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/](../../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md).
+For the recipe of record, verified on 2026-09-05 unless stated otherwise.
+
+| Setting | Value | Verification |
+|---|---|---|
+| Sampling, general use | temperature 1.0, top_p 0.95 — the checkpoint's own `generation_config.json` defaults | measured 2026-09-05, and these are the settings the quality battery in section 7 was run at |
+| Sampling, throughput bench (P1) | temperature 0, 512 output tokens, 3 reps | measured 2026-09-05 |
+| Sampling, throughput bench (P2) | temperature 0.7, `ignore_eos`, 512 output tokens, 5 reps | measured 2026-09-05 |
+| `max_tokens` for short factual answers | **>= 128** | measured — this model reasons before answering; a 32-token budget returns an empty answer |
+| Max context tested | 131,042 prompt tokens (server configured to 393,216) | measured 2026-09-05 |
+| Reasoning / thinking mode | not switchable on this checkpoint | **negative result, measured 2026-09-05** — the probe sent `enable_thinking` and `thinking`, true and false, plus the server default, and got no `reasoning_content` back in any case. Do not expect a thinking toggle here |
+| Prefix caching | off (`--no-enable-prefix-caching`) | measured — this is why warm TTFT equals cold TTFT throughout section 6 |
+| KV dtype | `auto` | measured — fp8 KV is rejected by the Triton MLA backend on this build |
+| Draft depth | native MTP, `num_speculative_tokens=3` | measured — full sweep in section 6 |
+| Tool-call parser | untested (pending) | no tool-call cell has been run on this recipe |
+| Reproducible greedy output | **not available on this stack** | measured 2026-09-05 — the same prompts, server and settings disagree with themselves whether speculation is on or off; see section 6.9 |
+
+For the EXL3 lane, `reasoning: true` is **required**: with it left false the
+chain-of-thought leaks into the visible `content` field and burns the whole
+completion budget. `cache_mode: FP16` is the recommended default there;
+`cache_mode: Q8` caps a single request at about 2,048 tokens (section 8).
+
+## 4. Run table
+
+| Hardware | Format | Runtime | Image tag / digest | Topology | Settings | Decode c=1 | Best aggregate | Status |
+|---|---|---|---|---|---|---|---|---|
+| 4x CMP 170HX, 180 W | AWQ W4A16 | vLLM sm80, `pp-dflash2/glm53-flash-487ecf187-20260905` | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905` / `sha256:62f612b4...693bfb` | **PP4, partition 14,12,12,7** | MTP k=3, max-model-len 393,216, prefix caching off, util 0.90, max-num-seqs 8, micro-batch cap 2, sidecar block 256 | **87.6 tok/s** (P1 math, clean) / **67.9** (P2 median) | 78.4 tok/s at c=16 *(degraded link)* | **measured — recipe of record** |
+| 4x CMP 170HX, 180 W | AWQ W4A16 | vLLM sm80, `glm53-sm80` | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903` | TP4 | MTP k=3, max-model-len 524,288 | 60.4 tok/s (P2 median, peak 77.9) | 37.0 tok/s at c=8 | **superseded** — link-bound, see section 8 |
+| 4x CMP 170HX, 180 W | EXL3 4.05 bpw | exllamav3 1.4.6 + TabbyAPI | — | manual `gpu_split [48,48,48,48]` | `cache_mode: FP16`, 262,144 context, `reasoning: true` | 25.2 tok/s | 44.6 tok/s at c=8 | measured 2026-09-03 |
+| 4x CMP 170HX | UD-IQ4_XS GGUF | llama.cpp SM80 fork | — | — | — | 17.73 tok/s | ~17.7 at c=4 | measured, superseded |
+| 4x CMP 170HX | AWQ W4A16 | vLLM sm80 + community DFlash2 block drafter | same PP4 image | PP4, partition 14,12,12,7 | DFlash2 k=7 | 32.5-36.2 tok/s on the clean workloads | untested | **negative** — see section 6.4 |
+| 8x CMP 170HX (rented) | AWQ W4A16 | vLLM sm80 | same | TP8 / PP8 | — | untested | untested | untested — rental bundle prepared |
+| A100 | any | any | — | — | — | untested | untested | untested — no A100 in the pool |
+
+## 5. Quick start
+
+```bash
+# 1. Pull the image (by digest for exact reproducibility)
+docker pull ghcr.io/pixelml/club-170hx@sha256:62f612b49614523e6a46e1493d35d3efd1f363917129d38cc923a31053693bfb
+
+# 2. Download and verify the weights: expect 24 files, 190,843,146,533 bytes,
+#    0 missing or mismatched. Stage on local NVMe, not a network mount.
+pip install -U huggingface_hub
+hf download wtdcode/GLM-5.3-Flash-AWQ-W4A16 \
+  --revision abd7b07719111f137e1de8a0c1b7e01c11b74d1a \
+  --local-dir <weights>
+
+# 3. Launch (recipe of record: recipes/glm53-flash-4x170hx-pp4.sh)
+docker run -d --name <container> --gpus '"device=0,1,2,3"' \
+  --shm-size 16g --ipc=host -p 127.0.0.1:<port>:8000 \
+  -e HF_HUB_OFFLINE=1 \
+  -e VLLM_PP_LAYER_PARTITION=14,12,12,7 \
+  -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
+  -e TORCH_CUDA_ARCH_LIST=8.0 \
+  -e VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2 \
+  -e VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256 \
+  -v <weights>:/weights:ro \
+  ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905 \
+  --model /weights --served-model-name GLM-5.3-Flash \
+  --pipeline-parallel-size 4 \
+  --max-model-len 393216 \
+  --gpu-memory-utilization 0.90 \
+  --no-enable-prefix-caching \
+  --max-num-seqs 8 --max-num-batched-tokens 4096 \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
+  --limit-mm-per-prompt '{"image":0,"video":0}'
+
+# 4. First request
+curl http://127.0.0.1:<port>/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"GLM-5.3-Flash",
+       "messages":[{"role":"user","content":"What is the capital of France? Answer with just the city name."}],
+       "temperature":0,"max_tokens":128}'
+```
+
+**Expected boot: about 17 minutes** (1,029 s measured) from locally staged
+weights, of which 320 s is engine init. Over a network mount the shard load
+dominates and can turn that into an hour.
+
+There is no first image request: this recipe disables multimodal profiling as a
+node workaround (section 8), so the vision path is unmeasured.
+
+To rent rather than own, `scripts/rental/` carries an onstart script, an offer
+finder, per-topology launchers, and a run queue.
+
+Why each non-obvious flag is present:
+
+| Flag | Reason |
+|---|---|
+| `VLLM_PP_LAYER_PARTITION=14,12,12,7` | 45 hidden layers with 11 sparse-MLA layers at index 3, 7, ... 43. This split gives sparse counts 3/3/3/2 per stage and leaves the last stage room for `lm_head` and the drafter. Even-leaning splits crash on the first request. |
+| `--max-model-len 393216` | the largest length whose KV pool fits at four cards; the upstream 1,048,576 fails at boot with an explicit KV-cache size error |
+| `--no-enable-prefix-caching` | the recipe measures uncached behaviour; leaving it off is what makes warm TTFT equal cold TTFT in section 6 |
+| `--gpu-memory-utilization 0.90` | 0.92 leaves too little headroom for the drafter's sidecar at this partition |
+| `--limit-mm-per-prompt image:0,video:0` | text-only node workaround, section 8 |
+
+## 6. Performance
+
+**Hardware caveat on every link-bound cell below.** These were measured on a
+degraded link: **GPU1 PCIe Gen1 x1 against a slot ceiling of x8, GPU0 x8,
+GPU2/3 x16, no NVLink.** Aggregate, prefill and TTFT numbers are lower bounds.
+c=1 decode is link-insensitive under PP4 and carries the headline.
+
+Full receipts:
+[`results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/`](../../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md).
 Executed notebook:
-[notebooks/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi.ipynb](../../notebooks/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi.ipynb).
+[`notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb`](../../notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb).
 
-### Concurrency ladder (greedy, exactly 400 completion tokens, 1 warmup + 3 measured reps)
+### 6.1 Draft-depth sweep, c=1 decode
 
-**180 W (2026-09-03, verified cap — canonical):**
+One boot per depth, everything else identical. `(deg)` marks a cell flagged by
+the upstream repeat guard as repetition-collapsed; those cells are inflated and
+are not read as throughput. Receipt: `receipts/{k2,k3,k5,k7}/p1.json` and
+`decode_c1.json`.
 
-| Concurrency | Aggregate tok/s (mean of 3 reps) | Mean per-request tok/s |
+| Workload (P1, median of 3, tok/s) | k=0 (off) | k=2 | **k=3** | k=5 | k=7 |
+|---|---:|---:|---:|---:|---:|
+| counting | 42.88 | 81.89 | 75.69 | 63.73 | 53.40 |
+| json | 42.17 *(deg)* | 84.08 *(deg)* | 87.02 | 82.10 | 78.16 *(deg)* |
+| code | 42.83 | 60.52 | 58.37 *(deg)* | 40.65 | 34.64 |
+| math | 42.94 | 80.88 | **87.55** | 72.52 | 91.44 |
+| prose | 42.91 | 60.73 | 60.54 | 45.74 | 47.30 |
+| repetition *(diagnostic)* | 42.88 *(deg)* | 74.32 | 80.21 | 77.36 | 78.42 *(deg)* |
+| **P1 headline, clean cells only** | 42.94 math | 81.89 counting | **87.55 math** | 82.10 json | 91.44 math |
+| **P2 median tok/s (5 reps)** | 41.95 | 56.54 | **67.91** | 51.26 | 38.13 |
+| Draft acceptance rate | no drafter | 74.0% | 65.4% | 46.6% | 37.3% |
+| Mean accepted length | 1.00 | 2.48 | 2.96 | 3.33 | 3.61 |
+| KV pool at 393,216 max len | 1,331,200 | — | 1,194,627 | — | — |
+
+k=7 wins math alone. It loses code, counting and prose, and its P2 median is
+38.13 against k=3's 67.91. Deeper drafts buy a longer accepted run but at a
+collapsing acceptance rate, and the extra sequential MTP forwards cost more than
+the extra accepted tokens return. **k=3 is the record.**
+
+Acceptance counts come from the engine's own `vllm:spec_decode_*` counters
+differenced across the measurement window — exact counts, not gauges.
+
+### 6.2 Decode vs context, c=1
+
+One boot, 512 output tokens, 3 repetitions plus a cold/warm pair per point.
+Receipt: `receipts/k3/sweep/context_sweep.json`.
+
+| Prompt tokens (actual) | Prompt tok/s *(degraded link)* | Generation tok/s | ms/token | Cold / warm TTFT s *(degraded link)* |
+|---:|---:|---:|---:|---|
+| 336 | 592.2 | 98.58 | 10.14 | 0.52 / 0.52 |
+| 888 | 912.2 | 98.74 | 10.13 | 0.98 / 0.96 |
+| 2,024 | 1,027.9 | 81.51 | 12.27 | 1.98 / 1.96 |
+| 3,968 | 1,108.4 | 75.34 | 13.27 | 3.57 / 3.57 |
+| 8,042 | 1,462.0 | 74.85 | 13.36 | 5.50 / 5.50 |
+| 16,095 | 1,744.3 | 78.89 | 12.68 | 9.24 / 9.21 |
+| 32,986 | 1,912.5 | 76.61 | 13.05 | 17.26 / 17.25 |
+| 66,023 | 2,007.0 | 77.44 | 12.91 | 32.90 / 32.89 |
+| 131,042 | 2,038.4 | 78.56 | 12.73 | 64.32 / 64.29 |
+| 258,000 (target) | untested (pending) | untested (pending) | untested (pending) | prompt calibration overshot the 393,216-token limit |
+
+**Decode is flat from 2k to 131k tokens** — roughly 75-79 tok/s across nearly two
+orders of magnitude of context. Warm equals cold at every length because prefix
+caching is off in this recipe. The sweep alternated a thinking-on and a
+thinking-off arm; they are statistically identical because the switch does not
+work on this checkpoint (section 3), so they are one configuration measured
+twice, not an A/B, and are reported as a single curve.
+
+![context sweep](../../assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.png)
+
+### 6.3 Concurrency scaling
+
+4,096-token prompts, 256 output tokens, P2 sampling, uncached.
+**Every row is link-bound; read as lower bounds.** Receipt:
+`receipts/k3/conc_sweep.json`.
+
+| Concurrency | Aggregate tok/s | Per-stream median tok/s | e2e p50 s | e2e p95 s | Success rate |
+|---:|---:|---:|---:|---:|---|
+| 1 | 30.21 | 30.22 | 8.47 | 8.47 | 1/1 |
+| 2 | 49.80 | 25.04 | 10.28 | 10.28 | 2/2 |
+| 4 | 44.38 | 11.12 | 23.05 | 23.07 | 4/4 |
+| 8 | 75.51 | 9.48 | 27.03 | 27.11 | 8/8 |
+| 16 | 78.36 | 7.02 | 51.97 | 52.19 | 16/16 |
+
+### 6.4 Prefill and TTFT
+
+Uncached prefill with one output token; warm streaming TTFT with 32 output
+tokens. **Link-bound; lower bounds.** Receipt:
+`receipts/k3/prefill_{4096,16384}/`.
+
+| Prompt tokens | Prefill tok/s | Prefill wall s | Warm streaming TTFT s | Reps |
+|---:|---:|---:|---:|---:|
+| 4,096 | 1,128.5 | 3.63 | 3.67 | 3 |
+| 16,384 | 1,751.8 | 9.35 | 9.44 | 3 |
+
+### 6.5 Block drafter on the AWQ checkpoint — negative
+
+The public DFlash2 block drafter (`incoai/GLM-5.3-Flash-DFlash2`,
+cc-by-nc-nd-4.0, downloaded for measurement only) is a large win on the upstream
+author's NVFP4 checkpoint. On our AWQ W4A16 checkpoint it is a net loss. This —
+not the card count and not PP4 — is the main reason the upstream headline figure
+does not reproduce here. Receipt: `receipts/awq-dflash7/`.
+
+| | MTP k=3 (record) | DFlash2 k=7 on AWQ W4A16 |
 |---|---:|---:|
-| C1 | 25.2 | 25.2 |
-| C2 | 35.3 | 18.0 |
-| C4 | 43.2 | 11.0 |
-| C8 | 44.6 | 8.2 |
+| code (clean) | 58.37 | 36.21 |
+| prose (clean) | 60.54 | 32.45 |
+| counting | 75.69 | 129.71 |
+| json | 87.02 | 136.54 *(deg)* |
+| math | 87.55 | 110.81 |
+| Draft acceptance rate | 65.4% | 41.6% |
+| Mean accepted length | 2.96 | 3.91 |
+| KV pool at 393,216 max len | 1,194,627 tokens (3.04x) | 523,657 tokens (1.33x) |
+| Clean text on the code workload | yes | no — repeated, broken think tags |
 
-**250 W (2026-09-02, accidental default — retained for comparison):**
+The decisive follow-up — the same drafter on an NVFP4 checkpoint, which
+separates drafter quality from drafter/checkpoint mismatch — is **untested
+(pending)**.
 
-| Concurrency | Aggregate tok/s (mean of 3 reps) | Mean per-request tok/s |
-|---|---:|---:|
-| C1 | 26.9 | 26.9 |
-| C2 | 31.1 | 15.6 |
-| C4 | 41.7 | 10.5 |
-| C8 | 44.8 | 8.3 |
+### 6.6 Boot reliability
 
-**Delta (180 W vs 250 W):** C1 -6.3%, C2 +13.5%, C4 +3.6%, C8 -0.4%. Each
-cap has one run of three reps, not five; the C2 gap is best read as
-run-to-run noise, not a real power effect. No level shows a directional,
-monotonic speed penalty from the lower cap. 180 W is kept as the standing
-default; this data does not support raising it for a throughput gain.
+| Metric | Value |
+|---|---|
+| Boots served / attempted, this recipe | **8 / 8**, plus 2 / 2 on the earlier port run |
+| Boot seconds | 795-1,263 to `Application startup complete`; 795 s is the speculation-off boot, 873 s the post-recovery one with a warm compile cache |
+| Engine init (profile + KV + warmup) | 320.4 s on the measured boot |
+| Memory per PP stage after load | 45.45 GiB |
+| Idle memory per card | 51.6-54.2 GiB of 64 GiB |
+| Power cap | 180 W verified on all four cards throughout |
+| GPU health before and after every boot | 4/4 at the expected PCI revision, zero Xid, zero ECC |
+| Peak temperature under load | 53 C — see section 6.7 |
 
-No OOM through C8 at either cap. Memory and temperature watched
-continuously through both ladders: no growth trend, peak 51 °C, no
-Xid/ECC events.
+### 6.7 Sustained stability, power and temperature
 
-### Prefill / TTFT (2,941-token prompt, exact token count verified against the tokenizer)
+Three rounds of c=8 back to back, 2,900-token uncached prompts with a nonce,
+256 output tokens, P2 sampling, device health checked after each round.
+Receipt: `receipts/k3/c8_stability.json`.
 
-Measured with `cache_mode` temporarily set to FP16 to avoid the Q8/DSA
-assertion above; reverted to Q8 for standing service afterward (the
-2026-09-03 180 W re-measure ran with the standing config already on
-FP16 — see the power-cap-correction note above).
+| Round | Succeeded | Wall s | Aggregate tok/s *(link-bound)* | Temp C after | Power W after | Xid lines |
+|---:|---|---:|---:|---|---|---:|
+| 1 | 8/8 | 39.3 | 52.11 | 48-52 | 78.3-170.2 | 0 |
+| 2 | 8/8 | 23.4 | 87.50 | 50-53 | 89.2-201.0 | 0 |
+| 3 | 8/8 | 22.7 | 90.26 | 50-53 | 64.8-215.6 | 0 |
 
-**180 W (2026-09-03, canonical), prompt re-tokenized to 2,954 tokens post
-chat-template:**
+**3/3 rounds passed, 24/24 requests succeeded, zero Xid, no card dropped.**
+Throughput rose across rounds because round 1 carries warmup, so there is no
+sustained-load degradation to report. Temperatures stayed in a 48-53 C band.
 
-| Rep | Prompt time (s) | Prefill tok/s |
-|---|---:|---:|
-| 0 (cold) | 0.44 | 313.6 |
-| 1 (warm) | 0.39 | 353.9 |
-| 2 (warm) | 0.38 | 363.2 |
+One honest note on the power column. The per-card **enforced limit** reads
+180.00 W in every sample, but individual instantaneous readings go above it, to
+215.6 W. Read those as artifacts of a point-in-time query rather than sustained
+draw. No integrated energy was recorded on this run, so sustained power is
+`untested (pending)`.
 
-Warm mean (reps 1-2): 358.5 tok/s. TTFT (same prompt, streaming, wall
-time to first content-bearing chunk) ranged 0.73-1.78 s across three reps;
-treat as a range, not a point estimate — no other load ran against the
-server during the measurement window.
+### 6.8 Lossless check — no verdict is available, and that is the finding
 
-**250 W (2026-09-02):**
+The intended cell was a token-for-token comparison of greedy output with
+speculation on against speculation off. Running the control first changed what
+that comparison can mean. Receipts: `receipts/lossless/`.
 
-| Item | Value |
-|---|---:|
-| Cold (first request post-boot) | 5.57 s prompt time |
-| Warm (reps 2-3, usage-reported) | mean prompt_time 0.39 s -> ~354 tok/s prefill throughput |
+| Comparison | Identical completions | Token-for-token match rate |
+|---|---|---|
+| Speculation on vs itself (noise floor) | 9/20 = 45% | 60.98% |
+| Speculation **off** vs itself (noise floor) | 6/20 = 30% | 50.18% |
+| Speculation on vs speculation off | 2/20 = 10% | 33.59% |
 
-Prefill throughput is not power-cap sensitive at this prompt length: the
-180 W warm mean (358.5 tok/s) matches the 250 W warm figure (~354 tok/s)
-within noise.
+Same 20 fixed prompts, same server, same boot, same settings, temperature 0.
 
-### Power
+**Greedy output is not reproducible on this stack, and the nondeterminism is not
+caused by speculation** — speculation off disagrees with itself on 14 of 20
+prompts, worse than speculation on. Under
+pipeline parallelism the number of accepted draft tokens per step varies with
+batch composition, which changes the shape of the verification forward pass and
+therefore the reduction order in the kernels; the pipeline supplies the rest.
 
-**180 W (2026-09-03, canonical), 1 Hz samples across the full ladder +
-prefill/TTFT window (~10.5 min):**
+The on-versus-off row sits **below both noise floors**, so it cannot be read as
+"speculation changes two thirds of the tokens." A lossless claim would have to
+clear a bar the stack does not clear by itself. **No lossless verdict is
+available for this recipe.** The honest label is **not measurable on this
+stack**: not "failed", and not a percentage. Anyone quoting an on-versus-off
+number from this stack without the two control rows beside it is quoting noise.
 
-| GPU | Mean W | Peak W | Peak temp (C) |
+Practical consequence: do not rely on bit-identical replay here. Use the quality
+battery in section 7, which measures task outcomes, rather than output equality.
+
+### 6.9 What the drafter is worth
+
+The speculation-off boot also supplies the baseline for the drafter's value.
+Same recipe, same protocols, `--speculative-config` removed. Receipts:
+`receipts/nospec/`.
+
+| Workload (P1 median, tok/s) | MTP k=3 | Speculation off | Uplift |
 |---|---:|---:|---:|
-| 0 | 56.7 | 139.5 | 51 |
-| 1 | 58.8 | 172.6 | 49 |
-| 2 | 56.4 | 168.4 | 49 |
-| 3 | 49.8 | 102.5 | 45 |
-| **Total** | **221.6** | **352.4** | — |
+| counting | 75.69 | 42.88 | 1.77x |
+| json | 87.02 | 42.17 | 2.06x |
+| code | 58.37 *(deg)* | 42.83 | 1.36x |
+| math | 87.55 | 42.94 | 2.04x |
+| prose | 60.54 | 42.91 | 1.41x |
 
-Peak per-card power (172.6 W) stayed under the 180 W cap at every sample.
-The total peak (352.4 W) is a coincident-peak artifact of summing each
-card's own peak moment, not a real 4-card simultaneous draw — no single
-1 s sample summed above 302 W across all four cards.
+Speculation off is flat at roughly 42-43 tok/s on every workload. The drafter is
+what creates the spread between workloads, because acceptance is what varies.
 
-**250 W (2026-09-02, accidental default, measured during a C4 load run,
-1s samples over 60s):**
+On the single-prompt P2 protocol the uplift depends on how the five repetitions
+are aggregated, and the speculation-off arm is so tight (41.71-42.09 tok/s) that
+the whole spread comes from which k=3 number is used:
 
-| GPU | Mean W | Peak W |
-|---|---:|---:|
-| 0 | 65.4 | 120.0 |
-| 1 | 63.0 | 101.4 |
-| 2 | 56.2 | 97.4 |
-| 3 | 50.1 | 78.9 |
-| **Total** | **234.7** | **302.3** |
+| Aggregation of the 5 P2 reps | MTP k=3 | Speculation off | Uplift |
+|---|---:|---:|---:|
+| **Median of all 5 reps** (the protocol declared in section 6) | **67.91** | **41.95** | **1.62x** |
+| Median of the 4 warm reps | 74.28 | 42.02 | 1.77x |
+| Peak warm rep | 92.58 | 42.09 | 2.20x |
 
-### Golden corpus quality gate
+**This page stands behind 1.62x**, because that is the uplift under the declared
+protocol applied identically to both arms. Higher figures are obtainable from the
+same receipts only by aggregating the two arms differently from each other.
 
-20 prompts spanning `short_factual`, `reasoning`, `code`, `json`, and
-`multilingual` categories, keyword-match scoring, `max_tokens=512`. **All
-20 passed.**
+### 6.10 Cells still open
 
-## Per-card memory footprint
+| Cell | Reason |
+|---|---|
+| Lossless verdict | **no verdict available** — greedy is not reproducible on this stack with or without speculation, so no comparison can clear a lossless bar (section 6.8) |
+| Long-context retrieval and tool-use quality buckets | the battery covered reasoning/math, coding and structured output only |
+| Sustained power (integrated energy) | only point-in-time samples after each stability round were recorded |
+| NVFP4 checkpoint, any topology | **not viable on this pool** — measured negative, two attempts, see section 8 |
+| Accepted tokens per pass vs context length | no `SpecDecoding metrics` line fell inside a sample window during the sweep |
+| 258k-token context point | untested — the request exceeded the 393,216-token server limit after prompt calibration; not retried |
+| A100-class comparison | no A100 in the pool |
 
-| Card | VRAM used |
-|---|---:|
-| GPU0 | 48,468 MiB |
-| GPU1 | 47,982 MiB |
-| GPU2 | 47,982 MiB |
-| GPU3 | 12,084-12,116 MiB |
+The lossless, stability and quality receipts landed after a node fault
+interrupted this lane; see section 8 for the failure mode and the operator
+lesson it produced. The recipe's sixth boot, at 873 s, is the post-recovery
+one.
 
-Total: ~153 GiB used of a 256 GiB pool (4 x 64 GiB). GPU3 stays
-under-loaded compared to GPU0-2 even at the working split — a known
-characteristic of exllamav3's naive sequential-fill autosplit, not a
-functional problem.
+## 7. Quality
 
-## Boot topology notes
+Measured 2026-09-05 on the recipe of record, at the **checkpoint's own sampling
+defaults** from its `generation_config.json` — temperature 1.0, top_p 0.95, seed
+1234, 3,072 max tokens, thinking left at the model default. These are not the
+greedy settings used for the throughput tables; a quality battery run at
+throughput settings would measure a configuration nobody serves.
+Receipt: `receipts/k3/quality.json`, which carries every item, not only the
+failures.
 
-Getting to `gpu_split [48, 48, 48, 48]` took iteration:
+| Bucket | Score | Metric |
+|---|---|---|
+| GSM8K, 50 items | **49/50 = 98.0%** | exact match on the final number |
+| HumanEval, 20 items | **19/20 = 95.0%** | pass@1, by executing the reference tests |
+| Structured output, 10 prompts | **10/10 = 100%** | strict JSON parse plus required top-level fields |
 
-- `[64, 64, 64, 64]` OOM'd at first inference — an uneven fill left no
-  KV-cache headroom on GPU0/1 while GPU3 stayed empty.
-- `[40, 40, 40, 40]` was too tight — insufficient VRAM for weights plus
-  cache.
-- `[48, 48, 48, 48]` is the value that worked.
+Both failures, inspected — there were only two:
 
-The full attempt-by-attempt failure ladder, with exact commands and error
-text, lives in the sibling evidence repository, not here — see below.
+| Bucket | Item | What actually went wrong |
+|---|---|---|
+| GSM8K | idx 12 (lemon tree) | gold 13, predicted 12. The arithmetic is right and the break-even year is miscounted by one. Finish reason `stop`, so not a truncation |
+| HumanEval | `HumanEval/10` (`make_palindrome`) | the emitted solution calls a helper it never defines, so the reference test raises `NameError` rather than failing an assertion — an incomplete generation, not a wrong algorithm |
+| Structured output | — | no failures to inspect |
 
-## vLLM sm80 lane (`glm53-sm80` branch) — 2026-09-04
+**Not measured:** long-context retrieval and tool use. The battery covers three
+buckets, and the page does not generalise from them to the two it skipped.
 
-The compatibility-review blocker ("every vLLM-served checkpoint blocked
-on SM80") is resolved: the `glm53-sm80` branch on
-[PixelML/sm80vllm](https://github.com/PixelML/sm80vllm) (wtdcode
-GLM enablement vendored, provenance in its `docs/SM80.md`) serves
-GLM-5.3-Flash on all four cards with MTP speculative decoding.
+**No lossless verdict.** Greedy output on this stack is not reproducible with
+speculation on or off, so output-equality checks cannot be used as a quality
+instrument here at all. Full data and reasoning in section 6.8.
 
-**Headline: 56.4 tok/s median c=1 (peak 56.9), 2.1x the EXL3 lane,
-at 524,288-token context** (EXL3: 25.2 tok/s c=1, ~2k-262k context).
+**BF16 parity cannot be measured on this pool.** No host here can load the BF16
+checkpoint, so there is no reference to diverge against and no KL-divergence
+number is possible. These scores stand beside the vendor's published numbers,
+never as a parity claim.
 
-- **Recipe:** TP4, compressed-tensors AWQ W4A16 checkpoint
-  ([wtdcode/GLM-5.3-Flash-AWQ-W4A16](https://huggingface.co/wtdcode/GLM-5.3-Flash-AWQ-W4A16)),
-  `--speculative-config '{"method":"mtp","num_speculative_tokens":3}'`,
-  Triton sparse-MLA + Triton fp8 MQA-logits fallbacks, Marlin WNA16 MoE.
-  Full launch command in the
-  [receipts](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md).
-- **MTP depth sweep (c=1, 5 reps):** k=2 → 51.1, **k=3 → 56.4**,
-  k=5 → 47.1 tok/s median. k=3 is optimal, matching the DSpark
-  acceptance-cliff pattern in `docs/LESSONS.md` §d.
-- **Caveat — aggregate:** c=8 aggregate is 37.0 tok/s, below the EXL3
-  lane's 44.8. TP4 all-reduce over PCIe Gen1 is the bottleneck
-  (`docs/LESSONS.md` §c). The aggregate fix (PP4 + MTP) needs the
-  vLLM MTP-under-PP patch set (upstream PR #46994) ported; not yet done.
-- **Do not combine** `--no-enable-flashinfer-autotune` with MTP: it
-  crashes at engine startup (`cudaErrorLaunchFailure`, reproduced on a
-  clean boot) and the crash wedges the GPU at the PCIe level (VM reboot
-  required). Autotune at its default is part of the measured recipe.
+Functional gates, same lane:
 
-## Artifacts
+| Gate | Result |
+|---|---|
+| Deterministic greedy repeat (3x, one token) | PASS, all three identical |
+| Greedy sanity prompts (64 tokens each) | 3/3 correct and clean, no repetition collapse |
+| Clean-text check across the P1 battery at k=3 | clean on every workload except the flagged cells named in section 6.1 |
 
-- **Evidence repository (full attempt history, including failed boot
-  attempts):** [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX).
-- **Checkpoint:** [turboderp/GLM-5.3-Flash-exl3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), branch `4.05bpw`, revision `2a30229e67012798ba9f0cd832bb78abf4c363d5`.
-- **Runtime:** [turboderp/exllamav3](https://github.com/turboderp/exllamav3) 1.4.6+cu128.torch2.10.0, served via [theroyallab/tabbyAPI](https://github.com/theroyallab/tabbyAPI).
-- **Superseded fallback:** unsloth/GLM-5.3-Flash-GGUF UD-IQ4_XS on the unslothai llama.cpp sm_80 fork (17.73 tok/s c=1) — see [docs/BENCHMARKS.md](../BENCHMARKS.md) and the [compatibility notebook](../../notebooks/2026-08-31-glm-5.3-flash-compatibility-cmp170hx.ipynb).
+For the EXL3 lane, a 20-prompt golden corpus spanning short-factual, reasoning,
+code, json and multilingual categories, keyword-match scored at
+`max_tokens=512`, passed **20/20** (measured 2026-09-02). It is a different
+battery from the one above; do not read the two side by side as a comparison.
 
-## Changelog
+## 8. Troubleshooting
 
-- **2026-09-04** — vLLM sm80 lane measured: `glm53-sm80` branch serves GLM-5.3-Flash with MTP-3 at 56.4 tok/s median c=1 (peak 56.9), 2.1x EXL3, at 524,288-token context. c=8 aggregate (37.0) remains below EXL3 pending a PP4+MTP patch port. Receipts: [results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md).
-- **2026-09-03 (follow-up)** — Resolved the ~2,048-token context cap: root-caused to `cache_mode: Q8` colliding with GLM-5.3-Flash's DSA sparse-attention indexer (not `max_seq_len` or TabbyAPI settings). Validated `cache_mode: FP16` up to 262,144-token context (250,000 prompt tokens tested, no OOM/crash, needle-in-haystack PASS at 32k and 250k tokens). `cache_mode: FP16` / 262k is now the recommended default for long-context use; `cache_mode: Q8` / 32k remains documented as the lower-VRAM short-context alternative. The C1/C2/C4/C8 throughput ladder was not re-run at 262k context.
-- **2026-09-03** — Power cap correction: the 2026-09-02 ladder ran at the vBIOS default 250 W by accident. Re-measured the identical protocol at the verified 180 W club-standard cap: 25.2-44.6 tok/s, no consistent throughput difference from the 250 W run outside noise. 180 W values are now canonical; 250 W values are retained and labeled for comparison. See [Concurrency ladder](#concurrency-ladder-greedy-exactly-400-completion-tokens-1-warmup--3-measured-reps) and [Power](#power) above.
-- **2026-09-02** — EXL3 4.05bpw on exllamav3 1.4.6 + TabbyAPI measured working across 4 cards: 26.9-44.8 tok/s ladder (later found to have run at the vBIOS default 250 W — see 2026-09-03 entry), 20/20 golden corpus, reasoning-parsing and Q8/DSA context-limit findings documented. This recipe replaces the GGUF fallback as the recommended lane.
-- **2026-08-31** — Compatibility review: every vLLM-served checkpoint blocked on SM80; GGUF UD-IQ4_XS on llama.cpp sm_80 fork measured as the only working fallback (17.73 tok/s).
+Negative results stay here permanently.
+
+### Tensor parallelism collapses when one PCIe link retrains narrow
+
+**Signature.** Decode throughput falls roughly four-fold with no change in
+acceptance, numerics or output quality; GPUs report 98-99% "SM util" at only
+72-86 W of a 180 W cap.
+
+**Cause.** That utilization is NCCL busy-wait occupancy, not compute. There is
+no NVLink on this node, so every TP all-reduce crosses PCIe and the topology
+runs at the width of its worst rank. A card whose link trains to Gen1 x1 drags
+the whole group.
+
+**Fix.** Use PP, not TP. PP moves one hidden state per decode step instead of an
+all-reduce per layer, and measured 4.2x more link-tolerant on the same degraded
+box. Check the current link state before trusting any comparison:
+
+```bash
+nvidia-smi --query-gpu=index,pci.bus_id,pcie.link.gen.current,pcie.link.width.current,pcie.link.width.max --format=csv
+```
+
+**Operator consequence.** Never accept or reject a code change on a decode
+number measured across a link-state boundary. A four-fold "regression" was
+chased through two sessions of source bisection before the link was checked.
+
+### NVFP4 is not viable on this hardware
+
+`LibertAIDAI/GLM-5.3-Flash-NVFP4` @ `caca4e6a4ebb` (MIT), attempted twice, same
+failure both times. A **measured negative result**, not a tuning gap.
+
+| Attempt | Settings | Outcome |
+|---|---|---|
+| 1 | util 0.90, max-model-len 393,216, partition 14,12,12,7 | out of memory in the mixture-of-experts kernel-format conversion |
+| 2 | util 0.85, max-model-len 131,072, partition rebalanced to 11,12,12,10 | identical failure, same place |
+
+The conversion asked for 7,247,757,312 bytes with 3.78 GiB free on one card and
+17 MB free on another.
+
+**Why no setting fixes it.** SM80 has no native FP4, so the checkpoint is widened
+on load: about **60 GiB resident per card** against roughly 45 GiB of NVFP4
+weight share on disk. The conversion buffer is allocated *during weight load*,
+before the KV budget is computed, so neither memory utilisation nor context
+length can move it. This is a hardware-generation limit on a 4x64 GiB SM80 pool.
+
+**Consequence.** The decisive drafter experiment — the community block drafter on
+the checkpoint it was tuned against — cannot be run on this hardware at all. The
+explanation for the DFlash2 negative result stays a well-supported hypothesis
+rather than a demonstrated conclusion, and this pool cannot settle it.
+
+### Never reload the accelerator kernel modules while CUDA processes are being killed
+
+**Signature.** A node-wide fault: every card raises an error whose recovery
+action is an OS-level reboot, and the driver can no longer initialise anywhere
+on the machine — not in a container, not on the host. Process-level cleanup does
+not clear it.
+
+**The trap.** The management interface keeps reporting every card as healthy,
+because the management library still answers while the compute driver cannot
+initialise. A "healthy" read there is not evidence the node is usable.
+
+**Cause.** Unloading and reloading the kernel modules while CUDA processes are
+still being torn down races the teardown. The module-reload recovery is a good
+tool for a different failure, but it must not be reached for while processes
+holding contexts are still dying.
+
+**Rule.** Let every CUDA process exit fully, and confirm it, before touching the
+kernel modules. If a fault has already occurred, check driver initialisation
+directly — attempt a context, or a bare container with device access — rather
+than trusting the management interface's summary. Recovery from this state is a
+node reboot.
+
+This lane hit it once, mid-measurement. Every number published here was measured
+on healthy cards, before or after that fault; the recipe's sixth boot at 873 s
+is the post-recovery one.
+
+### A single-process CUDA probe lies about a degraded node
+
+**Signature.** A one-process availability check inside a container returns
+`True`, while every real workload fails at worker start with device-capability
+or driver-initialisation errors.
+
+**Cause.** The single-process check can succeed against a driver that can no
+longer initialise CUDA in *spawned* worker processes — which is exactly what a
+multi-worker serving stack needs.
+
+**Rule.** Probe the way the workload runs: a spawn-based multi-process check
+that initialises a context per device in a child process, not a single
+in-process availability call. Do not read a green single-process probe as
+recovery. This lane was misled by one.
+
+### Stop containers gracefully after an out-of-memory event
+
+An out-of-memory kill leaves worker processes tearing down for tens of seconds.
+Stopping the container with a generous grace period — on the order of a minute —
+and only then removing it, let the teardown finish and left the node in a
+recoverable state: driver faults were limited to memory-management faults from
+the processes that actually died, with no escalation to a reboot-required fault.
+
+The contrasting case is the one above: reaching for a kernel-module reload while
+those same processes were still dying produced the reboot-required wedge. Same
+node, same class of trigger, two different outcomes decided by patience.
+
+### Greedy output is not reproducible, and it is not the drafter's fault
+
+Two runs of the same prompt against the same server with the same settings can
+differ. This is expected under pipeline parallelism and it happens with
+speculative decoding **off** as well. Do not build a regression check, a cache
+key, or an acceptance test on bit-identical output from this stack, and do not
+read an output diff as evidence that a code change altered behaviour. Numbers
+and reasoning are in section 6.8.
+
+### Even pipeline splits crash on the first request
+
+**Signature.** Server boots, first request dies with a device-side assert.
+
+**Cause.** The 11 sparse-MLA layers are not evenly distributed across 45 hidden
+layers, and the last stage also needs room for `lm_head` and the drafter.
+
+**Fix.** `VLLM_PP_LAYER_PARTITION=14,12,12,7`, which yields sparse-MLA counts of
+3/3/3/2 per stage.
+
+### One card position drops off the bus under multimodal profiling
+
+**Signature.** Boot dies during multimodal profiling with a CUDA launch failure
+in the rank-0 worker; that card then reads a dead PCI revision in the guest and
+the host logs a BAR-restore reset.
+
+**Cause.** Under investigation. It reproduces at one card position across a
+riser replacement and a card swap, which points at power delivery to that slot
+under the profiling power transient rather than at the card. Two hypotheses
+remain open; a cold power cycle is the only recovery.
+
+**Workaround.** `--limit-mm-per-prompt image:0,video:0` skips the profiling
+stage. Text serving is then stable through prefill, TTFT, c=1 and three rounds
+of c=8. This is a node workaround, not part of a recipe on healthy hardware, and
+it leaves the vision path unmeasured.
+
+### The community block drafter refuses to load on the stock build
+
+| Topology | Failure | Needed fix |
+|---|---|---|
+| PP | Refused at init: the drafter's auxiliary hidden-state layers (5, 14, 24, 33, 42 of 45) cannot all live on the last pipeline stage under any genuine 4-way split, and the aux relay resolves layer names without forwarding hidden states across stages | a real cross-stage relay upstream |
+| TP | Refused at KV-cache setup, identically with and without prefix caching: page size is not divisible by the maximum page size and cannot be padded for MLA attention layers | padding support for MLA layers upstream |
+
+Prefix caching is refuted as the trigger for the TP failure — the error is
+identical with it off.
+
+### PP4 before the patch set was ported
+
+| Configuration | c=1 decode | Text |
+|---|---:|---|
+| PP4 + MTP k=5, stock build | 3.35 tok/s | degenerate, word-level repetition |
+| PP4, speculation off, stock build | 6.11 tok/s | clean, 3/3 facts correct |
+| PP4 + MTP k=3, ported patch set | 60.8 tok/s (P2) | clean |
+
+Two separate faults: the degeneration was an MTP-under-PP artifact (the draft
+head loaded random-init), and the throughput collapse was the base pipeline
+hand-off. The port fixes both. Do not read the first row as an MTP verdict.
+
+### Do not combine autotune-off with MTP on the TP4 build
+
+`--no-enable-flashinfer-autotune` together with MTP crashes at engine startup
+with a CUDA launch failure, reproduced on a clean boot, and the crash wedges a
+card at the PCIe level. Autotune at its default is part of the measured recipe.
+
+### `max_tokens=32` returns an empty answer
+
+The model reasons before answering and spends a 32-token budget entirely on
+thinking. Use `max_tokens >= 128` for short factual answers.
+
+### EXL3 lane: a quantized cache caps context at about 2,048 tokens
+
+**Signature.** Any single request whose context exceeds roughly 2,048 tokens
+fails with a 503; the server stays up and keeps serving shorter requests.
+
+**Cause.** The model's sparse-attention indexer activates past its top-k window
+(`index_topk: 2048`), and exllamav3's sparse path asserts that it does not
+support a quantized MLA cache. This is the cache mode colliding with the
+attention mechanism, not a `max_seq_len` or server setting.
+
+**Fix.** `cache_mode: FP16`, validated to 262,144 tokens configured and 250,000
+prompt tokens actually tested, with needle-in-haystack retrieval passing at both
+32k and 250k. Costs about 2 GiB extra across all four cards. `cache_mode: Q8`
+remains a valid lower-VRAM choice for short-context chat only.
+
+### EXL3 lane: chain-of-thought leaks into the answer
+
+Leave TabbyAPI's `reasoning` at `false` and the chain-of-thought lands unparsed
+in `content` and burns the completion budget. Set `reasoning: true`, which
+routes it into `reasoning_content`.
+
+### EXL3 lane: tensor parallelism is unimplemented
+
+`tensor_parallel` raises `NotImplementedError` for this architecture in
+exllamav3 1.4.6. The working topology is a manual per-card `gpu_split`;
+`[48, 48, 48, 48]` GB is the value that boots. `[64, 64, 64, 64]` runs out of
+memory at first inference and `[40, 40, 40, 40]` is too tight for weights plus
+cache.
+
+## 9. Artifacts
+
+| Artifact | Value |
+|---|---|
+| Image (recipe of record) | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905` |
+| Image index digest | `sha256:62f612b49614523e6a46e1493d35d3efd1f363917129d38cc923a31053693bfb` |
+| Runtime source | [PixelML/sm80vllm](https://github.com/PixelML/sm80vllm), branch `pp-dflash2/glm53-flash-487ecf187-20260905` — orphan overlay over `vllm/vllm-openai:glm53-flash` @ `487ecf187` plus 24 patches with per-patch attribution trailers |
+| Recipe script | `recipes/glm53-flash-4x170hx-pp4.sh` on that branch |
+| Superseded image (TP4) | `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903` |
+| Checkpoint (vLLM lanes) | [wtdcode/GLM-5.3-Flash-AWQ-W4A16](https://huggingface.co/wtdcode/GLM-5.3-Flash-AWQ-W4A16) @ `abd7b07719111f137e1de8a0c1b7e01c11b74d1a`, 24 files, 190,843,146,533 bytes |
+| Checkpoint (EXL3 lane) | [turboderp/GLM-5.3-Flash-exl3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), branch `4.05bpw`, revision `2a30229e67012798ba9f0cd832bb78abf4c363d5` |
+| Runtime (EXL3 lane) | [turboderp/exllamav3](https://github.com/turboderp/exllamav3) 1.4.6+cu128.torch2.10.0 via [theroyallab/tabbyAPI](https://github.com/theroyallab/tabbyAPI) |
+| Receipts, PP4 lane | [`results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/`](../../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md) |
+| Receipts, TP4 lane | [`results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/`](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md) |
+| Receipts, EXL3 lane | [`results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/`](../../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) |
+| Chart source | [`assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.py`](../../assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.py) |
+| Result video | [vertical 1080x1920](../../assets/video/glm53-pp4-motion/glm53-pp4-motion-1080x1920.mp4), [horizontal 1920x1080](../../assets/video/glm53-pp4-motion/glm53-pp4-motion-1920x1080.mp4), [poster](../../assets/video/glm53-pp4-motion/glm53-pp4-motion-poster.png) — 10 s, no audio, captions baked in |
+| Evidence repository | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
+
+### Attribution
+
+| Source | License | What was taken |
+|---|---|---|
+| [promisezackr/glm53-flash-170hx-pp8](https://github.com/promisezackr/glm53-flash-170hx-pp8) | Apache-2.0 | The pipeline-parallel patch set, 24 patches, applied over `vllm/vllm-openai:glm53-flash` @ `487ecf187` with per-patch attribution trailers. The KV-balancing rule behind the layer partition is his; the four-stage split is our adaptation of it. His `scripts/bench.py` is the P1 protocol and its repeat guard, used unmodified. His published throughput figures are **community-reported** and are never mixed into the measured tables above. |
+| [wtdcode/GLM-5.3-Flash-AWQ-W4A16](https://huggingface.co/wtdcode/GLM-5.3-Flash-AWQ-W4A16) | per the model card | The AWQ W4A16 checkpoint, used as published at the pinned revision. Third-party verified, not re-quantized and not mirrored. The SM80 vLLM enablement this lane's images descend from is also wtdcode's; provenance is in the fork's `docs/SM80.md`. |
+| [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2) | cc-by-nc-nd-4.0 | The block drafter, downloaded for measurement only (section 6.5). Not redistributed. |
+
+## 10. Changelog
+
+- **2026-09-05 (lane close)** — Coverage matrix completed. Quality battery at the checkpoint's own sampling defaults (GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10). Sustained stability 3/3 rounds of c=8, 24/24 requests, zero Xid. Boots 8/8, 795-1,263 s. Draft-depth sweep extended with a k=0 row, making the drafter's value a measurement: 1.62x under the declared protocol. **Lossless is not measurable on this stack** — greedy output is not reproducible with speculation on or off, and it is worse with it off, so speculation is not the cause. **NVFP4 recorded as not viable on this pool**: two attempts, same out-of-memory in the mixture-of-experts conversion, because SM80 has no native FP4 and the checkpoint widens to about 60 GiB resident per card on load. Two operator lessons added to troubleshooting: a single-process CUDA probe lies about a degraded node, and stopping containers gracefully after an out-of-memory event avoids the reboot-required wedge that a mid-teardown module reload caused.
+- **2026-09-05** — **PP4 + MTP k=3 becomes the recipe of record.** 87.6 tok/s c=1 (P1 math, clean) and 67.9 tok/s (P2 median) against the superseded TP4 lane's 60.4; decode flat at 75-79 tok/s from 2k to 131k tokens; best aggregate 78.4 tok/s at c=16 on a degraded link. Full draft-depth sweep (k=2/3/5/7) with exact acceptance counts: k=3 wins, acceptance collapses with depth. The community DFlash2 block drafter is recorded as a negative cell on our AWQ checkpoint. Root cause published for the TP4 regression: a PCIe link retrained narrow, not a code change. Receipts: [`results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/`](../../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md).
+- **2026-09-04** — vLLM sm80 TP4 lane measured: 56.4 tok/s median c=1 (peak 56.9), 2.1x the EXL3 lane, at 524,288-token context; c=8 aggregate 37.0, below EXL3, pending the PP4 port. Later re-measured at 60.4 tok/s c=1 median under the P2 protocol, and superseded by the 2026-09-05 entry.
+- **2026-09-03 (follow-up)** — EXL3 context cap resolved: root-caused to `cache_mode: Q8` colliding with the sparse-attention indexer. `cache_mode: FP16` validated to 262,144 tokens configured, 250,000 prompt tokens tested, needle-in-haystack PASS at 32k and 250k. The throughput ladder was not re-run at 262k.
+- **2026-09-03** — EXL3 power-cap correction: the 2026-09-02 ladder ran at the vBIOS default 250 W by accident. Re-measured at the verified 180 W club cap: 25.2-44.6 tok/s, no consistent difference outside noise. 180 W is canonical.
+- **2026-09-02** — EXL3 4.05 bpw on exllamav3 1.4.6 + TabbyAPI measured working across four cards, 20/20 golden corpus; replaces the GGUF fallback.
+- **2026-08-31** — Compatibility review: every vLLM-served checkpoint blocked on SM80 at the time; GGUF UD-IQ4_XS on a llama.cpp SM80 fork was the only working fallback, at 17.73 tok/s.
