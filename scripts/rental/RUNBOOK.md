@@ -133,3 +133,55 @@ vastai show instances   # confirm empty / instance gone
 | Each bench phase (gate/prefill/ttft/decode_c1) | 1-5 min |
 | c8_stability (3 rounds) | ~5-10 min |
 | Full queue (steps 0-5, 8 cards) | ~2-3 hours including 3 boots (TP4, PP4, TP8) + 2 replicas |
+
+## 7. Training + PP4 extraction rental (2026-09-05)
+
+New purpose, same branch/scripts family: parallel drafter training (block_size x lr sweep)
+plus, if the box has >=4 spare 64GB cards, a PP4 slice-C hidden-state extraction. Recipe
+of record comes from the drafter lane's "vast bundle" on `seanphan/pixelml#108`; scripts
+here are a direct-exec translation (no nested docker — same finding as the inference
+image: no docker binary inside `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905`).
+
+Caps: total spend <= $17 (balance ~$18.66), <= 6h instance time, destroy on completion.
+
+### Offer priority (via `find_offer.sh`, always `verified=any`)
+
+1. 10x64GB Gen1x4 (49715704-class, ~$1.61/hr): 4 cards extraction + 6 cards training.
+2. Else 8x64GB Gen2x16 (49884606, $3.29/hr): 4 extraction + 4 training, ~5h max.
+3. Else any 4x64GB offer: training only (skip slice C).
+
+Disk >= 450GB required in all cases (178GB AWQ checkpoint + 82GB slice-C output + 18GB
+training data + headroom).
+
+### Sequence
+
+1. Rent with `scripts/rental/onstart_train.sh` as onstart (torch-import sanity only; no
+   checkpoint pull here — that's extraction-only and gated separately).
+2. From the orchestrating machine (not the rental): run `scripts/rental/transfer_specdec.sh`
+   with `SPECDEC_SOURCE`, `SPECDEC_DEST_HOST`, `SPECDEC_DEST_PORT` set. It does a 1GB rate
+   test each hop, then relays tools tarball (sha256 `5fe08a51...`, commit `a774a82`), sliceB
+   (14GB), target-shared.safetensors (1.9GB), ref-drafter (2.2GB) via a local staging dir
+   (source has no route to the rental). Ends with the mandatory gate:
+   `tap hc_post-materialized+stream-mean tokens 455367 shards 9 files 9` then `OK`.
+   **Stop if this string differs — do not train on it.**
+3. On the rental: `scripts/rental/run_training.sh [NUM_GPUS_TRAIN]` — runs the reference
+   band check first (`ref_eval2.py`, must land `IN BAND (~36%)` against alpha 0.3614),
+   then launches bs8-lr{1.5e-4,3e-4} immediately; if >=6 training cards, waits (<=30 min)
+   for bs8 `best.pt` then launches bs13/bs17 with `--init-from`, else from scratch.
+4. If >=4 spare cards for extraction: `scripts/rental/run_extraction.sh eta-check` first
+   (178GB AWQ checkpoint, 1-shard sample). Abort slice C (not training) if ETA > 60 min.
+   Else `run_extraction.sh download` then `run_extraction.sh extract` (2M tokens, PP4,
+   `--no-batch`, ~4h40m + 15-20min load, ~82GB output).
+5. rsync checkpoints + `acceptance.json` + slice-C shards back to
+   `/library/models/specdec-data/vast-2026-09-05/` on the source host.
+6. `vastai destroy instance <ID>`; confirm via `vastai show instances-v1`.
+7. Post spend + per-run alpha vs reference (0.3614) + slice-C size to both `#108` and
+   `#107` — never to public repos (AGENTS.md).
+
+### Notes
+
+- Training data footprint (~18GB) is small; the AWQ checkpoint (178GB) is extraction-only
+  and downloaded directly on the rental via `hf download`, not relayed from the source.
+- `run_training.sh` and `run_extraction.sh` translate the bundle's `docker run --gpus
+  device=N ...` per-card commands into `CUDA_VISIBLE_DEVICES=N` + `nohup` + PID file,
+  consistent with `launch_tp4.sh`/`launch_pp4.sh`/`launch_tp8.sh` above.
