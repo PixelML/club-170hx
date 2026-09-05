@@ -204,3 +204,45 @@ was ~380GB — workable but far tighter; re-pin to `e03679f1` before renting.)
 - `run_training.sh` and `run_extraction.sh` translate the bundle's `docker run --gpus
   device=N ...` per-card commands into `CUDA_VISIBLE_DEVICES=N` + `nohup` + PID file,
   consistent with `launch_tp4.sh`/`launch_pp4.sh`/`launch_tp8.sh` above.
+
+### Transport: what actually worked (2026-09-05 live rental, instance 49967781)
+
+Three transports were tried in sequence before landing on one that worked. Recorded
+here so the next rental skips straight to the last one.
+
+1. **rsync, staged through the operator's Mac over Tailscale.** Measured 7.7 MB/s —
+   rejected as the wrong path (adds a hop, bottlenecked by the Mac's uplink).
+2. **rsync, direct VM -> instance public ssh.** Requires the VM's own SSH key
+   registered on the instance (`vastai attach ssh <id> "$(cat ~/.ssh/id_ed25519.pub)"`
+   run from an authenticated `vastai` session) and the instance's host key accepted.
+   Measured only 5.1 MB/s on a 1GB sample — still too slow for 14-16GB of sliceB alone.
+3. **Docker image on GHCR, `docker create`/`docker cp` on the instance.** Built and
+   pushed successfully from the VM (a `specdec-tools-only` tag, ~2.5GB) after two build
+   failures from `ENOSPC` on the VM's `/models` (docker root dir) — the VM only has
+   ~38-65GB free there, and a naive `docker build` needs roughly 2x the COPY payload in
+   transient space (build-context cache + final layer). Fix when this recurs:
+   `docker builder prune -a -f` before building (reclaimed 40GB of stale cache from a
+   first failed attempt) and `docker rmi` any local image already pushed to a registry
+   (redundant local cache, re-pullable later) rather than `docker system prune
+   --volumes` (broader, and blocked by this environment's permission classifier as a
+   destructive action in some contexts).
+   **This transport's fatal flaw: the rental instance has no `docker` binary at all**
+   (same finding as section 2 above — no nested docker daemon in
+   `vllm-glm53-sm80-pp-20260905`). `docker create`/`docker cp` cannot run there. A
+   daemon-less alternative was written for this
+   (`scripts/rental/data-image/pull_data_image.py` — anonymous GHCR token + raw
+   registry blob fetch + `tarfile` extraction, stdlib only) but was not exercised
+   against a real pull before transport was superseded; keep it as a fallback for a
+   future rental if an HF dataset repo isn't a fit.
+4. **HF dataset repo (what actually shipped data to the instance).** A public dataset
+   repo (sliceB shards + manifest, target-shared tensors, tools tarball, README with
+   provenance) uploaded once from the source host, then pulled on the instance with
+   plain `huggingface_hub.snapshot_download(..., repo_type='dataset',
+   local_dir='/data')` — no docker, no rsync, no registry client, works with the
+   `hf`/`huggingface_hub` stack already needed for the AWQ checkpoint anyway. This is
+   now the **recommended default transport** for any rental where the instance image
+   has no docker binary: package as an HF dataset repo, not an OCI image. The reference
+   drafter (CC-BY-NC-ND, no redistribution) is excluded from the packaged dataset and
+   instead pulled instance-side directly from its own HF repo — anonymous
+   `snapshot_download` worked without an `HF_TOKEN` for that repo (not gated), though a
+   token env var should still be preferred when available for rate limits.
