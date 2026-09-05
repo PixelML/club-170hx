@@ -12,7 +12,7 @@ A row is **publication-safe** only when the full sanitized receipt chain (manife
 
 | Workload | Quant / runtime | Cards | Context | Concurrency | Prefill | Decode | Aggregate | TTFT | ITL | Quality / success | Power / thermals | Energy | Status | Evidence |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
-| GLM-5.3-Flash | AWQ W4A16 (compressed-tensors) · vLLM sm80, PP4 partition 14,12,12,7 + native MTP k=3 | 4 · PP4 | 393,216 configured; 131,042 prompt tokens measured | c=1/2/4/8/16 | 1,128 tok/s at 4k, 1,752 tok/s at 16k (degraded link) | 87.6 tok/s (c=1, temp 0, median of 3, clean) / 67.9 tok/s (c=1, temp 0.7 + `ignore_eos`, median of 5) | 78.4 tok/s (c=16, degraded link) | 3.67 s at 4k, 9.44 s at 16k (warm, streaming, degraded link) | 10.1-13.4 ms/token across 336-131,042 prompt tokens | Functional gates PASS (deterministic greedy, 3/3 sanity clean); held-out battery untested (pending) | untested (pending) — not sampled this boot; 180 W cap in force | — | Publication-safe; recipe of record | [Result card](../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md) · [Notebook](../notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb) · [Guide](models/glm-5.3-flash.md) |
+| GLM-5.3-Flash | AWQ W4A16 (compressed-tensors) · vLLM sm80, PP4 partition 14,12,12,7 + native MTP k=3 | 4 · PP4 | 393,216 configured; 131,042 prompt tokens measured | c=1/2/4/8/16 | 1,128 tok/s at 4k, 1,752 tok/s at 16k (degraded link) | 87.6 tok/s (c=1, temp 0, median of 3, clean) / 67.9 tok/s (c=1, temp 0.7 + `ignore_eos`, median of 5) | 78.4 tok/s (c=16, degraded link) | 3.67 s at 4k, 9.44 s at 16k (warm, streaming, degraded link) | 10.1-13.4 ms/token across 336-131,042 prompt tokens | GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10 at the checkpoint's sampling defaults; functional gates PASS; no lossless verdict available (greedy is not reproducible with speculation on or off) | 48-53 C across 3 stability rounds; instantaneous samples 64.8-215.6 W against a 180.00 W enforced limit; integrated energy untested | — | Publication-safe; recipe of record | [Result card](../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md) · [Notebook](../notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb) · [Guide](models/glm-5.3-flash.md) |
 | GLM-5.3-Flash | EXL3 4.05bpw · exllamav3 1.4.6 + TabbyAPI | 4 · manual `gpu_split` | 32,768 (max_seq_len); ~2,048 effective per request under Q8 cache | c=1/2/4/8, 1 warmup + 3 reps | ~358.5 tok/s warm (2,954 in, 180 W) | 25.2 tok/s (c=1, 180 W) | 44.6 tok/s (c=8, 180 W) | 0.73–1.78 s (180 W) | — | 20/20 golden corpus (keyword-match) | **180 W cap (verified, canonical):** 221.6 W mean / 352.4 W peak (4-card total, coincident-peak artifact); peak 51 °C, no Xid/ECC. 250 W (2026-09-02, accidental default, retained for comparison): 26.9 tok/s (c=1) / 44.8 tok/s (c=8), 234.7 W mean / 302.3 W peak, peak 49 °C. | — | Publication-safe | [Result card](../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) · [Guide](models/glm-5.3-flash.md) |
 | GLM-5.3-Flash | UD-IQ4_XS · llama.cpp (0069971) | 4 · layer split | 16,384 | c=1; ladder 1/2/4; soak c=2 | — | 17.73 tok/s median (c=1) | ~17.5–17.7 tok/s (c=2/4) | — | — | 21/26 local tasks · 41/41 soak reps | Snapshot only: 40.10–44.49 W, core 41–43 °C, mem 45–55 °C, VRAM 32,656–42,312 / 65,536 MiB; limit not queried | Snapshot proxy only, not integrated | Publication-safe; superseded by the EXL3 row above | [Run manifest](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX/blob/7fc71e00925f7b7902764aab7d08b6d923aaaea4/results/phase63/run-manifest.json) · [Result card](results/2026-08-30-glm-5.3-flash-ud-iq4xs-llamacpp-cmp170hx.md) |
 | GLM-5.3-Flash | NVFP4 | 3 | — | — | — | — | — | — | — | — | — | — | Not compatible (SM121 weights on SM80) | [Negative results](#negative-results-matter) |
@@ -70,6 +70,22 @@ caching is off in this recipe. Chart:
 **Concurrency (4k prompt, 256 out, temp 0.7 + `ignore_eos`, degraded link):**
 c=1 30.2, c=2 49.8, c=4 44.4, c=8 75.5, c=16 78.4 tok/s aggregate; success rate
 1.0 at every level.
+
+**Quality and stability.** At the checkpoint's own sampling defaults
+(temperature 1.0, top_p 0.95): GSM8K 49/50, HumanEval 19/20 pass@1, structured
+output 10/10, with both failures inspected. Sustained stability: 3/3 rounds of
+c=8, 24/24 requests, zero Xid, 48-53 C, throughput rising across rounds.
+
+**No lossless verdict is available, and that is a finding.** Greedy output on
+this stack is not reproducible: speculation on disagrees with itself on 11 of 20
+prompts (60.98% token match) and speculation **off** disagrees with itself on 14
+of 20 (50.18%). Speculation is therefore not the cause. The on-versus-off row
+(10% identical, 33.59% token match) sits below both noise floors and cannot be
+read as a speculation effect. Do not build a regression check on bit-identical
+output from this stack.
+
+**What the drafter is worth:** speculation off is flat at 42-43 tok/s on every
+workload; MTP k=3 is 1.62x that on the P2 protocol and up to 2.06x per workload.
 
 **Negative result kept:** the public DFlash2 block drafter at k=7, a large win on
 the upstream author's NVFP4 checkpoint, is a net loss on our AWQ W4A16 one —

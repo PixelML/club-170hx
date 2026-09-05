@@ -22,7 +22,7 @@ Guide page: [`docs/models/glm-5.3-flash.md`](../../docs/models/glm-5.3-flash.md)
 | Context | `--max-model-len 393216`; KV pool 1,194,627 tokens (3.04x) |
 | Other flags | `--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, `--max-num-seqs 8`, `--max-num-batched-tokens 4096`, `VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2`, `VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256`, `--limit-mm-per-prompt image:0,video:0` |
 | Hardware | 4x CMP 170HX (SM80, 64 GiB each), 180 W per-card cap, no NVLink, no P2P |
-| Boot | 5/5 boots served for this recipe (995, 1,029, 1,077, 1,263, 1,140 s to `Application startup complete`), plus 2/2 on the earlier port run; idle memory 51.6-54.2 GiB per card of 64; 180 W cap verified on all four throughout |
+| Boot | 6/6 boots served for this recipe (873, 995, 1,029, 1,077, 1,140, 1,263 s to `Application startup complete`), plus 2/2 on the earlier port run; the 873 s boot is post-recovery with a warm compile cache; idle memory 51.6-54.2 GiB per card of 64; 180 W enforced limit on all four throughout |
 
 ## Hardware caveat that applies to every link-bound number here
 
@@ -54,6 +54,10 @@ counting stream events.
 | Prefill | 1,752 tok/s at 16,384 tokens | measured on degraded link |
 | TTFT | 9.44 s at 16,384 tokens, 3.67 s at 4,096 tokens (warm, streaming) | measured on degraded link |
 | Longest context measured | 131,042 prompt tokens, 78.6 tok/s generation | measured |
+| Quality | GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10 | measured at the checkpoint's sampling defaults |
+| Sustained stability | 3/3 rounds of c=8, 24/24 requests, zero Xid, 48-53 C | measured |
+| Drafter value | MTP k=3 is 1.62x speculation off on P2, up to 2.06x per workload | measured |
+| Lossless | **no verdict available** — greedy is not reproducible with speculation on or off | measured finding |
 
 ## Receipt map
 
@@ -69,6 +73,10 @@ counting stream events.
 | `receipts/k3/conc_sweep.json` | concurrency c=1,2,4,8,16 at 4k prompt |
 | `receipts/k3/prefill_{4096,16384}/{prefill,ttft}.json` | uncached prefill and warm streaming TTFT |
 | `receipts/k3/thinking_probe.json` | thinking-switch probe (see limitations) |
+| `receipts/k3/quality.json` | held-out quality battery, every item |
+| `receipts/k3/c8_stability.json` | 3 rounds of c=8 with health, power and temperature after each |
+| `receipts/lossless/` | self-consistency controls and the on-versus-off comparison |
+| `receipts/nospec/` | speculation-off throughput baseline |
 | `receipts/awq-dflash7/` | negative cell: the community block drafter on our AWQ checkpoint |
 
 Every JSON here is the harness output with endpoints, filesystem paths, IP
@@ -93,14 +101,19 @@ literals and container names replaced by `<endpoint>`, `<path>`, `<addr>` and
 
 ## Untested (pending)
 
-Lossless check, sustained stability, quality battery, power and temperature
-under load, the 258k context point, and accepted-tokens-per-pass versus context
-length — the first three because a node-wide accelerator fault after the
-measurement window left the driver unable to initialise. Every number here
-predates that fault.
+The long-context-retrieval and tool-use quality buckets, integrated energy, the
+258k context point, and accepted-tokens-per-pass versus context length.
 
-Two cells came back as findings rather than gaps: the NVFP4 checkpoint is
-**not claim-ready** (attempted, out of memory in the mixture-of-experts
-kernel-format conversion), and the thinking switch is a **negative result** —
-not switchable on this checkpoint under any key or default. Reasons for all of
-them are in section 2.8 of the notebook.
+Four cells came back as findings rather than gaps:
+
+- **no lossless verdict is available** — greedy output on this stack is not
+  reproducible with speculation on *or* off, so no token-for-token comparison
+  can clear a lossless bar;
+- the **NVFP4** checkpoint is `not claim-ready` (attempted, out of memory in the
+  mixture-of-experts kernel-format conversion; a retry is queued);
+- the **thinking switch** is not switchable on this checkpoint under any key or
+  the server default;
+- **speculation off is also non-deterministic**, which is what rules the drafter
+  out as the cause of the first finding.
+
+Reasons for all of them are in section 2.12 of the notebook.
