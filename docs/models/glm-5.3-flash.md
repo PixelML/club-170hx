@@ -20,7 +20,8 @@
 | Superseded fallback | UD-IQ4_XS GGUF on a llama.cpp SM80 fork — 17.73 tok/s c=1 |
 | A100-class comparison | untested — no A100 in the pool |
 | Quality, recipe of record | GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10, at the checkpoint's own sampling defaults |
-| Stability | 3/3 rounds of c=8, 24/24 requests, zero Xid, 48-53 C |
+| Stability | 3/3 rounds of c=8, 24/24 requests, zero Xid, 48-53 C; boots 8/8 |
+| Drafter value | MTP k=3 is 1.62x speculation off under the declared protocol |
 | Release state | research preview |
 | Last measurement | 2026-09-05 (PP4 lane); 2026-09-03 (EXL3 lane) |
 
@@ -45,7 +46,7 @@ author's NVFP4 checkpoint, is a net loss on our AWQ one.
 | AWQ W4A16 (compressed-tensors) | 4 | 45.5 per PP stage at PP4 | 4 | ~178 weights + KV | PCIe Gen1 tolerated under PP4; TP4 needs a healthy link on every rank | measured |
 | EXL3 | 4.05 | 48 configured (`gpu_split`), 12-48 used | 4 | ~153 used | manual split, not tensor-parallel | measured |
 | UD-IQ4_XS GGUF | ~4.25 | fits | 4 | — | any | measured, superseded |
-| NVFP4 | 4 | 181 GiB checkpoint on disk | 4 | — | — | **not claim-ready** — attempted 2026-09-05 and did not boot: out of memory during the mixture-of-experts kernel-format conversion. `LibertAIDAI/GLM-5.3-Flash-NVFP4` @ `caca4e6a4ebb`, MIT |
+| NVFP4 | 4 | ~60 GiB **resident per card** after load, vs ~45 GiB weight share on disk | — | — | — | **not viable on this pool** (measured, 2 attempts) — SM80 has no native FP4, so the checkpoint widens on load and the mixture-of-experts conversion runs out of memory before a KV budget exists. See section 8 |
 | AWQ-INT4 (cyankiwi) | 4 | ~49.5 at TP4 | 4 | 198.1 | — | negative: `glm5_next` absent from the upstream vLLM model registry |
 | EXL3/TR3 | 4 | ~40.9 at TP4 | 4 | — | — | negative: ships SM121-only kernel binaries |
 | Official FP8 / BF16 | 8 / 16 | 76+ (FP8) | — | — | — | negative: does not fit |
@@ -165,18 +166,19 @@ the upstream repeat guard as repetition-collapsed; those cells are inflated and
 are not read as throughput. Receipt: `receipts/{k2,k3,k5,k7}/p1.json` and
 `decode_c1.json`.
 
-| Workload (P1, median of 3, tok/s) | k=2 | **k=3** | k=5 | k=7 |
-|---|---:|---:|---:|---:|
-| counting | 81.89 | 75.69 | 63.73 | 53.40 |
-| json | 84.08 *(deg)* | 87.02 | 82.10 | 78.16 *(deg)* |
-| code | 60.52 | 58.37 *(deg)* | 40.65 | 34.64 |
-| math | 80.88 | **87.55** | 72.52 | 91.44 |
-| prose | 60.73 | 60.54 | 45.74 | 47.30 |
-| repetition *(diagnostic)* | 74.32 | 80.21 | 77.36 | 78.42 *(deg)* |
-| **P1 headline, clean cells only** | 81.89 counting | **87.55 math** | 82.10 json | 91.44 math |
-| **P2 median tok/s (5 reps)** | 56.54 | **67.91** | 51.26 | 38.13 |
-| Draft acceptance rate | 74.0% | 65.4% | 46.6% | 37.3% |
-| Mean accepted length | 2.48 | 2.96 | 3.33 | 3.61 |
+| Workload (P1, median of 3, tok/s) | k=0 (off) | k=2 | **k=3** | k=5 | k=7 |
+|---|---:|---:|---:|---:|---:|
+| counting | 42.88 | 81.89 | 75.69 | 63.73 | 53.40 |
+| json | 42.17 *(deg)* | 84.08 *(deg)* | 87.02 | 82.10 | 78.16 *(deg)* |
+| code | 42.83 | 60.52 | 58.37 *(deg)* | 40.65 | 34.64 |
+| math | 42.94 | 80.88 | **87.55** | 72.52 | 91.44 |
+| prose | 42.91 | 60.73 | 60.54 | 45.74 | 47.30 |
+| repetition *(diagnostic)* | 42.88 *(deg)* | 74.32 | 80.21 | 77.36 | 78.42 *(deg)* |
+| **P1 headline, clean cells only** | 42.94 math | 81.89 counting | **87.55 math** | 82.10 json | 91.44 math |
+| **P2 median tok/s (5 reps)** | 41.95 | 56.54 | **67.91** | 51.26 | 38.13 |
+| Draft acceptance rate | no drafter | 74.0% | 65.4% | 46.6% | 37.3% |
+| Mean accepted length | 1.00 | 2.48 | 2.96 | 3.33 | 3.61 |
+| KV pool at 393,216 max len | 1,331,200 | — | 1,194,627 | — | — |
 
 k=7 wins math alone. It loses code, counting and prose, and its P2 median is
 38.13 against k=3's 67.91. Deeper drafts buy a longer accepted run but at a
@@ -266,8 +268,8 @@ separates drafter quality from drafter/checkpoint mismatch — is **untested
 
 | Metric | Value |
 |---|---|
-| Boots served / attempted, this recipe | **6 / 6**, plus 2 / 2 on the earlier port run |
-| Boot seconds | 873, 995, 1,029, 1,077, 1,140, 1,263 to `Application startup complete`; the 873 s boot is post-recovery with a warm compile cache |
+| Boots served / attempted, this recipe | **8 / 8**, plus 2 / 2 on the earlier port run |
+| Boot seconds | 795-1,263 to `Application startup complete`; 795 s is the speculation-off boot, 873 s the post-recovery one with a warm compile cache |
 | Engine init (profile + KV + warmup) | 320.4 s on the measured boot |
 | Memory per PP stage after load | 45.45 GiB |
 | Idle memory per card | 51.6-54.2 GiB of 64 GiB |
@@ -311,8 +313,9 @@ that comparison can mean. Receipts: `receipts/lossless/`.
 
 Same 20 fixed prompts, same server, same boot, same settings, temperature 0.
 
-**Greedy output is not reproducible on this stack, and speculation is not the
-cause** — speculation off disagrees with itself on 14 of 20 prompts. Under
+**Greedy output is not reproducible on this stack, and the nondeterminism is not
+caused by speculation** — speculation off disagrees with itself on 14 of 20
+prompts, worse than speculation on. Under
 pipeline parallelism the number of accepted draft tokens per step varies with
 batch composition, which changes the shape of the verification forward pass and
 therefore the reduction order in the kernels; the pipeline supplies the rest.
@@ -320,8 +323,9 @@ therefore the reduction order in the kernels; the pipeline supplies the rest.
 The on-versus-off row sits **below both noise floors**, so it cannot be read as
 "speculation changes two thirds of the tokens." A lossless claim would have to
 clear a bar the stack does not clear by itself. **No lossless verdict is
-available for this recipe.** Anyone quoting an on-versus-off number from this
-stack without the two control rows beside it is quoting noise.
+available for this recipe.** The honest label is **not measurable on this
+stack**: not "failed", and not a percentage. Anyone quoting an on-versus-off
+number from this stack without the two control rows beside it is quoting noise.
 
 Practical consequence: do not rely on bit-identical replay here. Use the quality
 battery in section 7, which measures task outcomes, rather than output equality.
@@ -332,19 +336,30 @@ The speculation-off boot also supplies the baseline for the drafter's value.
 Same recipe, same protocols, `--speculative-config` removed. Receipts:
 `receipts/nospec/`.
 
-| Workload (median, tok/s) | MTP k=3 | Speculation off | Uplift |
+| Workload (P1 median, tok/s) | MTP k=3 | Speculation off | Uplift |
 |---|---:|---:|---:|
 | counting | 75.69 | 42.88 | 1.77x |
 | json | 87.02 | 42.17 | 2.06x |
 | code | 58.37 *(deg)* | 42.83 | 1.36x |
 | math | 87.55 | 42.94 | 2.04x |
 | prose | 60.54 | 42.91 | 1.41x |
-| **P2 median (5 reps)** | **67.91** | **41.95** | **1.62x** |
 
 Speculation off is flat at roughly 42-43 tok/s on every workload. The drafter is
 what creates the spread between workloads, because acceptance is what varies.
-MTP k=3 is worth about **1.6x** on the P2 protocol and up to **2.1x** on the
-workloads it drafts well.
+
+On the single-prompt P2 protocol the uplift depends on how the five repetitions
+are aggregated, and the speculation-off arm is so tight (41.71-42.09 tok/s) that
+the whole spread comes from which k=3 number is used:
+
+| Aggregation of the 5 P2 reps | MTP k=3 | Speculation off | Uplift |
+|---|---:|---:|---:|
+| **Median of all 5 reps** (the protocol declared in section 6) | **67.91** | **41.95** | **1.62x** |
+| Median of the 4 warm reps | 74.28 | 42.02 | 1.77x |
+| Peak warm rep | 92.58 | 42.09 | 2.20x |
+
+**This page stands behind 1.62x**, because that is the uplift under the declared
+protocol applied identically to both arms. Higher figures are obtainable from the
+same receipts only by aggregating the two arms differently from each other.
 
 ### 6.10 Cells still open
 
@@ -353,9 +368,9 @@ workloads it drafts well.
 | Lossless verdict | **no verdict available** — greedy is not reproducible on this stack with or without speculation, so no comparison can clear a lossless bar (section 6.8) |
 | Long-context retrieval and tool-use quality buckets | the battery covered reasoning/math, coding and structured output only |
 | Sustained power (integrated energy) | only point-in-time samples after each stability round were recorded |
-| NVFP4 checkpoint, any topology | **not claim-ready** — attempted and did not boot, out of memory in the mixture-of-experts kernel-format conversion. A retry at a lower memory utilisation and a shorter context is queued |
+| NVFP4 checkpoint, any topology | **not viable on this pool** — measured negative, two attempts, see section 8 |
 | Accepted tokens per pass vs context length | no `SpecDecoding metrics` line fell inside a sample window during the sweep |
-| 258k-token context point | the request exceeded the 393,216-token server limit after prompt calibration |
+| 258k-token context point | untested — the request exceeded the 393,216-token server limit after prompt calibration; not retried |
 | A100-class comparison | no A100 in the pool |
 
 The lossless, stability and quality receipts landed after a node fault
@@ -439,6 +454,30 @@ nvidia-smi --query-gpu=index,pci.bus_id,pcie.link.gen.current,pcie.link.width.cu
 number measured across a link-state boundary. A four-fold "regression" was
 chased through two sessions of source bisection before the link was checked.
 
+### NVFP4 is not viable on this hardware
+
+`LibertAIDAI/GLM-5.3-Flash-NVFP4` @ `caca4e6a4ebb` (MIT), attempted twice, same
+failure both times. A **measured negative result**, not a tuning gap.
+
+| Attempt | Settings | Outcome |
+|---|---|---|
+| 1 | util 0.90, max-model-len 393,216, partition 14,12,12,7 | out of memory in the mixture-of-experts kernel-format conversion |
+| 2 | util 0.85, max-model-len 131,072, partition rebalanced to 11,12,12,10 | identical failure, same place |
+
+The conversion asked for 7,247,757,312 bytes with 3.78 GiB free on one card and
+17 MB free on another.
+
+**Why no setting fixes it.** SM80 has no native FP4, so the checkpoint is widened
+on load: about **60 GiB resident per card** against roughly 45 GiB of NVFP4
+weight share on disk. The conversion buffer is allocated *during weight load*,
+before the KV budget is computed, so neither memory utilisation nor context
+length can move it. This is a hardware-generation limit on a 4x64 GiB SM80 pool.
+
+**Consequence.** The decisive drafter experiment — the community block drafter on
+the checkpoint it was tuned against — cannot be run on this hardware at all. The
+explanation for the DFlash2 negative result stays a well-supported hypothesis
+rather than a demonstrated conclusion, and this pool cannot settle it.
+
 ### Never reload the accelerator kernel modules while CUDA processes are being killed
 
 **Signature.** A node-wide fault: every card raises an error whose recovery
@@ -464,6 +503,33 @@ node reboot.
 This lane hit it once, mid-measurement. Every number published here was measured
 on healthy cards, before or after that fault; the recipe's sixth boot at 873 s
 is the post-recovery one.
+
+### A single-process CUDA probe lies about a degraded node
+
+**Signature.** A one-process availability check inside a container returns
+`True`, while every real workload fails at worker start with device-capability
+or driver-initialisation errors.
+
+**Cause.** The single-process check can succeed against a driver that can no
+longer initialise CUDA in *spawned* worker processes — which is exactly what a
+multi-worker serving stack needs.
+
+**Rule.** Probe the way the workload runs: a spawn-based multi-process check
+that initialises a context per device in a child process, not a single
+in-process availability call. Do not read a green single-process probe as
+recovery. This lane was misled by one.
+
+### Stop containers gracefully after an out-of-memory event
+
+An out-of-memory kill leaves worker processes tearing down for tens of seconds.
+Stopping the container with a generous grace period — on the order of a minute —
+and only then removing it, let the teardown finish and left the node in a
+recoverable state: driver faults were limited to memory-management faults from
+the processes that actually died, with no escalation to a reboot-required fault.
+
+The contrasting case is the one above: reaching for a kernel-module reload while
+those same processes were still dying produced the reboot-required wedge. Same
+node, same class of trigger, two different outcomes decided by patience.
 
 ### Greedy output is not reproducible, and it is not the drafter's fault
 
@@ -590,6 +656,7 @@ cache.
 
 ## 10. Changelog
 
+- **2026-09-05 (lane close)** — Coverage matrix completed. Quality battery at the checkpoint's own sampling defaults (GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10). Sustained stability 3/3 rounds of c=8, 24/24 requests, zero Xid. Boots 8/8, 795-1,263 s. Draft-depth sweep extended with a k=0 row, making the drafter's value a measurement: 1.62x under the declared protocol. **Lossless is not measurable on this stack** — greedy output is not reproducible with speculation on or off, and it is worse with it off, so speculation is not the cause. **NVFP4 recorded as not viable on this pool**: two attempts, same out-of-memory in the mixture-of-experts conversion, because SM80 has no native FP4 and the checkpoint widens to about 60 GiB resident per card on load. Two operator lessons added to troubleshooting: a single-process CUDA probe lies about a degraded node, and stopping containers gracefully after an out-of-memory event avoids the reboot-required wedge that a mid-teardown module reload caused.
 - **2026-09-05** — **PP4 + MTP k=3 becomes the recipe of record.** 87.6 tok/s c=1 (P1 math, clean) and 67.9 tok/s (P2 median) against the superseded TP4 lane's 60.4; decode flat at 75-79 tok/s from 2k to 131k tokens; best aggregate 78.4 tok/s at c=16 on a degraded link. Full draft-depth sweep (k=2/3/5/7) with exact acceptance counts: k=3 wins, acceptance collapses with depth. The community DFlash2 block drafter is recorded as a negative cell on our AWQ checkpoint. Root cause published for the TP4 regression: a PCIe link retrained narrow, not a code change. Receipts: [`results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/`](../../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md).
 - **2026-09-04** — vLLM sm80 TP4 lane measured: 56.4 tok/s median c=1 (peak 56.9), 2.1x the EXL3 lane, at 524,288-token context; c=8 aggregate 37.0, below EXL3, pending the PP4 port. Later re-measured at 60.4 tok/s c=1 median under the P2 protocol, and superseded by the 2026-09-05 entry.
 - **2026-09-03 (follow-up)** — EXL3 context cap resolved: root-caused to `cache_mode: Q8` colliding with the sparse-attention indexer. `cache_mode: FP16` validated to 262,144 tokens configured, 250,000 prompt tokens tested, needle-in-haystack PASS at 32k and 250k. The throughput ladder was not re-run at 262k.

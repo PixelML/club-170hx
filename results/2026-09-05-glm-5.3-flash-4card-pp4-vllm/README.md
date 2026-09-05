@@ -22,7 +22,7 @@ Guide page: [`docs/models/glm-5.3-flash.md`](../../docs/models/glm-5.3-flash.md)
 | Context | `--max-model-len 393216`; KV pool 1,194,627 tokens (3.04x) |
 | Other flags | `--no-enable-prefix-caching`, `--gpu-memory-utilization 0.90`, `--max-num-seqs 8`, `--max-num-batched-tokens 4096`, `VLLM_PP_MAX_DECODE_REQS_PER_BATCH=2`, `VLLM_GLM5N_SIDECAR_BLOCK_SIZE=256`, `--limit-mm-per-prompt image:0,video:0` |
 | Hardware | 4x CMP 170HX (SM80, 64 GiB each), 180 W per-card cap, no NVLink, no P2P |
-| Boot | 6/6 boots served for this recipe (873, 995, 1,029, 1,077, 1,140, 1,263 s to `Application startup complete`), plus 2/2 on the earlier port run; the 873 s boot is post-recovery with a warm compile cache; idle memory 51.6-54.2 GiB per card of 64; 180 W enforced limit on all four throughout |
+| Boot | **8/8** boots served for this recipe, 795-1,263 s to `Application startup complete`, plus 2/2 on the earlier port run; 795 s is the speculation-off boot, 873 s the post-recovery one with a warm compile cache; idle memory 51.6-54.2 GiB per card of 64; 180 W enforced limit on all four throughout |
 
 ## Hardware caveat that applies to every link-bound number here
 
@@ -56,7 +56,7 @@ counting stream events.
 | Longest context measured | 131,042 prompt tokens, 78.6 tok/s generation | measured |
 | Quality | GSM8K 49/50, HumanEval 19/20 pass@1, structured output 10/10 | measured at the checkpoint's sampling defaults |
 | Sustained stability | 3/3 rounds of c=8, 24/24 requests, zero Xid, 48-53 C | measured |
-| Drafter value | MTP k=3 is 1.62x speculation off on P2, up to 2.06x per workload | measured |
+| Drafter value | MTP k=3 is 1.62x speculation off under the declared P2 protocol (up to 2.06x per P1 workload); k=0 row measured, not inferred | measured |
 | Lossless | **no verdict available** — greedy is not reproducible with speculation on or off | measured finding |
 
 ## Receipt map
@@ -109,8 +109,10 @@ Four cells came back as findings rather than gaps:
 - **no lossless verdict is available** — greedy output on this stack is not
   reproducible with speculation on *or* off, so no token-for-token comparison
   can clear a lossless bar;
-- the **NVFP4** checkpoint is `not claim-ready` (attempted, out of memory in the
-  mixture-of-experts kernel-format conversion; a retry is queued);
+- the **NVFP4** checkpoint is **not viable on this pool** — two attempts, same
+  out-of-memory in the mixture-of-experts conversion, because SM80 has no native
+  FP4 and the checkpoint widens to ~60 GiB resident per card on load, so no
+  utilisation or context setting can close it;
 - the **thinking switch** is not switchable on this checkpoint under any key or
   the server default;
 - **speculation off is also non-deterministic**, which is what rules the drafter

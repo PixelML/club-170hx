@@ -84,8 +84,26 @@ of 20 (50.18%). Speculation is therefore not the cause. The on-versus-off row
 read as a speculation effect. Do not build a regression check on bit-identical
 output from this stack.
 
-**What the drafter is worth:** speculation off is flat at 42-43 tok/s on every
-workload; MTP k=3 is 1.62x that on the P2 protocol and up to 2.06x per workload.
+**What the drafter is worth:** the sweep now carries a measured k=0 row
+(speculation off): P1 best clean workload 42.94 tok/s, P2 median 41.95 tok/s,
+KV pool 1,331,200 tokens, boot 795 s. Speculation off is flat at 42-43 tok/s on
+every workload, so the drafter is what creates the spread between workloads,
+because acceptance is what varies. MTP k=3 is **1.62x** that on the P2 protocol
+and up to 2.06x per P1 workload.
+
+The uplift is quoted under the declared protocol — median of five repetitions,
+cold rep included, applied identically to both arms. Warm-only and peak
+aggregations give 1.77x and 2.20x from the same receipts and are not used,
+because they would compare the two arms on different rules.
+
+**NVFP4 is not viable on this pool** (measured, two attempts, same signature).
+SM80 has no native FP4, so the checkpoint widens on load to about 60 GiB
+resident per card against roughly 45 GiB of weight share on disk, and the
+mixture-of-experts conversion runs out of memory during weight load, before a
+KV budget exists. Neither utilisation (0.90, 0.85) nor context length (393,216,
+131,072) moves it: a hardware-generation limit, not a tuning problem.
+
+**Boots 8/8** for this recipe, 795-1,263 s.
 
 **Negative result kept:** the public DFlash2 block drafter at k=7, a large win on
 the upstream author's NVFP4 checkpoint, is a net loss on our AWQ W4A16 one —
