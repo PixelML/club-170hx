@@ -1,0 +1,63 @@
+{
+  "experiment": "2026-09-03-glm-5.3-flash-vllm-sm80-4gpu",
+  "status": "measured, partial",
+  "evidence_class": "measured public replay",
+  "measured_date": "2026-09-03",
+  "model": {
+    "name": "GLM-5.3-Flash",
+    "checkpoint": "wtdcode/GLM-5.3-Flash-AWQ-W4A16",
+    "revision": "abd7b07719111f137e1de8a0c1b7e01c11b74d1a",
+    "bytes": 190843146533,
+    "quantization": "AWQ W4A16 (compressed-tensors)"
+  },
+  "hardware": {
+    "cards": 4,
+    "card": "NVIDIA CMP 170HX",
+    "architecture": "SM80",
+    "vram_gib_per_card": 64,
+    "power_limit_w_per_card": 180,
+    "cooling": "forced airflow",
+    "driver": "not recorded in this receipt",
+    "kernel": "not recorded in this receipt"
+  },
+  "runtime": {
+    "engine": "vLLM",
+    "fork": "PixelML/sm80vllm",
+    "branch": "glm53-sm80",
+    "commit": "f6fbf3b854",
+    "image": "ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-20260903",
+    "image_build": "f7fe5d02c295",
+    "topology": "TP4"
+  },
+  "protocol": {
+    "max_model_len": 524288,
+    "context_stress_test": "untested",
+    "concurrency_reps": 5,
+    "warmup": "first repetition treated as cold",
+    "temperature": 0.7,
+    "max_tokens": 512,
+    "ignore_eos": true,
+    "token_accounting": "final usage.completion_tokens",
+    "prefill": "untested",
+    "ttft": "untested"
+  },
+  "headline": {
+    "decode_c1_median_tok_s": 56.4,
+    "decode_c1_peak_tok_s": 56.9,
+    "aggregate_c8_tok_s": 37.0,
+    "exll3_baseline_c1_tok_s": 25.2,
+    "exll3_baseline_c8_tok_s": 44.6
+  },
+  "health": {
+    "forced_airflow": true,
+    "xid_ecc_events": 0,
+    "peak_core_temp_c": "not captured in this receipt",
+    "note": "Telemetry was watched during the run; this receipt does not contain a numeric peak temperature."
+  },
+  "notes": [
+    "Native MTP depth 3 was selected after sweeping 2, 3, and 5 draft tokens.",
+    "C8 aggregate is below the EXL3 comparison because TP4 all-reduce is communication-bound on this PCIe fabric.",
+    "PP4 plus MTP is the next optimization and was not ported in this run.",
+    "The notebook is LIVE=false and replays these committed receipts; it does not claim a new live endpoint run."
+  ]
+}

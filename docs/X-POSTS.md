@@ -37,6 +37,18 @@ Notebook: https://github.com/PixelML/club-170hx/blob/main/notebooks/2026-08-30-q
 Chart: assets/charts/2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.png
 ```
 
+## GLM-5.3-Flash AWQ W4A16, 4x CMP 170HX (2026-09-03) — superseded, do not post
+
+Superseded on 2026-09-05 by the PP4 + native MTP k=3 recipe of record. Kept as
+a drafting record only.
+
+```
+4x CMP 170HX (SM80, 64 GiB each) run GLM-5.3-Flash AWQ W4A16 via vLLM TP4 + native MTP-3 at 56.4 tok/s median c=1 (56.9 peak). C8 aggregate is 37.0 tok/s and TP4 communication-bound.
+Notebook: https://github.com/PixelML/club-170hx/blob/main/notebooks/2026-09-03-glm-5.3-flash-4card-tp4-vllm.ipynb
+Chart: assets/charts/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu-sweep.png
+Video: assets/video/glm53-vllm-sm80-motion/glm53-vllm-sm80-motion-1080x1080.mp4
+```
+
 ## GLM-5.3-Flash on CMP 170HX, negative result (2026-08-31)
 
 ```
