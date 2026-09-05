@@ -86,8 +86,88 @@ Ranked by rough wall-clock cost:
 14. Before any A/B change: write down the single variable being changed, the numeric decision gate, and the rollback plan, and commit that pre-run checkpoint before starting.
 15. Replace any package-presence check with an architecture-aware capability check before trusting a fast-path branch on hardware that lacks native support for it.
 
+## 6. A card that drops under multimodal-encoder profiling: diagnosing slot power vs. riser vs. card
+
+Mined from a multi-day debugging thread on a four-card node, 2026-09-04.
+
+**vLLM's multimodal-encoder profiling step is the largest power/bus transient
+of a boot.** The stage that profiles the vision/video encoder against the
+maximum feature size draws a sharper, larger transient than steady-state
+decode or even prefill. Treat it as a deliberate stress test for a marginal
+card position, not an incidental crash site: if a card is going to fall off
+the bus under load, this step is where it will happen first.
+
+**A card that drops (`rev ff`, D3cold-style loss) under that transient, with
+a clean link and no correctable PCIe errors right up to the drop, points at
+slot power delivery — not the riser and not the card.** The discriminating
+signature: a healthy link status (no `CorrErr`/`BadTLP`/timeout counters
+climbing) immediately before the device vanishes from the bus is not
+consistent with a signal-integrity problem (which usually shows correctable
+errors building up first); it is consistent with a power rail sagging under
+a sudden current draw and the device browning out.
+
+**Riser swap and card swap are the two discriminating tests, run in that
+order.** Swap the riser at the affected position for a known-good one and
+reproduce the load: if the drop recurs on the very next boot, the riser is
+cleared. Then swap the card at that position with a card from a stable
+position: if the failure stays with the position rather than following the
+card, the card is cleared too. What is left — the slot's power delivery —
+is the remaining hypothesis, and it is the one to test next (power-limit the
+card and retry, or move its power feed to a different rail).
+
+**`--limit-mm-per-prompt '{"image":0,"video":0}'` is the text-only
+workaround.** Passing zero for both image and video limits skips the
+multimodal-encoder profiling stage entirely at boot. On the affected node
+this let the server boot clean and serve text-only traffic stably across
+repeated concurrency rounds with no further drops, while leaving the actual
+vision-serving path unfixed and unmeasured. Use this flag to keep a lane
+moving on text while the hardware root cause is chased separately — it is a
+workaround, not a fix, and does not clear the card/slot for other
+peak-load workloads.
+
+**Recovery ladder for a card that has fallen off the bus, cheapest first,
+never skip a step:**
+
+1. Guest-side kernel module reload (unload then reload the GPU driver
+   modules) — recovers a device that is still enumerated on the guest's PCI
+   bus but wedged at the driver level.
+2. A full VM reboot — recovers a guest-level wedge that a module reload
+   alone does not clear.
+3. A cold power cycle of the host — required when the device has actually
+   left the host-side PCI bus (not just the guest's view of it), which a
+   guest reboot cannot fix.
+
+**Never run a host-side device "remove" on the passthrough device as a
+recovery step.** It turns a recoverable wedge into a card that vanishes
+from the host bus entirely and forces a full cold power cycle to bring
+back — a strictly worse outcome than doing nothing and going straight to
+the VM reboot or cold cycle above.
+
+**A VM reboot can itself land in a stuck power state** — the guest reports
+being unable to move the device from a low-power state back to an active
+one. Treat that specific failure as equivalent to step 3: it needs a cold
+power cycle, not a second reboot attempt.
+
+**Slot power-delivery headroom matters most when several cards share one
+bifurcated slot or riser position.** Powered risers, or an onboard
+low-voltage power-input header on the riser/backplane feeding a slot that
+several cards share, are the durable fix once slot power delivery is
+confirmed (not merely suspected) as the root cause — an MCIO-style
+bifurcation kit with its own powered device board is the reference
+approach for a slot carrying more than one card's worth of peak transient
+current.
+
+**Power cap re-apply after any module reload.** A per-card power limit set
+with the driver's runtime power-limit tool does not survive a guest reboot
+or a kernel module reload. Re-apply the power cap and verify it against
+every card's reported power limit after either event, before taking any
+measurement — a card silently back at its default (higher) power limit
+after a "recovery" is itself a new risk factor for the exact transient this
+section describes.
+
 ## See also
 
 - [LESSONS.md](LESSONS.md) — kernel, runtime, topology, memory/storage, power/thermal, and hardware failure-mode lessons.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — symptom-to-cause diagnosis at the hardware/driver layer.
 - [MODEL-STATUS.md](MODEL-STATUS.md) — every model attempted on CMP 170HX, one table.
+- [TOPOLOGY-AND-PARALLELISM.md](TOPOLOGY-AND-PARALLELISM.md) — PCIe link facts and PP-vs-TP topology choice for this card.

@@ -21,6 +21,7 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 | Validate a new or used card | [QC and acceptance testing](docs/QC.md) |
 | Control heat and noise | [Cooling and power](docs/COOLING-AND-POWER.md) |
 | Plan a multi-card node | [Cluster design](docs/CLUSTER.md) |
+| Understand the PCIe link and choose PP vs TP | [Topology and parallelism](docs/TOPOLOGY-AND-PARALLELISM.md) |
 | Diagnose failures | [Troubleshooting](docs/TROUBLESHOOTING.md) |
 | Compare measured results | [Benchmarks](docs/BENCHMARKS.md) |
 | Avoid past operator mistakes | [Operator lessons](docs/OPERATOR-LESSONS.md) |
