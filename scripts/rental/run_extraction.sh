@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Direct-exec translation of the drafter lane's slice-C PP4 extraction command
-# (seanphan/pixelml#108). Only run this if >=4 spare cards exist AND the time budget allows.
+# Only run this if >=4 spare cards exist AND the time budget allows.
 # Measured 120 tok/s on 4x170HX PP4. The bundle's own sizing (2M tokens, ~4h40m) does NOT
 # fit inside the 6h/$17 rental cap alongside training + AWQ download + boot, so this script
 # defaults to 1M tokens (~2h20m of compute) instead — size TOKENS down further at call time

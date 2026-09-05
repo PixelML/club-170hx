@@ -1,9 +1,18 @@
 # GLM-5.3-Flash on 8x CMP 170HX (Vast.ai rental) — RUNBOOK
 
-Companion to `notebooks/2026-09-03-glm-5.3-flash-4card-tp4-vllm.ipynb`
-(the reproducibility source of truth) and issue tracking this lane. This
-runbook covers the parts specific to a Vast.ai rental: finding an offer,
-onstart, the full measurement queue, and destroy.
+Read [README.md](README.md) first for what this bundle is and its state.
+This runbook covers the parts specific to a Vast.ai rental: finding an
+offer, onstart, the full measurement queue, and destroy.
+
+The four-card recipe of record is the PP4 + native MTP k=3 lane
+([guide](../../docs/models/glm-5.3-flash.md),
+[notebook](../../notebooks/2026-09-05-glm-5.3-flash-4card-pp4-vllm.ipynb)).
+Sections 1-6 below were written against the earlier TP4 lane
+([notebook](../../notebooks/2026-09-03-glm-5.3-flash-4card-tp4-vllm.ipynb),
+superseded 2026-09-05) and still name the `vllm-glm53-sm80-20260903` image
+and TP4 as "the recipe of record" — on eight cards the point of the queue
+is the topologies four cards cannot answer, so re-pin the image to
+`vllm-glm53-sm80-pp-20260905` and lead with PP4 before renting.
 
 ## 0. Preconditions
 
@@ -138,7 +147,7 @@ vastai show instances   # confirm empty / instance gone
 
 New purpose, same branch/scripts family: parallel drafter training (block_size x lr sweep)
 plus, if the box has >=4 spare 64GB cards, a PP4 slice-C hidden-state extraction. Recipe
-of record comes from the drafter lane's "vast bundle" on `seanphan/pixelml#108`; scripts
+of record comes from the drafter lane's "vast bundle" (tracked privately); scripts
 here are a direct-exec translation (no nested docker — same finding as the inference
 image: no docker binary inside `ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905`).
 
@@ -182,11 +191,11 @@ was ~380GB — workable but far tighter; re-pin to `e03679f1` before renting.)
    ~70 tok/s, cut the token target (not the run) — `--resume` checkpoints every shard, so
    stopping early yields a short clean slice rather than a truncated unusable one. Reserve
    >=30 min at the end for rsync-back + destroy regardless of how far extraction got.
-5. rsync checkpoints + `acceptance.json` + slice-C shards back to
-   `/library/models/specdec-data/vast-2026-09-05/` on the source host.
+5. rsync checkpoints + `acceptance.json` + slice-C shards back to the model library
+   on the source host (`$SRC_DATA_DIR/vast-2026-09-05/`, see `transfer_specdec.sh`).
 6. `vastai destroy instance <ID>`; confirm via `vastai show instances-v1`.
-7. Post spend + per-run alpha vs reference (0.3614) + slice-C size to both `#108` and
-   `#107` — never to public repos (AGENTS.md).
+7. Post spend + per-run alpha vs reference (0.3614) + slice-C size to the private
+   tracking issues — never to public repos (AGENTS.md).
 
 ### Notes
 

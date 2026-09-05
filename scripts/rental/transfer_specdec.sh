@@ -18,7 +18,7 @@ set -euo pipefail
 : "${SPECDEC_DEST_HOST:?set SPECDEC_DEST_HOST=root@<vast-ip>}"
 : "${SPECDEC_DEST_PORT:?set SPECDEC_DEST_PORT=<vast-ssh-port>}"
 
-SRC_DATA_DIR=/library/models/specdec-data
+SRC_DATA_DIR="${SRC_DATA_DIR:?set SRC_DATA_DIR to the model-library path holding the drafter training data}"
 DEST_SSH="ssh -o StrictHostKeyChecking=no -p ${SPECDEC_DEST_PORT}"
 LOCAL_STAGE=$(mktemp -d)
 trap 'rm -rf "$LOCAL_STAGE"' EXIT

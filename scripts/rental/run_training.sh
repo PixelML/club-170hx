@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Direct-exec translation of the drafter lane's "vast bundle" (seanphan/pixelml#108) six-run
+# Direct-exec translation of the drafter lane's "vast bundle" six-run
 # sweep. The bundle's commands use `docker run --gpus device=N ... --entrypoint python3`
 # because it assumes a host with a docker daemon; this rental's --image IS the container
 # (no nested docker, no docker binary inside it — same finding as the inference lane), so
