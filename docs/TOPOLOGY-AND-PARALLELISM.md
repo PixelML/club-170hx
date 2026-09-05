@@ -107,12 +107,22 @@ base SM8x patch set and [bayley/vllm-170hx-glm5](https://github.com/bayley)
 for PP-on-170HX validation. We have not run their patch set; the numbers
 above are cited for comparison, not reused as our own measurement.
 
-**Our PP4 today is not faster than TP4 — state this plainly.** GLM-5.3-Flash
+**Superseded on 2026-09-05: patched PP4 now beats TP4 on decode as well.** The
+unpatched-fork numbers below are kept as the before half of that story. With the
+24-patch port landed, PP4 + native MTP k=3 measures **87.55 tok/s** c=1 (temp 0,
+median of 3, clean workload) and **67.91 tok/s** (temp 0.7 + `ignore_eos`, median
+of 5) against TP4's 60.4 — the recipe of record, documented in
+[models/glm-5.3-flash.md](models/glm-5.3-flash.md) and
+[BENCHMARKS.md](BENCHMARKS.md). Read the rest of this section as the state of the
+fork on 2026-09-04, not as current guidance.
+
+**Our PP4 on the unpatched fork was not faster than TP4 (measured 2026-09-04).**
+GLM-5.3-Flash
 AWQ W4A16, PP4 (`VLLM_PP_LAYER_PARTITION=14,12,12,7`), `--enforce-eager`,
 `--gpu-memory-utilization 0.92`, on the same four-card box and checkpoint
 as the TP4 numbers above (measured 2026-09-04):
 
-| Metric | PP4 | TP4 (numbers of record) |
+| Metric | PP4 (unpatched fork, 2026-09-04) | TP4 (then the numbers of record) |
 |---|---:|---:|
 | c=1 decode, median tok/s | 3.35 (MTP k=5) | 60.4 (MTP k=3) |
 | c=1 decode, spec off | 6.1 (median of 3) | not separately measured |
@@ -133,10 +143,13 @@ weights from the checkpoint under pipeline parallelism, leaving them
 randomly initialized and driving acceptance toward zero — documented as
 patch category 3 ("MTP under PP") in
 [promisezackr/glm53-flash-170hx-pp8](https://github.com/promisezackr/glm53-flash-170hx-pp8#what-the-patches-do).
-Porting that fix to this club's `glm53-sm80` fork is in progress and
-unmeasured here; **PP4 on the current unpatched fork is not a viable
-alternative to TP4 for decode throughput**, full stop, until that port
-lands and is re-measured.
+That port landed on 2026-09-05 as branch
+`pp-dflash2/glm53-flash-487ecf187-20260905` (24 patches, each with an
+attribution trailer), and the re-measurement inverted this section's verdict:
+**PP4 on the patched fork is the recipe of record and TP4 is superseded**
+(87.55 / 67.91 tok/s c=1 against TP4's 60.4, measured 2026-09-05). PP4 on the
+*unpatched* fork remains not viable — the sentence above applies to the build,
+not to the topology.
 
 **PP is also expected to transfer to A100 boxes without NVLink (inferred,
 not tested on A100).** The same argument — one hand-off per stage boundary
@@ -176,16 +189,23 @@ All measured on the four-card CMP 170HX box, GLM-5.3-Flash AWQ W4A16,
 The compute-bound advice published elsewhere — Unsloth's B200 sweep for
 GLM-5.3-Flash MTP in llama.cpp found `n=2 > n=3 > n=5` and recommends
 stopping around k=2 (community-reported, not reproduced by this club) —
-may invert on this box (**inferred**; a draft-depth sweep is in progress,
-not yet concluded). The reasoning: on a compute-bound box, every extra
+does invert in direction but not in conclusion on this box (**measured
+2026-09-05**; the sweep has since concluded — see below). The reasoning: on a compute-bound box, every extra
 verified token in a deeper draft costs real FLOPs that are not free. On
 this Gen1/no-P2P box, the per-step cost model from §2
 (`fixed + small·tokens`, community-reported shape) means the marginal cost
 of verifying a longer accepted run is small relative to the fixed per-step
 overhead — so a deeper draft that raises mean accepted length should pay
-for itself more easily here than on a compute-bound box. This is a
-hypothesis awaiting our own sweep, not a result; do not treat "deeper is
-better here" as measured until the sweep publishes numbers.
+for itself more easily here than on a compute-bound box. That hypothesis has
+now been tested, and it did not hold. **Measured 2026-09-05**, a k=0/2/3/5/7
+sweep on the patched PP4 build: draft acceptance falls from 74.0% at k=2 to 37.3%
+at k=7 while mean accepted length rises only 1.46x, and the P2 median peaks at
+k=3 (67.91 tok/s) against 38.13 at k=7. Per-verified-token cost on this box is
+not flat, so depth does not pay for itself here either. **k=3 is the record, and
+acceptance — not depth — is the lever.** The compute-bound advice's *shape*
+(stop shallow) survives; only its exact stopping point moves from k=2 to k=3.
+Full tables: [BENCHMARKS.md](BENCHMARKS.md) and the
+[result card](../results/2026-09-05-glm-5.3-flash-4card-pp4-vllm/README.md).
 
 **Acceptance is workload-dependent, not a single number.** The community
 PP8 source above reports roughly a 3x spread in single-stream decode
@@ -204,12 +224,21 @@ inferred).** SM80 has no native FP4 tensor cores (see
 [LESSONS.md §a](LESSONS.md#a-kernel-and-format-compatibility-on-sm80) for
 the full format-compatibility table); an NVFP4-stored checkpoint on this
 box dequantizes through the same Marlin W4A16 path used for AWQ, and
-should be expected to perform similarly to AWQ W4A16 rather than to a
-native-FP4 box. This is measured for the dequant-path mechanism (Marlin
-selects on compute capability, confirmed elsewhere in this repo) and
-inferred for the specific NVFP4-vs-AWQ performance parity claim — we have
-not run a controlled NVFP4-vs-AWQ A/B on the same checkpoint on this box
-to confirm the numbers land the same.
+would be expected to perform similarly to AWQ W4A16 rather than to a
+native-FP4 box — but on this pool it does not run at all. **Measured 2026-09-05,
+two attempts, same signature:** because SM80 has no native FP4, the checkpoint
+widens on load to roughly 60 GiB resident per card against about 45 GiB of
+weight share on disk, and the mixture-of-experts kernel-format conversion runs
+out of memory during weight load, before any KV budget is computed. Neither
+memory utilisation (0.90, 0.85) nor context length (393,216, 131,072) moves it.
+**NVFP4 is not viable on this pool** — a hardware-generation limit, not a tuning
+gap, so the NVFP4-vs-AWQ performance comparison stays untested here.
+
+The dequant-path mechanism above is **measured** (Marlin selects on compute
+capability, confirmed elsewhere in this repo). The performance-parity claim
+that would follow from it is **untested**: no controlled NVFP4-vs-AWQ A/B on
+the same checkpoint can be run on this pool, because the NVFP4 checkpoint does
+not load here at all.
 
 **Keep AWQ for A100 transfer.** Where a recipe needs to run unchanged on
 both this club's CMP 170HX pool and an A100 box, prefer AWQ W4A16 over
