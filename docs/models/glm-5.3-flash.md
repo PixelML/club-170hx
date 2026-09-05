@@ -644,6 +644,7 @@ cache.
 | Receipts, TP4 lane | [`results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/`](../../results/2026-09-03-glm-5.3-flash-vllm-sm80-4gpu/README.md) |
 | Receipts, EXL3 lane | [`results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/`](../../results/2026-09-03-glm-5.3-flash-exl3-4gpu-tabbyapi/README.md) |
 | Chart source | [`assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.py`](../../assets/charts/2026-09-05-glm-5.3-flash-pp4-context-sweep.py) |
+| Result video | [vertical 1080x1920](../../assets/video/glm53-pp4-motion/glm53-pp4-motion-1080x1920.mp4), [horizontal 1920x1080](../../assets/video/glm53-pp4-motion/glm53-pp4-motion-1920x1080.mp4), [poster](../../assets/video/glm53-pp4-motion/glm53-pp4-motion-poster.png) — 10 s, no audio, captions baked in |
 | Evidence repository | [PixelML/GLM-5.3-Flash-CMP-170HX](https://github.com/PixelML/GLM-5.3-Flash-CMP-170HX) |
 
 ### Attribution
