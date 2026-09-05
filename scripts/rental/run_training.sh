@@ -52,28 +52,18 @@ grep -q "IN BAND" "$LOGDIR/reference-check.log" || {
   exit 1
 }
 
-# bs8 pair starts immediately on whichever 2 cards are free
-run bs8-lr15  0  8  1.5e-4
-run bs8-lr30  1  8  3e-4
+# Per the drafter lane (2026-09-05): against a 6h cap, run all six FROM SCRATCH in
+# parallel (one ~2.5h wave) rather than chaining bs13/bs17 off bs8 checkpoints via
+# --init-from (which would force two sequential ~2.4h waves and risk the cap). If
+# extraction finishes early and hours remain, re-run 13/17 with --init-from then.
+run bs8-lr15   0  8  1.5e-4
+run bs8-lr30   1  8  3e-4
 
 if [[ "$NUM_GPUS_TRAIN" -ge 6 ]]; then
-  echo "[run_training] waiting for bs8 checkpoints (best.pt) before starting bs13/bs17 (init-from)..."
-  for i in $(seq 1 60); do
-    [[ -f "$OUT/bs8-lr15/best.pt" && -f "$OUT/bs8-lr30/best.pt" ]] && break
-    sleep 30
-  done
-  if [[ -f "$OUT/bs8-lr15/best.pt" && -f "$OUT/bs8-lr30/best.pt" ]]; then
-    run bs13-lr15 2 13 1.5e-4 "$OUT/bs8-lr15/best.pt"
-    run bs13-lr30 3 13 3e-4   "$OUT/bs8-lr30/best.pt"
-    run bs17-lr15 4 17 1.5e-4 "$OUT/bs8-lr15/best.pt"
-    run bs17-lr30 5 17 3e-4   "$OUT/bs8-lr30/best.pt"
-  else
-    echo "[run_training] bs8 checkpoints not ready after 30 min; starting bs13/bs17 from scratch instead"
-    run bs13-lr15 2 13 1.5e-4
-    run bs13-lr30 3 13 3e-4
-    run bs17-lr15 4 17 1.5e-4
-    run bs17-lr30 5 17 3e-4
-  fi
+  run bs13-lr15  2 13 1.5e-4
+  run bs13-lr30  3 13 3e-4
+  run bs17-lr15  4 17 1.5e-4
+  run bs17-lr30  5 17 3e-4
 else
   echo "[run_training] NUM_GPUS_TRAIN=$NUM_GPUS_TRAIN < 6: bs8 pair only, skipping bs13/bs17"
 fi

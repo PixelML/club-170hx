@@ -150,8 +150,11 @@ Caps: total spend <= $17 (balance ~$18.66), <= 6h instance time, destroy on comp
 2. Else 8x64GB Gen2x16 (49884606, $3.29/hr): 4 extraction + 4 training, ~5h max.
 3. Else any 4x64GB offer: training only (skip slice C).
 
-Disk >= 450GB required in all cases (178GB AWQ checkpoint + 82GB slice-C output + 18GB
-training data + headroom).
+Disk >= 450GB required in all cases. Math at commit `e03679f1` (checkpoints exported-set
+only, not the frozen shared weights — 9.4GB/run instead of 19GB/run): 178GB AWQ + ~41GB
+slice C at 1M tokens + 18GB training data (sliceB/target-shared/ref-drafter) + ~56GB
+checkpoints (6 runs) + ~29GB image = **~322GB of 500**. (At the superseded commit this
+was ~380GB — workable but far tighter; re-pin to `e03679f1` before renting.)
 
 ### Sequence
 
@@ -159,22 +162,26 @@ training data + headroom).
    checkpoint pull here — that's extraction-only and gated separately).
 2. From the orchestrating machine (not the rental): run `scripts/rental/transfer_specdec.sh`
    with `SPECDEC_SOURCE`, `SPECDEC_DEST_HOST`, `SPECDEC_DEST_PORT` set. It does a 1GB rate
-   test each hop, then relays tools tarball (sha256 `1fd9f29b...`, commit `eb1434a8`), sliceB
+   test each hop, then relays tools tarball (sha256 `ba8e8b00...`, commit `e03679f1`), sliceB
    (14GB), target-shared.safetensors (1.9GB), ref-drafter (2.2GB) via a local staging dir
    (source has no route to the rental). Ends with the mandatory gate:
    `tap hc_post-materialized+stream-mean tokens 455367 shards 9 files 9` then `OK`.
    **Stop if this string differs — do not train on it.**
 3. On the rental: `scripts/rental/run_training.sh [NUM_GPUS_TRAIN]` — runs the reference
    band check first (`ref_eval2.py`, must land `IN BAND (~36%)` against alpha 0.3614),
-   then launches bs8-lr{1.5e-4,3e-4} immediately; if >=6 training cards, waits (<=30 min)
-   for bs8 `best.pt` then launches bs13/bs17 with `--init-from`, else from scratch.
+   then launches all six runs FROM SCRATCH in parallel (one ~2.5h wave; no `--init-from`
+   chaining off bs8 — against a 6h cap two sequential ~2.4h waves risks the cap). If
+   extraction finishes early and hours remain, re-run bs13/bs17 with `--init-from` then.
 4. If >=4 spare cards for extraction: `scripts/rental/run_extraction.sh eta-check` first
    (178GB AWQ checkpoint, 1-shard sample). Abort slice C (not training) if ETA > 60 min.
-   Else `run_extraction.sh download` then `run_extraction.sh extract extract 1000000`
-   (PP4, `--no-batch`, default 1M tokens ~2h20m + 15-20min load — the bundle's own 2M/~4h40m
-   sizing does not fit the 6h/$17 cap alongside training + download + boot; size the token
-   count down further at call time if less wall-clock remains, and reserve >=30 min at the
-   end for rsync-back + destroy. `--resume` means any stop-point's shards are still usable.
+   Else `run_extraction.sh download` then `run_extraction.sh extract 1000000` (PP4,
+   `--no-batch`, default 1M tokens). **Do not trust a flat ~2h20m estimate** — Gen1x4
+   throughput for PP4's per-step cross-stage hidden-state hop is unmeasured on this
+   topology. Read the extractor's own `[shard 0] ... tok/s` line (~7 min in) and re-plan:
+   120 tok/s -> 2h20m, 80 -> 3h30m, 60 -> 4h40m for 1M tokens. If shard 0 comes in under
+   ~70 tok/s, cut the token target (not the run) — `--resume` checkpoints every shard, so
+   stopping early yields a short clean slice rather than a truncated unusable one. Reserve
+   >=30 min at the end for rsync-back + destroy regardless of how far extraction got.
 5. rsync checkpoints + `acceptance.json` + slice-C shards back to
    `/library/models/specdec-data/vast-2026-09-05/` on the source host.
 6. `vastai destroy instance <ID>`; confirm via `vastai show instances-v1`.
