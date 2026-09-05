@@ -47,7 +47,7 @@ rm -f "$LOCAL_STAGE/1g.bin"
 echo "[transfer] 3/5: stage small files locally (tools tarball, target-shared, checksums)"
 t0=$(date +%s)
 rsync -az -e "ssh -o StrictHostKeyChecking=no" \
-  "${SPECDEC_SOURCE}:${SRC_DATA_DIR}/specdec-tools-a774a822.tar.gz" \
+  "${SPECDEC_SOURCE}:${SRC_DATA_DIR}/specdec-tools-eb1434a8.tar.gz" \
   "${SPECDEC_SOURCE}:${SRC_DATA_DIR}/target-shared.safetensors" \
   "${SPECDEC_SOURCE}:${SRC_DATA_DIR}/SHARED.sha256" \
   "${SPECDEC_SOURCE}:${SRC_DATA_DIR}/REFDRAFTER.sha256" \
@@ -75,10 +75,10 @@ echo "[transfer] pushed to rental in $((t1 - t0))s"
 echo "[transfer] unpack + verify on rental"
 $DEST_SSH "$SPECDEC_DEST_HOST" '
   set -e
-  cd /data && tar xzf specdec-tools-a774a822.tar.gz
+  cd /data && tar xzf specdec-tools-eb1434a8.tar.gz
   test -d specdec-wt/tools/specdec && mkdir -p tools && cp -r specdec-wt/tools/specdec tools/ || true
   find /data -maxdepth 2 -iname "*.py" -path "*specdec*" | head -3
-  sha256sum specdec-tools-a774a822.tar.gz
+  sha256sum specdec-tools-eb1434a8.tar.gz
   cd /data/sliceB && sha256sum -c SHA256SUMS --quiet && echo SLICEB_OK
   python3 /data/tools/verify_manifest.py /data/sliceB 400000
 '

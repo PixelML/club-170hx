@@ -159,7 +159,7 @@ training data + headroom).
    checkpoint pull here — that's extraction-only and gated separately).
 2. From the orchestrating machine (not the rental): run `scripts/rental/transfer_specdec.sh`
    with `SPECDEC_SOURCE`, `SPECDEC_DEST_HOST`, `SPECDEC_DEST_PORT` set. It does a 1GB rate
-   test each hop, then relays tools tarball (sha256 `5fe08a51...`, commit `a774a82`), sliceB
+   test each hop, then relays tools tarball (sha256 `1fd9f29b...`, commit `eb1434a8`), sliceB
    (14GB), target-shared.safetensors (1.9GB), ref-drafter (2.2GB) via a local staging dir
    (source has no route to the rental). Ends with the mandatory gate:
    `tap hc_post-materialized+stream-mean tokens 455367 shards 9 files 9` then `OK`.
@@ -170,8 +170,11 @@ training data + headroom).
    for bs8 `best.pt` then launches bs13/bs17 with `--init-from`, else from scratch.
 4. If >=4 spare cards for extraction: `scripts/rental/run_extraction.sh eta-check` first
    (178GB AWQ checkpoint, 1-shard sample). Abort slice C (not training) if ETA > 60 min.
-   Else `run_extraction.sh download` then `run_extraction.sh extract` (2M tokens, PP4,
-   `--no-batch`, ~4h40m + 15-20min load, ~82GB output).
+   Else `run_extraction.sh download` then `run_extraction.sh extract extract 1000000`
+   (PP4, `--no-batch`, default 1M tokens ~2h20m + 15-20min load — the bundle's own 2M/~4h40m
+   sizing does not fit the 6h/$17 cap alongside training + download + boot; size the token
+   count down further at call time if less wall-clock remains, and reserve >=30 min at the
+   end for rsync-back + destroy. `--resume` means any stop-point's shards are still usable.
 5. rsync checkpoints + `acceptance.json` + slice-C shards back to
    `/library/models/specdec-data/vast-2026-09-05/` on the source host.
 6. `vastai destroy instance <ID>`; confirm via `vastai show instances-v1`.
