@@ -2,7 +2,7 @@
 
 Results here are application measurements on the tested CMP 170HX setup. They are not vendor specifications or theoretical estimates. This page is the normalized comparison index; raw manifests, commands, and receipts stay in the model repositories.
 
-Runnable publication notebooks live in [`recipes/`](../recipes/README.md). A benchmark is not complete when it has only prose and numbers: its recipe folder must contain an executable notebook, clean recorded outputs, structured source data, a generated chart, and a final editable API request.
+A benchmark is not complete when it has only prose and numbers. Every row here is backed by a runnable artifact: an executed notebook in [`notebooks/`](../notebooks/README.md) with dated receipts under [`results/`](../results/README.md), or a self-contained reproduction folder in [`recipes/`](../recipes/README.md). Both carry clean recorded outputs, structured source data, a generated chart, and a final editable API request.
 
 ## Evidence tiers
 

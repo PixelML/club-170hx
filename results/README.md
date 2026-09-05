@@ -1,8 +1,8 @@
 # Result submission format
 
-Create one Markdown file per result and one runnable publication folder under `recipes/<model-runtime>/`. Store small, redacted machine-readable evidence beside it; do not commit model outputs containing private prompts or data.
+Create one Markdown file per result, plus a runnable artifact for it. Store small, redacted machine-readable evidence beside it; do not commit model outputs containing private prompts or data.
 
-The recipe folder must contain `recipe.json`, `reproduce.ipynb`, `results/summary.csv`, and a generated chart. The notebook must preserve clean output from the measured run, execute in order after one configuration cell, and finish with an editable `curl` that prints the response and final usage object.
+The runnable artifact is either an executed notebook under `notebooks/` with its receipts in a dated `results/` directory (the convention used by the GLM-5.3-Flash and DeepSeek lanes), or a self-contained reproduction folder under `recipes/<model-runtime>/` containing `recipe.json`, `reproduce.ipynb`, `results/summary.csv`, and a generated chart. Either way the notebook must preserve clean output from the measured run, execute in order after one configuration cell, and finish with an editable request that prints the response and final usage object.
 
 ```markdown
 # Workload — short result name
