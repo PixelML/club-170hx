@@ -62,6 +62,13 @@ Per-verified-token cost on this box is not flat, so depth does not pay for
 itself: k=7 wins math alone and loses code, counting and prose. Acceptance, not
 depth, is the lever.
 
+**Measurement note (2026-09-06):** `bench_glm53.py`'s `median_tok_s_warm` field
+used a sorted-index pick, not a true median, and was wrong for the 4-rep warm
+set (e.g. k=3 read 80.66 tok/s there against a true warm median of 74.28). The
+row above was already computed independently as the median of all 5 reps
+(the declared P2 protocol) and is unaffected; the harness is fixed at the
+source so future receipts don't reintroduce the bug.
+
 **Decode vs context (c=1, 512 output tokens, 3 reps, medians):** 98.6 tok/s at
 336 prompt tokens, then flat at 74.9-81.5 tok/s from 2,024 through 131,042
 tokens. Prompt processing rises from 592 to 2,038 tok/s over the same range

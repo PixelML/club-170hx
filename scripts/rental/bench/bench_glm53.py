@@ -8,7 +8,16 @@ tokens, ignore_eos, 5 reps, first rep treated as cold.
 Usage:
     python3 bench_glm53.py --base-url http://127.0.0.1:18098 --model glm-5.3-flash \
         --out /workspace/receipts/tp4-record gate prefill ttft decode_c1
+
+2026-09-06 fix: every "median" here used to be sorted(values)[len(values)//2],
+which is only a true median for an odd sample count. The 4-rep warm set in
+decode_c1() picked the 3rd-smallest value instead of the median. Replaced with
+statistics.median throughout; decode_c1.json also gained a "protocol" string
+and a median_tok_s_all5 field. See docs/models/glm-5.3-flash.md changelog and
+docs/BENCHMARKS.md for the published-numbers impact (none -- every published
+figure already used the 5-rep median, which this bug did not affect).
 """
+import statistics
 import sys
 import uuid
 
@@ -47,8 +56,8 @@ def prefill(client, out):
     rec = {
         "phase": "uncached_prefill", "utc": now(), "target_prompt_tokens": PREFILL_TOKENS, "max_tokens": 1, "reps": reps,
         "prompt_tokens_exact": all(x.get("usage", {}).get("prompt_tokens") == PREFILL_TOKENS for x in ok) and len(ok) == REPS,
-        "median_wall_s": sorted(x["wall_s"] for x in ok)[len(ok) // 2] if ok else None,
-        "median_prefill_tok_s": sorted(x["prefill_tok_s"] for x in ok)[len(ok) // 2] if ok else None,
+        "median_wall_s": statistics.median(x["wall_s"] for x in ok) if ok else None,
+        "median_prefill_tok_s": statistics.median(x["prefill_tok_s"] for x in ok) if ok else None,
     }
     save(out, "prefill.json", rec)
 
@@ -95,7 +104,7 @@ def ttft(client, out):
         print("ttft rep", i, reps[-1], flush=True)
     ok = [x for x in reps if x["ok"] and x["ttft_s"]]
     rec = {"phase": "warm_streaming_ttft", "utc": now(), "fixture_tokens": c, "reps": reps,
-           "median_ttft_s": sorted(x["ttft_s"] for x in ok)[len(ok) // 2] if ok else None}
+           "median_ttft_s": statistics.median(x["ttft_s"] for x in ok) if ok else None}
     save(out, "ttft.json", rec)
 
 
@@ -119,7 +128,11 @@ def decode_c1(client, out):
     warm = [x for x in ok if not x["cold"]]
     rec = {
         "phase": "c1_decode_confirm", "utc": now(), "reps": reps,
-        "median_tok_s_warm": sorted(x["decode_tok_s"] for x in warm)[len(warm) // 2] if warm else None,
+        "protocol": "P2, temp 0.7, ignore_eos, 512 out tok, 5 reps (1 cold + 4 warm); "
+                    "median_tok_s_all5 = statistics.median of all 5 reps (canonical); "
+                    "median_tok_s_warm = statistics.median of the 4 warm reps",
+        "median_tok_s_all5": statistics.median(x["decode_tok_s"] for x in ok) if ok else None,
+        "median_tok_s_warm": statistics.median(x["decode_tok_s"] for x in warm) if warm else None,
         "peak_tok_s_warm": max((x["decode_tok_s"] for x in warm), default=None),
         "cold_rep_tok_s": reps[0].get("decode_tok_s") if reps else None,
     }
