@@ -1,0 +1,36 @@
+{
+  "title": "Qwen3.8-27B + LLKVApprox",
+  "subtitle": "1x CMP 170HX · HF BF16 · receipt replay",
+  "eyebrow": "MEASURED · SEPARATE COHORTS",
+  "headline": "1.71x FASTER PREFILL",
+  "status": "QUALITY TRADE-OFF",
+  "scenes": [
+    {
+      "label": "01 · SPEED",
+      "title": "6,603-token comparison",
+      "body": "Separate receipt arms: full 3.329 s; zero-shot suffix 256 at 1.944 s. Three samples per arm.",
+      "metrics": [
+        {"value": "1.71x", "label": "Measured vs full BF16"},
+        {"value": "3,396 tok/s", "label": "Zero-shot suffix 256"}
+      ]
+    },
+    {
+      "label": "02 · QUALITY DIAGNOSTIC",
+      "title": "Approximation-active prompts",
+      "body": "8 prompts above suffix 256; 1,024 generated tokens per mode. This is not task accuracy.",
+      "metrics": [
+        {"value": "13.3%", "label": "Zero-shot agreement"},
+        {"value": "16.0%", "label": "Stage-1 agreement"}
+      ]
+    }
+  ],
+  "summary": [
+    {"value": "1.71x", "label": "Zero-shot prefill"},
+    {"value": "13.3%", "label": "Zero-shot token agreement"},
+    {"value": "0 / 8", "label": "Active prompts fully matched"},
+    {"value": "UNVERIFIED", "label": "Trained prefill speed"}
+  ],
+  "verdict": "1.71x measured zero-shot prefill; quality trade-off remains.",
+  "limitation": "Speed and quality use separate cohorts; no quality result exists at 6,603 tokens.",
+  "footer": ["Qwen3.8-27B BF16", "1x CMP 170HX · 180 W", "Recorded receipt replay"]
+}

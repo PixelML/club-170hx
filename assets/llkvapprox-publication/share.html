@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PixelML benchmark card</title>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  :root {
+    --pml-navy:#0A1628;
+    --pml-navy-deep:#06101E;
+    --pml-panel:#0F1E36;
+    --pml-white:#FFFFFF;
+    --pml-copy:#B7C7DD;
+    --pml-muted:#7F93AF;
+    --pml-line:rgba(255,255,255,.12);
+    --pml-blue:#7CBEFF;
+    --pml-coral:#EF5767;
+    --pml-grad-blue:#0028FF;
+    --pml-success:#5EE0B0;
+    --pml-warning:#F8C65A;
+    --pml-error:#FF7182;
+    --sans:"Geist",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"Geist Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; width:1200px; height:675px; overflow:hidden; background:#020712; }
+  body { display:grid; place-items:center; font-family:var(--sans); color:var(--pml-white); }
+  #pml-benchmark-card {
+    position:relative;
+    width:1200px;
+    height:675px;
+    overflow:hidden;
+    padding:32px 38px 26px;
+    background:
+      radial-gradient(circle at 84% 4%,rgba(41,151,255,.16),transparent 28%),
+      linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),
+      var(--pml-navy);
+    background-size:auto,64px 64px,64px 64px,auto;
+    isolation:isolate;
+  }
+  #pml-benchmark-card::before {
+    content:"";
+    position:absolute;
+    inset:0 0 auto;
+    height:5px;
+    background:linear-gradient(90deg,var(--pml-grad-blue),var(--pml-coral));
+  }
+  .pml-top { display:flex; align-items:center; justify-content:space-between; gap:24px; }
+  .pml-lockup { display:flex; align-items:center; gap:16px; min-width:0; }
+  .pml-logo { width:126px; height:26px; display:flex; align-items:center; }
+  .pml-logo svg { display:block; width:126px; height:auto; }
+  .pml-divider { width:1px; height:20px; background:#2A3B5C; }
+  .pml-eyebrow { color:var(--pml-blue); font:600 12px/1 var(--mono); letter-spacing:.10em; text-transform:uppercase; }
+  .pml-status { padding:8px 13px; border:1px solid rgba(94,224,176,.35); border-radius:999px; background:rgba(94,224,176,.11); color:var(--pml-success); font:700 11px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; }
+  .pml-status[data-tone="negative"] { color:var(--pml-error); border-color:rgba(255,113,130,.36); background:rgba(255,113,130,.10); }
+  .pml-status[data-tone="inferred"] { color:var(--pml-warning); border-color:rgba(248,198,90,.36); background:rgba(248,198,90,.10); }
+  .pml-status[data-tone="external"] { color:#8DBDFF; border-color:rgba(141,189,255,.34); background:rgba(141,189,255,.09); }
+  .pml-status[data-tone="untested"] { color:#AFC2DC; border-color:rgba(175,194,220,.28); background:rgba(175,194,220,.08); }
+  .pml-title-row { display:flex; align-items:flex-end; justify-content:space-between; gap:28px; margin-top:18px; }
+  .pml-title-wrap { min-width:0; }
+  h1 { margin:0; color:#fff; font-size:37px; line-height:1.20; letter-spacing:-.035em; font-weight:720; white-space:nowrap; overflow:visible; }
+  .pml-subtitle { margin-top:7px; color:#AFC2DC; font-size:16px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pml-verdict { max-width:515px; color:#D9E4F2; font-size:15px; line-height:1.38; text-align:right; }
+  .pml-meta { display:flex; gap:8px; margin-top:14px; min-height:27px; overflow:hidden; }
+  .pml-meta span { padding:6px 10px; border:1px solid rgba(255,255,255,.10); border-radius:999px; background:rgba(255,255,255,.035); color:#91A6C3; font:600 10px/1 var(--mono); letter-spacing:.035em; white-space:nowrap; }
+  .pml-headlines { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px; }
+  .pml-headline { min-height:74px; padding:13px 16px; border:1px solid var(--pml-line); border-radius:12px; background:rgba(255,255,255,.045); }
+  .pml-headline-label { color:#91A6C3; font:700 10px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; }
+  .pml-headline-value { display:flex; align-items:baseline; gap:7px; margin-top:8px; color:#fff; font-size:26px; line-height:1; font-weight:730; letter-spacing:-.025em; }
+  .pml-headline-value small { color:#91A6C3; font:600 11px/1 var(--mono); letter-spacing:0; }
+  .pml-headline[data-role="speed"] .pml-headline-value { color:var(--pml-blue); }
+  .pml-headline[data-role="quality"] .pml-headline-value { color:#FF8290; }
+  .pml-headline[data-role="balanced"] .pml-headline-value { color:var(--pml-success); }
+  .pml-table { margin-top:14px; border:1px solid var(--pml-line); border-radius:14px; overflow:hidden; background:rgba(3,10,20,.46); }
+  .pml-grid-row { display:grid; align-items:center; min-height:33px; padding:0 17px; border-bottom:1px solid rgba(255,255,255,.09); }
+  .pml-grid-row:last-child { border-bottom:0; }
+  .pml-grid-row.header { min-height:31px; background:rgba(255,255,255,.025); }
+  .pml-cell { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#E8EEF7; font-size:15px; font-weight:650; text-align:right; padding-left:14px; }
+  .pml-cell:first-child { padding-left:0; text-align:left; }
+  .header .pml-cell { color:#7F93AF; font:700 10px/1 var(--mono); letter-spacing:.09em; text-transform:uppercase; }
+  .pml-cell.accent { color:var(--pml-blue); font-size:17px; font-weight:760; }
+  .pml-unit { margin-left:5px; color:#6F849F; font:600 9px/1 var(--mono); }
+  .pml-bottom { display:grid; grid-template-columns:1.35fr .65fr; gap:24px; align-items:start; margin-top:10px; }
+  .pml-finding { color:#D9E4F2; font-size:13px; line-height:1.35; }
+  .pml-finding strong { color:var(--pml-blue); font:700 10px/1 var(--mono); letter-spacing:.07em; text-transform:uppercase; margin-right:8px; }
+  .pml-limit { color:#8296B1; font-size:11px; line-height:1.35; text-align:right; }
+  .pml-evidence { position:absolute; left:38px; right:38px; bottom:11px; display:flex; justify-content:space-between; color:#7588A3; font:600 9px/1 var(--mono); letter-spacing:.045em; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<main id="pml-benchmark-card" data-composition-id="pixelml-benchmark-card" data-width="1200" data-height="675" data-duration="1" aria-label="PixelML benchmark summary">
+  <div class="pml-top">
+    <div class="pml-lockup"><div class="pml-logo"><svg width="1176" height="240" viewBox="0 0 1176 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pixel ML">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M1053.16 6.66675H1013.33V233.333H1175.95V193.226H1053.16V6.66675ZM924.656 78.2218H946.337V233.333H986.667V6.66683H946.337V37.6588H915.255V68.8027H884.174V99.9466H862.493V68.8027H831.411V37.6588H800.33V6.66683H760V233.333H800.33V78.2218H822.163V109.366H853.093V140H893.574V109.366H924.656V78.2218Z" fill="#FFFFFF"/>
+<path d="M640 6.66675H680V233.333H640V6.66675Z" fill="#FFFFFF"/>
+<path d="M487.489 107.756V129.763H572.357V107.756H487.489ZM478.128 202.247H446.667V98.2149H478.128V66.6667H581.872V98.2149H613.333V139.151H581.872V170.699H487.489V192.706H613.333V233.333H478.128V202.247Z" fill="#FFFFFF"/>
+<path d="M380.663 202.247H350.46V170.699H329.392V202.247H299.19V233.333H260V192.706H290.203V161.311H320.405V139.151H290.203V107.756H260V66.6667H299.19V98.2149H329.392V129.763H350.46V98.2149H380.663V66.6667H420V107.756H389.797V139.151H359.595V161.311H389.797V192.706H420V233.333H380.663V202.247Z" fill="#FFFFFF"/>
+<path d="M193.333 6.66675H233.333V47.0778H193.333V6.66675ZM193.333 68.8026H233.333V233.333H193.333V68.8026Z" fill="#FFFFFF"/>
+<path d="M39.8307 46.4975V98.6069H122.637V46.4975H39.8307ZM133.333 140H40V233.333H0V6.66675H133.333V33.3334H166.667V106.667H133.333V140Z" fill="#FFFFFF"/>
+</svg>
+</div><div class="pml-divider"></div><div class="pml-eyebrow">GPU benchmark</div></div>
+    <div id="status" class="pml-status"></div>
+  </div>
+  <div class="pml-title-row">
+    <div class="pml-title-wrap"><h1 id="title"></h1><div id="subtitle" class="pml-subtitle"></div></div>
+    <div id="verdict" class="pml-verdict"></div>
+  </div>
+  <div id="meta" class="pml-meta"></div>
+  <div id="headlines" class="pml-headlines"></div>
+  <div id="table" class="pml-table" role="table" aria-label="Benchmark comparison"></div>
+  <div class="pml-bottom"><div id="finding" class="pml-finding"></div><div id="limitation" class="pml-limit"></div></div>
+  <div class="pml-evidence"><span>Pixel ML · recorded evidence · receipt replay</span><span id="evidence"></span></div>
+</main>
+<script id="benchmark-data" type="application/json">{"title":"LLKVApprox prefill","subtitle":"Qwen3.8-27B BF16 · 1x CMP 170HX · HF Transformers","status":"MEASURED","verdict":"Recorded separate receipt arms at 6,603 tokens: full BF16 3.329 s versus zero-shot suffix 256 at 1.944 s (1.71x). Active quality remains low.","meta":["6,603-token speed cohort","3 recorded timing samples per arm","8 active prompts x 128 generated tokens","Greedy agreement is not task accuracy"],"headlines":[{"label":"Recorded prefill ratio","value":"1.71x","unit":"vs full","role":"speed"},{"label":"Zero-shot active","value":"13.3%","unit":"agreement","role":"quality"},{"label":"Trained active","value":"16.0%","unit":"agreement","role":"balanced"}],"columns":[{"key":"mode","label":"Mode"},{"key":"seconds","label":"Prefill","unit":"s"},{"key":"throughput","label":"Throughput","unit":"tok/s","accent":true},{"key":"quality","label":"Active agreement"}],"rows":[{"mode":"Full BF16","seconds":"3.329","throughput":"1,983","quality":"Reference"},{"mode":"Zero-shot s256","seconds":"1.944","throughput":"3,396","quality":"13.3%"},{"mode":"Trained s256 · speed unverified","seconds":"—","throughput":"—","quality":"16.0%"},{"mode":"Oracle captures","seconds":"1.659","throughput":"3,980","quality":"Ceiling only"}],"finding":"The recorded zero-shot comparison improves prefill speed, but the approximation-active quality diagnostic remains weak after stage 1.","limitation":"Timing arms are separate receipts, not interleaved paired trials. Speed and quality use separate cohorts; trained throughput is unverified.","evidence":"Receipt hashes + mapping: EVIDENCE.md"}</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById("benchmark-data").textContent);
+  const text = (id, value) => { document.getElementById(id).textContent = value ?? ""; };
+  text("title", data.title);
+  text("subtitle", data.subtitle);
+  text("verdict", data.verdict);
+  text("evidence", data.evidence);
+  const status = document.getElementById("status");
+  status.textContent = data.status;
+  const statusKey = String(data.status || "").toLowerCase();
+  status.dataset.tone = statusKey.includes("negative") ? "negative" : statusKey.includes("infer") ? "inferred" : statusKey.includes("external") ? "external" : statusKey.includes("untested") ? "untested" : "measured";
+
+  const meta = document.getElementById("meta");
+  (data.meta || []).slice(0, 5).forEach(value => { const node = document.createElement("span"); node.textContent = value; meta.appendChild(node); });
+
+  const headlines = document.getElementById("headlines");
+  (data.headlines || []).slice(0, 3).forEach(item => {
+    const node = document.createElement("div"); node.className = "pml-headline"; node.dataset.role = item.role || "";
+    const label = document.createElement("div"); label.className = "pml-headline-label"; label.textContent = item.label;
+    const value = document.createElement("div"); value.className = "pml-headline-value"; value.textContent = item.value;
+    if (item.unit) { const unit = document.createElement("small"); unit.textContent = item.unit; value.appendChild(unit); }
+    node.append(label, value); headlines.appendChild(node);
+  });
+
+  const table = document.getElementById("table");
+  const columns = (data.columns || []).slice(0, 5);
+  const template = columns.map((_, index) => index === 0 ? "minmax(150px,1.35fr)" : "minmax(105px,1fr)").join(" ");
+  const addRow = (row, header) => {
+    const line = document.createElement("div"); line.className = "pml-grid-row" + (header ? " header" : ""); line.style.gridTemplateColumns = template; line.setAttribute("role", "row");
+    columns.forEach(column => {
+      const cell = document.createElement("div"); cell.className = "pml-cell" + (column.accent && !header ? " accent" : ""); cell.setAttribute("role", header ? "columnheader" : "cell");
+      const value = header ? column.label : row[column.key]; cell.textContent = value ?? "—";
+      if (!header && column.unit && value !== null && value !== undefined && value !== "—") { const unit = document.createElement("span"); unit.className = "pml-unit"; unit.textContent = column.unit; cell.appendChild(unit); }
+      line.appendChild(cell);
+    });
+    table.appendChild(line);
+  };
+  addRow({}, true);
+  (data.rows || []).slice(0, 6).forEach(row => addRow(row, false));
+
+  const finding = document.getElementById("finding");
+  const label = document.createElement("strong"); label.textContent = "Finding"; finding.append(label, document.createTextNode(data.finding || ""));
+  text("limitation", data.limitation);
+  document.documentElement.dataset.ready = "true";
+})();
+</script>
+<script>
+  const cardTimeline = gsap.timeline({ paused: true });
+  cardTimeline.set("#pml-benchmark-card", { autoAlpha: 1 });
+  window.__timelines["pixelml-benchmark-card"] = cardTimeline;
+  cardTimeline.seek(0);
+</script>
+</body>
+</html>
