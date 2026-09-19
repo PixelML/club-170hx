@@ -1,0 +1,32 @@
+{
+  "title": "LLKVApprox prefill",
+  "subtitle": "Qwen3.8-27B BF16 · 1x CMP 170HX · HF Transformers",
+  "status": "MEASURED",
+  "verdict": "Recorded separate receipt arms at 6,603 tokens: full BF16 3.329 s versus zero-shot suffix 256 at 1.944 s (1.71x). Active quality remains low.",
+  "meta": [
+    "6,603-token speed cohort",
+    "3 recorded timing samples per arm",
+    "8 active prompts x 128 generated tokens",
+    "Greedy agreement is not task accuracy"
+  ],
+  "headlines": [
+    {"label": "Recorded prefill ratio", "value": "1.71x", "unit": "vs full", "role": "speed"},
+    {"label": "Zero-shot active", "value": "13.3%", "unit": "agreement", "role": "quality"},
+    {"label": "Trained active", "value": "16.0%", "unit": "agreement", "role": "balanced"}
+  ],
+  "columns": [
+    {"key": "mode", "label": "Mode"},
+    {"key": "seconds", "label": "Prefill", "unit": "s"},
+    {"key": "throughput", "label": "Throughput", "unit": "tok/s", "accent": true},
+    {"key": "quality", "label": "Active agreement"}
+  ],
+  "rows": [
+    {"mode": "Full BF16", "seconds": "3.329", "throughput": "1,983", "quality": "Reference"},
+    {"mode": "Zero-shot s256", "seconds": "1.944", "throughput": "3,396", "quality": "13.3%"},
+    {"mode": "Trained s256 · speed unverified", "seconds": "—", "throughput": "—", "quality": "16.0%"},
+    {"mode": "Oracle captures", "seconds": "1.659", "throughput": "3,980", "quality": "Ceiling only"}
+  ],
+  "finding": "The recorded zero-shot comparison improves prefill speed, but the approximation-active quality diagnostic remains weak after stage 1.",
+  "limitation": "Timing arms are separate receipts, not interleaved paired trials. Speed and quality use separate cohorts; trained throughput is unverified.",
+  "evidence": "Receipt hashes + mapping: EVIDENCE.md"
+}

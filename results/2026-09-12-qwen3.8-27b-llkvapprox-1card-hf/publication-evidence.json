@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "title": "Qwen3.8-27B LLKVApprox publication evidence",
+  "headline": "1.71x faster prefill; quality trade-off remains",
+  "evidence_class": "MEASURED",
+  "hardware": "1x CMP 170HX, 64 GiB, 180 W cap",
+  "model": {
+    "id": "Qwen/Qwen3.8-27B",
+    "precision": "BF16",
+    "revision": "not recorded in the committed receipts"
+  },
+  "projector": {
+    "id": "PixelML/Qwen3.8-27B-KVA-Projector",
+    "revision": "not recorded in the committed receipts"
+  },
+  "runtime": {
+    "family": "HF Transformers",
+    "immutable_revision": "not recorded in the committed receipts"
+  },
+  "prefill_speed": {
+    "mode": "zero-shot projector with exact suffix 256",
+    "prompt_tokens": 6603,
+    "comparison": "recorded arms from separate receipt files; interleaved pairing is not established",
+    "prompt_hashes": "not recorded",
+    "runtime_hashes": "not recorded",
+    "timestamps": "not recorded",
+    "notebook_reported_warmups": 1,
+    "warmup_verified_in_raw_timing_receipts": false,
+    "timed_samples": 3,
+    "baseline_seconds": 3.3293,
+    "baseline_tokens_per_second": 1983.3,
+    "student_seconds": 1.9444,
+    "student_tokens_per_second": 3395.9,
+    "speedup": 1.7122505657
+  },
+  "quality_diagnostic": {
+    "generated_tokens_per_prompt": 128,
+    "pooled_prompt_count": 23,
+    "pooled_generated_tokens_per_mode": 2944,
+    "exact_path_prompt_count": 15,
+    "approximation_active_prompt_count": 8,
+    "approximation_active_generated_tokens_per_mode": 1024,
+    "zero_shot": {
+      "pooled_greedy_token_agreement": 0.698,
+      "pooled_matches": 2056,
+      "pooled_total": 2944,
+      "exact_control_matches": 1920,
+      "exact_control_total": 1920,
+      "approximation_active_matches": 136,
+      "approximation_active_total": 1024,
+      "approximation_active_greedy_token_agreement": 0.1328125,
+      "approximation_active_full_match_prompts": 0
+    },
+    "trained_stage1": {
+      "pooled_greedy_token_agreement": 0.708,
+      "pooled_matches": 2084,
+      "pooled_total": 2944,
+      "exact_control_matches": 1920,
+      "exact_control_total": 1920,
+      "approximation_active_matches": 164,
+      "approximation_active_total": 1024,
+      "approximation_active_greedy_token_agreement": 0.16015625,
+      "approximation_active_full_match_prompts": 0
+    },
+    "interpretation": "Greedy token agreement is a diagnostic against the full-model continuation, not task accuracy. The pooled result is dominated by prompts that take the exact path."
+  },
+  "oracle_diagnostic": {
+    "speed_prompt_tokens": 6603,
+    "baseline_seconds": 3.3293,
+    "oracle_seconds": 1.6589,
+    "speedup": 2.01,
+    "fidelity_prompt_tokens": 1024,
+    "teacher_forced_argmax_matches": 31,
+    "teacher_forced_steps": 32,
+    "last_position_mean_absolute_logit_difference": 0.01340116,
+    "free_running_greedy_matches": 18,
+    "free_running_greedy_tokens": 64,
+    "interpretation": "Teacher captures make the speed result a diagnostic ceiling. Fidelity was measured separately at 1,024 prompt tokens; 31/32 teacher-forced argmax and 18/64 free-running greedy agreement do not establish bit-exactness, task accuracy, deployable throughput, or end-to-end TTFT."
+  },
+  "training": {
+    "stage1_steps": 2000,
+    "stage1_wall_hours": 1.59,
+    "stage2": "unvalidated",
+    "stacked_gemm_projector": "unvalidated",
+    "trained_projector_prefill_throughput": "unverified because repeated timing attempts failed"
+  },
+  "limitations": [
+    "The 6,603-token speed cohort has no matching quality measurement.",
+    "The public repository supports receipt replay, not a full GPU reproduction: live harnesses and immutable model, projector, and runtime revisions are not all present in the committed evidence.",
+    "No end-to-end TTFT, video-understanding, or task-accuracy claim is supported."
+  ],
+  "credit": "LLKVApprox mechanism and reference implementation by kishida.",
+  "receipts": [
+    {
+      "path": "receipts/2026-09-12-qwen3.8-27b-llkvapprox-1card-hf/bench-prefill.json",
+      "sha256": "f010b75a9b609da6d896786c9dde68231c366239aa593f0a81b190e201c28d39"
+    },
+    {
+      "path": "receipts/2026-09-12-qwen3.8-27b-llkvapprox-1card-hf/bench-prefill-zs-s256.json",
+      "sha256": "bb1c075a1de5e69a0939f1d3d63fd7450cb054f9fe9ae49868ddaeb7f72d2517"
+    },
+    {
+      "path": "receipts/2026-09-12-qwen3.8-27b-llkvapprox-1card-hf/quality-eval-zs-s256.json",
+      "sha256": "8e32c7f7a63113de016dee03c96d70225a524fafee4a8cdab96e484fc05c600d"
+    },
+    {
+      "path": "receipts/2026-09-12-qwen3.8-27b-llkvapprox-1card-hf/quality-trained-s256.json",
+      "sha256": "f96dde1cf57c64212a71bc83bb94dd425dd8d277a55e280edc8f47279d910f19"
+    },
+    {
+      "path": "receipts/2026-09-12-qwen3.8-27b-llkvapprox-1card-hf/oracle-test.json",
+      "sha256": "180de72ffbce92ae2701c2d5ca3a1284126b8465746a99a4c2962df985b34500"
+    },
+    {
+      "path": "receipts/2026-09-12-qwen3.8-27b-llkvapprox-1card-hf/stage1_cached_mlp.json",
+      "sha256": "5e336a149d60f3e67a8eff8ce73330314f3cb4c17d730662c7f2c921ae44e727"
+    }
+  ]
+}
