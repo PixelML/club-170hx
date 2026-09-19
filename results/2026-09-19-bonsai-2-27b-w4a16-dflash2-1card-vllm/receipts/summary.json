@@ -1,0 +1,58 @@
+{
+ "experiment": "2026-09-19-bonsai-2-27b-w4a16-dflash2-1card-vllm",
+ "weights": {
+  "source": "prism-ml/Ternary-Bonsai-2-27B-gguf F16 (Hadamard-folded, general.basename=folded)",
+  "conversion": [
+   "gguf tensor read (manual header parse, verified vs gguf-py)",
+   "v-layout reorder: GDN v-space rep-major(3x16) -> group-major(16x3), mirrors Bonsai-demo runtime.py reorder()",
+   "Hadamard unrotation: W_hf = W_stored @ blockdiag(H_sylv*diag(s_b)/32), b=0..16",
+   "RMSNorm weights are delta-stored in gguf: g_hf = g_gguf + 1.0 (input/post/final/q_norm/k_norm)",
+   "conv1d rank reshape (10240,4)->(10240,1,4)",
+   "graft: model.visual.* + mtp.* bf16 from Qwen/Qwen3.8-27B (absent from ternary gguf)"
+  ],
+  "bf16_probe": "NLL 1.169 (ppl 3.22) on validation sentence; coherent generation",
+  "requant": "llmcompressor 0.13 GPTQ W4A16, open_platypus 256 samples x 1024 tokens, pack-quantized; visual/mtp/lm_head/embed bf16->int8 via syv prepare chain",
+  "output": "PixelML/Bonsai-2-27B-W4A16 (https://huggingface.co/PixelML/Bonsai-2-27B-W4A16)"
+ },
+ "runtime": {
+  "vllm": "0.28.0 (DFlash2 native; dflash2-backport retired upstream)",
+  "patches": "syv-qwen38 patch series minus retired entries (33 applied)",
+  "flashinfer": "0.6.16.post3 + cubin 0.6.13, JIT topk compiled (CUDA 13.0 toolkit nvcc)",
+  "extra": [
+   "flash-linear-attention 0.5.2 (GDN prefill kernel)"
+  ],
+  "model_name_served": "qwen3.8-27b",
+  "drafter": "syvai/Qwen3.8-27B-DFlash2-W4A16 (1.19 GiB, base-calibrated, zero-shot for bonsai)",
+  "flags": "SPEC=dflash2 CTX=fast MAX_SEQS=1 DFLASH_TOKENS=7 GPU_UTIL=0.78 KV_MEM=",
+  "lookup_drafting": "VLLM_DFLASH2_LOOKUP=1 (default on)"
+ },
+ "results": {
+  "decode256_ttft_excluded": 155.69,
+  "decode256_wall": 136.37,
+  "decode900_ttft_excluded": 251.57,
+  "decode900_wall": 238.0,
+  "prefill_6600": 1876.4,
+  "ttft_10tok_ms": 225.6,
+  "ladder_aggregate_wall": {
+   "2": 137.6,
+   "4": 138.2,
+   "8": 136.9
+  },
+  "acceptance": {
+   "accepted_per_pos": [
+    788,
+    620,
+    548,
+    508,
+    452,
+    428,
+    412
+   ],
+   "drafts": 900,
+   "draft_tokens": 6300,
+   "accepted_total": 3756,
+   "mean_accepted_per_draft": 4.17,
+   "acceptance_rate": 0.596
+  }
+ }
+}
