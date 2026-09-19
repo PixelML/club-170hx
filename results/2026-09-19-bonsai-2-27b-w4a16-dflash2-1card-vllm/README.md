@@ -15,6 +15,7 @@ Date: 2026-09-19
 - NVIDIA driver / CUDA: 610.43.03; vLLM 0.28.0 wheel (torch cu130), flashinfer 0.6.16.post3 + cubin 0.6.13 (JIT topk compiled with the toolkit's own nvcc 13.0), flash-linear-attention 0.5.2 (GDN prefill kernel)
 - Runtime repository + exact commit: syv-ai qwen-serving patch series (33 of 38 patches applied to the vLLM tree; the dflash2 backport is retired — DFlash2 is native in 0.28.0)
 - Model repository + exact revision: converted from prism-ml/Ternary-Bonsai-2-27B-gguf @ `6ed5e12bf84b7a63069882c91dd9e9218647d17b` (F16 GGUF), vision tower + MTP module grafted from Qwen/Qwen3.8-27B
+- Published checkpoint: [PixelML/Bonsai-2-27B-W4A16](https://huggingface.co/PixelML/Bonsai-2-27B-W4A16)
 - Quantization / dtype: W4A16 GPTQ (llmcompressor 0.13, pack-quantized, 256 × 1024-token open_platypus samples) + int8 lm_head/embed/MTP (syv prepare chain) + 40960-token draft head; visual tower bf16
 
 ## Command
