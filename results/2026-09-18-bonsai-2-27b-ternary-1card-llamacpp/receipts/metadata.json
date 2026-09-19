@@ -1,0 +1,52 @@
+{
+  "experiment": "2026-09-18-bonsai-2-27b-ternary-1card-llamacpp",
+  "date": "2026-09-18",
+  "hardware": {
+    "cards": "1x NVIDIA CMP 170HX (SM80, 64 GiB HBM2e), card 0 of a multi-card node; second card idle and unused",
+    "power_limit_w": 180.0,
+    "cooling": "forced airflow",
+    "os": "Ubuntu 22.04",
+    "kernel": "6.8.0-138-generic",
+    "driver": "610.43.03",
+    "cuda_umd_reported": "13.3",
+    "host_cpu": "16 vCPU (Xeon Gold 6138-class host)",
+    "host_ram": "32 GiB"
+  },
+  "model": {
+    "repo": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+    "revision": "6ed5e12bf84b7a63069882c91dd9e9218647d17b",
+    "files": {
+      "Ternary-Bonsai-2-27B-PQ2_0.gguf": {"bytes": 7206168928, "bpw": 2.13, "size_gib": 6.70},
+      "Ternary-Bonsai-2-27B-PTQ1_0.gguf": {"bytes": 5946648928, "bpw": 1.75, "size_gib": 5.53},
+      "Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf": {"bytes": 629246976, "note": "vision projector, not loaded for this text-only benchmark"}
+    },
+    "architecture": "qwen35 (Qwen3.8-27B hybrid-attention backbone, ~75% linear attention), ternary g128 weights with blockwise Hadamard rotation",
+    "sha256": "see weight-sha256.txt",
+    "storage": "shared model library mount"
+  },
+  "runtime": {
+    "binary_release": "PrismML-Eng/llama.cpp prism-b10685-7dffb15",
+    "build": "7dffb158d (10685)",
+    "build_toolchain": "GNU 11.4.0, Linux x86_64, CUDA 12.8 prebuilt archive",
+    "packages": ["llama-server", "llama-bench"],
+    "note": "stock llama.cpp refuses PQ2_0/PTQ1_0; the fork's ternary hybrid-attention kernels and Hadamard activation transform are required"
+  },
+  "serve_flags": {
+    "boot_a": "-ngl 99 -fa on --no-mmap -c 40960 -np 1 -t 8 -ub 2048 (PQ2_0)",
+    "boot_b": "-ngl 99 -fa on --no-mmap -c 40960 -np 8 -t 8 -ub 2048 (PQ2_0, ladder)",
+    "boot_c": "-ngl 99 -fa on --no-mmap -c 40960 -np 1 -t 8 -ub 2048 (PTQ1_0)"
+  },
+  "protocol": {
+    "sampling": "temperature 0 (greedy), streaming, stream_options.include_usage",
+    "counting": "tokens from the final usage object only, never SSE events",
+    "warmup": "1 discarded rep per cohort",
+    "samples": "3 measured reps per cohort",
+    "cohorts": {
+      "decode256": "10-token prompt (usage-reported), 256 completion tokens, ignore_eos",
+      "decode900": "10-token prompt, 900 completion tokens, ignore_eos",
+      "prefill6k6": "6,601-token prompt (usage-reported), 11 completion tokens, ignore_eos, cache_prompt false",
+      "ctx_sweep": "uncached prefill at 1k/4k/8k/16k/32k fill depths + 128 output tokens",
+      "ladder": "concurrency 2/4/8, 256 completion tokens each, 3 reps per level"
+    }
+  }
+}
