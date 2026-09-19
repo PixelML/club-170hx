@@ -33,6 +33,41 @@ One market source cites ~700–800 GB/s "real world" bandwidth for unlocked card
 - A specific "~50% failure rate above 8GB" statistic was not found in any source reviewed.
 - Caution: at least one separate GitHub repo distributes an "unlocked VBIOS" dump rather than the GPL software-unlock route; secondary sources warn this carries real risk (bricking, unverified provenance) versus the documented cmpunlocker method.
 - Linux-only in every source found; no working Windows path reported anywhere.
+- See also [2a. Rank variants](#2a-rank-variants-single-rank-cards-cap-at-32-gb-after-unlock): the 8 GB cards split into single-rank (unlocks to 32 GB) and dual-rank (64 GB); a fake 64 GB unlock on single-rank cards passes `memtest_vulkan` but fails CUDA memtest. First-hand report in [#48](https://github.com/PixelML/club-170hx/issues/48).
+
+## 2a. Rank variants: single-rank cards cap at 32 GB after unlock
+
+**[community, first-hand report]** The 8 GB cards are not all identical: at
+least two HBM rank configurations exist in the wild, and they bound the
+unlock outcome:
+
+- **single-rank** — unlocks to **32 GB**, no further;
+- **dual-rank** — unlocks to the full **64 GB**.
+
+Source: club-170hx issue
+[#48 — "CMP 170HX 8GB variants: single-rank vs dual-rank (32GB vs 64GB unlock)"](https://github.com/PixelML/club-170hx/issues/48),
+reported 2026-09 by **@kha84**, who bought four 8 GB cards: three dual-rank
+(unlocked to 64 GB with [cmpunlocker](https://github.com/amoghmunikote/cmpunlocker)
+without issue) and one single-rank that topped out at 32 GB. Thanks to
+@kha84 for documenting it, and to @snapo for counter-data (four cards, all
+reporting 64 GB, CUDA memtest passing to 63.5 GB) that shows the
+single-rank variant is real but rare.
+
+Two practical consequences for anyone unlocking these cards:
+
+1. **Validation gap.** Older unlock tools (July-era) did not know about the
+   rank nuance and would happily "unlock" a single-rank card to 64 GB.
+   `memtest_vulkan` **passes** on such a card because it only writes and
+   reads back within the reachable region — it does not prove the extra
+   banks exist. **CUDA memtest fails** on the phantom capacity. Validate
+   unlocks with a CUDA-side memtest, not Vulkan only.
+2. **Detection.** `cmpunlocker` prints a kernel-log message when it detects
+   a 32 GB single-rank card; absence of that message (plus a passing CUDA
+   memtest past 32 GB) is currently the practical confirmation that a card
+   is dual-rank.
+
+Our own four cards are dual-rank: all unlocked to 64 GB, CUDA memtest clean,
+in service as documented across this repository (2026-06, our measurement).
 
 ## 3. PCIe
 
