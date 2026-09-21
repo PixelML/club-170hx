@@ -1,0 +1,108 @@
+{
+ "method": "derived from crosscheck.json: the same label-masked reads taken in-process (one batch of five prompts) and over HTTP, plus a duplicate-prompt pair per question type",
+ "transport_fidelity": {
+  "note": "HTTP vs in-process for the same prompt. The HTTP path is the one the endpoint serves (one read per request); the in-process run placed all five fixtures in a single batch.",
+  "rows": [
+   {
+    "case": "choice-billing",
+    "labels": 3,
+    "max_abs_delta_http_vs_inprocess": 0.0,
+    "inprocess_only": [],
+    "http_only": []
+   },
+   {
+    "case": "noul-angry",
+    "labels": 2,
+    "max_abs_delta_http_vs_inprocess": 0.0,
+    "inprocess_only": [],
+    "http_only": []
+   },
+   {
+    "case": "score-urgent",
+    "labels": 4,
+    "max_abs_delta_http_vs_inprocess": 0.08486533164978027,
+    "inprocess_only": [],
+    "http_only": []
+   },
+   {
+    "case": "choice-billing-rot2",
+    "labels": 3,
+    "max_abs_delta_http_vs_inprocess": 0.06705951690673828,
+    "inprocess_only": [],
+    "http_only": []
+   },
+   {
+    "case": "noul-angry-2",
+    "labels": 2,
+    "max_abs_delta_http_vs_inprocess": 0.0453035831451416,
+    "inprocess_only": [],
+    "http_only": []
+   }
+  ],
+  "exact_matches": 2,
+  "of": 5
+ },
+ "batch_position_sensitivity": {
+  "note": "Two fixtures carry the same prompt. In-process they sit at different batch positions and do not agree; over HTTP they are separate requests and do. This is the engine's batch-composition dependence, not a transport defect.",
+  "rows": [
+   {
+    "prompt": "choice-billing",
+    "duplicate_fixture": "choice-billing-rot2",
+    "same_prompt": true,
+    "max_abs_delta_inprocess_pair": 0.06705951690673828,
+    "max_abs_delta_http_pair": 0.0,
+    "inprocess_logprobs": [
+     {
+      "32": -0.6521655917167664,
+      "33": -1.3396656513214111,
+      "34": -1.5271656513214111
+     },
+     {
+      "32": -0.5942252278327942,
+      "33": -1.4067251682281494,
+      "34": -1.5942251682281494
+     }
+    ],
+    "http_logprobs": [
+     {
+      "32": -0.6521655917167664,
+      "33": -1.3396656513214111,
+      "34": -1.5271656513214111
+     },
+     {
+      "32": -0.6521655917167664,
+      "33": -1.3396656513214111,
+      "34": -1.5271656513214111
+     }
+    ]
+   },
+   {
+    "prompt": "noul-angry",
+    "duplicate_fixture": "noul-angry-2",
+    "same_prompt": true,
+    "max_abs_delta_inprocess_pair": 0.0453035831451416,
+    "max_abs_delta_http_pair": 0.0,
+    "inprocess_logprobs": [
+     {
+      "32": -0.3304581940174103,
+      "33": -1.267958164215088
+     },
+     {
+      "32": -0.3132617473602295,
+      "33": -1.3132617473602295
+     }
+    ],
+    "http_logprobs": [
+     {
+      "32": -0.3304581940174103,
+      "33": -1.267958164215088
+     },
+     {
+      "32": -0.3304581940174103,
+      "33": -1.267958164215088
+     }
+    ]
+   }
+  ]
+ }
+}

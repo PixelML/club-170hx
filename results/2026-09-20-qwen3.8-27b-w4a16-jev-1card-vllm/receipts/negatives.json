@@ -1,0 +1,292 @@
+{
+ "cases": [
+  {
+   "case": "unknown_type",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "ranking",
+      "instructions": "pick"
+     }
+    }
+   },
+   "response": {
+    "error": {
+     "code": "invalid_type",
+     "message": "questions.x.type must be choice, noul or score",
+     "field": "questions.x.type"
+    }
+   }
+  },
+  {
+   "case": "missing_instructions",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "noul"
+     }
+    }
+   },
+   "response": {
+    "error": {
+     "code": "invalid_instructions",
+     "message": "questions.x.instructions must be text",
+     "field": "questions.x.instructions"
+    }
+   }
+  },
+  {
+   "case": "empty_choice_criteria",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "choice",
+      "instructions": "which",
+      "criteria": {}
+     }
+    }
+   },
+   "response": {
+    "error": {
+     "code": "invalid_criteria",
+     "message": "questions.x.criteria must map option names to text or null",
+     "field": "questions.x.criteria"
+    }
+   }
+  },
+  {
+   "case": "score_single_level",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "score",
+      "instructions": "how",
+      "criteria": [
+       "only"
+      ]
+     }
+    }
+   },
+   "response": {
+    "error": {
+     "code": "invalid_criteria",
+     "message": "questions.x.criteria must list level names lowest to highest",
+     "field": "questions.x.criteria"
+    }
+   }
+  },
+  {
+   "case": "images_unsupported",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "choice",
+      "instructions": "Which team should handle this",
+      "criteria": {
+       "billing": "Payment or subscription issues",
+       "technical": "Bugs or integration problems",
+       "sales": "Pricing or account questions"
+      }
+     }
+    },
+    "images": [
+     "data:image/png;base64,AAAA"
+    ]
+   },
+   "response": {
+    "error": {
+     "code": "images_not_supported",
+     "message": "this server has no multimodal projector"
+    }
+   }
+  },
+  {
+   "case": "bad_temperature",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "choice",
+      "instructions": "Which team should handle this",
+      "criteria": {
+       "billing": "Payment or subscription issues",
+       "technical": "Bugs or integration problems",
+       "sales": "Pricing or account questions"
+      }
+     }
+    },
+    "options": {
+     "temperature": 0
+    }
+   },
+   "response": {
+    "error": {
+     "code": "invalid_temperature",
+     "message": "options.temperature must be > 0",
+     "field": "options.temperature"
+    }
+   }
+  },
+  {
+   "case": "bad_permutations",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "choice",
+      "instructions": "Which team should handle this",
+      "criteria": {
+       "billing": "Payment or subscription issues",
+       "technical": "Bugs or integration problems",
+       "sales": "Pricing or account questions"
+      }
+     }
+    },
+    "options": {
+     "permutations": 0
+    }
+   },
+   "response": {
+    "error": {
+     "code": "invalid_permutations",
+     "message": "options.permutations must be a positive int",
+     "field": "options.permutations"
+    }
+   }
+  },
+  {
+   "case": "too_many_options",
+   "status": 422,
+   "expected_status": 422,
+   "body": {
+    "model": "qwen3.8-27b-jev",
+    "state": "I have been trying to connect my Stripe account for 3 days and it keeps failing. I am losing sales.",
+    "questions": {
+     "x": {
+      "type": "choice",
+      "instructions": "which",
+      "criteria": {
+       "opt0": null,
+       "opt1": null,
+       "opt2": null,
+       "opt3": null,
+       "opt4": null,
+       "opt5": null,
+       "opt6": null,
+       "opt7": null,
+       "opt8": null,
+       "opt9": null,
+       "opt10": null,
+       "opt11": null,
+       "opt12": null,
+       "opt13": null,
+       "opt14": null,
+       "opt15": null,
+       "opt16": null,
+       "opt17": null,
+       "opt18": null,
+       "opt19": null,
+       "opt20": null,
+       "opt21": null,
+       "opt22": null,
+       "opt23": null,
+       "opt24": null,
+       "opt25": null,
+       "opt26": null,
+       "opt27": null,
+       "opt28": null,
+       "opt29": null,
+       "opt30": null,
+       "opt31": null,
+       "opt32": null,
+       "opt33": null,
+       "opt34": null,
+       "opt35": null,
+       "opt36": null,
+       "opt37": null,
+       "opt38": null,
+       "opt39": null,
+       "opt40": null,
+       "opt41": null,
+       "opt42": null,
+       "opt43": null,
+       "opt44": null,
+       "opt45": null,
+       "opt46": null,
+       "opt47": null,
+       "opt48": null,
+       "opt49": null,
+       "opt50": null,
+       "opt51": null,
+       "opt52": null,
+       "opt53": null,
+       "opt54": null,
+       "opt55": null,
+       "opt56": null,
+       "opt57": null,
+       "opt58": null,
+       "opt59": null,
+       "opt60": null,
+       "opt61": null,
+       "opt62": null,
+       "opt63": null,
+       "opt64": null,
+       "opt65": null,
+       "opt66": null,
+       "opt67": null,
+       "opt68": null,
+       "opt69": null
+      }
+     }
+    }
+   },
+   "response": {
+    "error": {
+     "code": "too_many_options",
+     "message": "questions.x has 70 options, at most 62 are supported",
+     "field": "questions.x"
+    }
+   }
+  },
+  {
+   "case": "upstream_logprobs_over_cap",
+   "status": 400,
+   "expected_status": 400,
+   "response": {
+    "error": {
+     "message": "Requested sample logprobs of 129, which is greater than max allowed: 128 (parameter=logprobs, value=129)",
+     "type": "BadRequestError",
+     "param": "logprobs",
+     "code": 400
+    }
+   }
+  }
+ ],
+ "all_as_expected": true
+}
