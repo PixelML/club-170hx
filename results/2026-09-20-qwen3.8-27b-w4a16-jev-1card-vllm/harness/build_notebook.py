@@ -61,10 +61,13 @@ a real workload (2026-09-21).
 
 The Jev contract itself is documented in the
 [`jev` branch of kishida's llama.cpp fork](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md)
-and is compatible with TypeSafe System One. Credit for the design — one prompt
+— shape-compatible with [TypeSafe's System One API](https://docs.typesafe.ai/api):
+the contract and the read mechanic, **not** the calibration — TypeSafe trains
+Jev for that (RLCD), and this stack ships uncalibrated reads at T=1 (appendix,
+"Positioning vs TypeSafe Jev"). Credit for the design — one prompt
 evaluation, label logits, `confidence = 1 - normalized entropy`, expected-level
 `score`, temperature as a calibration divisor, permutations to average out
-option order — belongs to that work. What is ours here is the vLLM
+option order — belongs to kishida's work. What is ours here is the vLLM
 implementation of it and the findings in section 2 that a vLLM host has to
 know.
 
@@ -737,18 +740,78 @@ for lp in ca["batch_position_sensitivity"]["rows"][0]["http_logprobs"]:
   are properties of a vLLM host, so they should hold for any checkpoint served
   this way — but they were measured on this one checkpoint and this engine
   build.
+"""),
 
-### Limitations of the reading itself
+    ("md", r"""### Positioning vs TypeSafe Jev
 
-- A read costs one forward pass over the prompt (~140 ms here at ~92-100
-  prompt tokens). It is not free, and it is not a generation.
-- The label set is capped at 62 (single-token symbols `A-Z a-z 0-9`); the
-  engine's `--max-logprobs` must be at least the option count, and the
-  interposer rejects larger option sets with 422 rather than truncating.
-- `score` questions report the expected level under the label distribution;
-  they are not a regression and inherit the same over-confidence.
+[TypeSafe's Jev](https://docs.typesafe.ai/) (jev-1.13.0) is a hosted System
+One model **trained with RLCD** — its probabilities are optimized against
+outcomes, so "0.8" means ~80% of such predictions come true. That
+calibration is their product. kishida's `jev` branch showed the *contract*
+can be served from any model by reading label logits at one prompt
+evaluation; this bundle is a vLLM implementation of that contract, and the
+honest boundary is:
 
-### Safety
+| Claim | Status | Receipt |
+|---|---|---|
+| Contract shape: `state` + `questions` map, `choice`/`noul`/`score` answers, probabilities summing to 1, `confidence`, `usage`, 422 error contract | **measured** — implemented and probed | `negatives.json`, `mask-processed_logprobs.json` |
+| Read mechanic: one prompt evaluation, no answer generated, bit-identical at c=1, permutations average position bias | **measured** | `determinism.json`, `permutations.json` |
+| No-train operation at production rate | **measured** (2026-09-21 pilot) | `load/` |
+| Calibrated probabilities (Jev's differentiator) | **not claimed** — reads ship at T=1 and are over-confident on our labelled set: accuracy 0.571, ECE 0.274, fitted T fails leave-one-out | `metrics.json`, `labeled.jsonl` |
+| Confidence numeric parity with jev-1.13 | **not claimed** — ours is `1 − normalized entropy` (kishida's definition); TypeSafe's exact formula is undocumented (their docs demo a peak statistic) | — |
+| Accuracy parity with jev-1.13 | **untested** — no common benchmark; our 0.571 is n=42 on our task, and kishida measures this same checkpoint at 0.914 on standard multiple-choice | his `jev` docs, benchmark table |
+| More than 62 Choice options (Jev allows 255) | **not supported** — the label mask needs single-token symbols | `jev_server.py` |
+| 64k context (deployed: 8k) and multi-question single-call latency | **untested** — deployment choices and per-question reads | — |
+
+Closing the calibration gap is future work, not a property of this bundle:
+fit a temperature on a proper held-out split (kishida measures ECE 0.02-0.03
+after fitting on several models) or fine-tune the checkpoint for the read
+format, as his 4B poc does (accuracy 0.872, ECE 0.022). Until then: our
+probabilities are honest *rankings* from a general instruct model — usable
+for routing with thresholds you validate on your own data — not certified
+uncertainties, and not interchangeable with jev-1.13's confidence numbers.
+
+**Measured alignment** (2026-09-21, n=42, this bundle's labelled set; scripts
+and raw outputs in `positioning-bench/`): our raw read 0.571 vs Laya (base
+English checkpoint, zero-shot, 421M RLCD encoder) 0.643 vs GLiNER 2.5 Multi
+0.476. Per type: choice 0.60 / **0.90** / 0.60, noul 0.50 / 0.64 / 0.29,
+score 0.62 / not comparable (label-mapping unbuilt) / 0.50. Distributions on
+choice are close (mean JS divergence 0.054; top-1 agreement 0.70) but Laya's
+argmax is right far more often. Two honest reads: a small RLCD-trained
+encoder beats the raw 27B read on the classification judgment itself even
+zero-shot — TypeSafe's bet, validated on our data; and Laya's own card says
+its base is near chance on out-of-domain typed decisions, so this n=42
+result is a data point, not a leaderboard. The jev-1.13 leg of the bench is
+pending API access; without it nothing here ranks us against TypeSafe — it
+ranks the self-hostable options against each other.
+
+The read trick itself is folk knowledge — community tutorials do it with
+plain llama.cpp (`max_tokens=1`, `top_logprobs`, `e^logprob`), sometimes
+dressing several yes/no questions into one 16-way label. What separates the
+implementations is everything around the trick: a label mask that survives
+the logprob gather, neutralized nucleus defaults, rotation averaging, and —
+decisively — calibration. kishida productized the trick; TypeSafe trained
+the real thing; this bundle ports it to vLLM and states which half it has.
+
+Two self-hosted neighbours bracket this bundle's position. [Solomon](https://huggingface.co/DoccyHealth/Solomon)
+puts trained linear answer heads on the *same* Qwen3.8-27B base — the read
+becomes trained, with per-type temperature artifacts and a runtime-identity
+binding, at the cost of a custom (non-vLLM) runtime. [Laya](https://huggingface.co/convaiinnovations/laya)
+goes further down the size axis: a 421M encoder trained with RLCD, ~33 ms
+per question, Apache-2.0 — and its own card admits the base checkpoint is
+near chance zero-shot and ships over-confident until a temperature is fitted
+on your data. Our bundle is the zero-training end: no heads, no fit, big
+context, production throughput on one card — and the weakest calibration
+claim of the three. A fourth neighbour does a different job: [GLiNER 2.5
+Multi](https://huggingface.co/fastino/gliner2.5-multi-v1) (287M, Apache-2.0,
+231k downloads) is a schema-based *extraction* model — spans, records,
+relations, multi-label with per-label confidence and constrained decoding —
+no probability-per-option judgment, but a natural upstream partner: extract
+the entities and records, then let the read judge them. Benchmarking
+Solomon, Laya and GLiNER on this bundle's labelled set is the obvious
+follow-up.
+"""),
+    ("md", r"""### Safety
 
 Card stayed within the 80 C core / 85 C memory stop conditions during the
 serving window and the whole production run; no Xid, ECC or GPU-disappearance

@@ -121,13 +121,39 @@ python make_chart.py && python make_chart_load.py && python build_notebook.py  #
 The serving recipe for this checkpoint on this card — W4A16 on one 170HX, the
 syv-ai lineage, the 180 W cap being nearly free — is Kis's:
 [`2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm`](../../notebooks/2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb).
-The Jev contract (one prompt evaluation, label logits, confidence as
-`1 - normalized entropy`, expected-level `score`, temperature as a calibration
-divisor, permutations for position bias) is
-[kishida's `jev` branch docs](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md),
-API-compatible with TypeSafe System One. This bundle adds the vLLM
-implementation and the findings above, the production-load validation, and the
-no-train reading of the method.
+[kishida's `jev` branch docs](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md)
+— shape-compatible with [TypeSafe's System One API](https://docs.typesafe.ai/api)
+(the contract and the read mechanic; **not** the calibration — see below).
+This bundle adds the vLLM implementation and the findings above, the
+production-load validation, and the no-train reading of the method.
+
+## Positioning vs TypeSafe Jev
+
+TypeSafe's Jev (jev-1.13.0) is a hosted System One model **trained with
+RLCD** — probabilities optimized against outcomes. That calibration is their
+product; kishida's `jev` branch showed the contract itself can be served
+from any model by reading label logits at one prompt evaluation. The honest
+boundary for this bundle:
+
+| Claim | Status | Receipt |
+|---|---|---|
+| Contract shape (state + questions, choice/noul/score, probabilities, confidence, usage, 422s) | **measured** | `negatives.json`, `mask-processed_logprobs.json` |
+| Read mechanic (one evaluation, no generation, bit-identical at c=1, permutation averaging) | **measured** | `determinism.json`, `permutations.json` |
+| No-train production operation | **measured** | `load/` |
+| Calibrated probabilities (Jev's differentiator) | **not claimed** — T=1 reads are over-confident: acc 0.571, ECE 0.274, fitted T fails LOO | `metrics.json` |
+| Confidence numeric parity with jev-1.13 | **not claimed** — ours is `1 − normalized entropy`; theirs is undocumented | — |
+| Accuracy parity with jev-1.13 | **untested** — no common benchmark | — |
+| >62 Choice options (Jev: 255) | **not supported** — single-token label mask | `jev_server.py` |
+
+**Measured alignment** (n=42, this bundle's labelled set;
+`receipts/positioning-bench/`): our raw read 0.571 vs Laya (421M RLCD
+encoder, zero-shot) 0.643 vs GLiNER 2.5 Multi 0.476 — per type: choice
+0.60 / **0.90** / 0.60, noul 0.50 / 0.64 / 0.29. Distributions align on
+choice (JS 0.054) but Laya's argmax is right far more often: on the
+classification judgment itself, the trained-decision direction wins even
+zero-shot. Closing our calibration gap (temperature fit on a held-out
+split, trained heads à la Solomon, or a task fine-tune) is future work.
+The jev-1.13 leg of the bench is pending API access.
 
 ## Limitations
 
