@@ -15,18 +15,20 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE.parents[2] / "notebooks" / "2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm.ipynb"
 
 CELLS = [
-    ("md", r"""# Qwen3.8-27B (W4A16 GPTQ) as a Jev-compatible endpoint on 1x CMP 170HX (SM80) — 1card, vLLM
+    ("md", r"""# Qwen3.8-27B (W4A16 GPTQ) as a no-train Jev endpoint on 1x CMP 170HX (SM80) — 1card, vLLM
 
 | Metric | Value |
 |---|---|
-| Read latency, c=1, warm prefix cache (p50) | 141.7 ms |
-| Read latency, c=1, cache-busted (p50) | 133.0 ms |
+| Answer, idle c=1 (p50 warm prefix cache / cache-busted) | 141.7 ms / 133.0 ms |
+| Answer, production load (16 clients, 5 reads per annotation) | mean 12.0 s; 99.8% answered within 15 s |
+| First production run (2026-09-21) | 19,045 annotations in 4.5 h, 0 failures, 1,952 tok/s prefill at 178 W |
+| Training | **none** — no-train method: stock checkpoint served read-only, nothing fitted that generalises |
 | Labelled accuracy (42 author-labelled reads, T=1) | 0.571 (95% CI 0.42-0.71) |
-| Expected calibration error at T=1 → fitted T | 0.274 → 0.223 |
+| Calibration | ECE 0.274 at T=1; the fitted T does not generalise (leave-one-out 0.301) |
 | Option-order sensitivity (max probability shift) | 0.639, argmax unstable |
-| Read determinism (sequential / interleaved / concurrent) | identical / identical / identical |
+| Read determinism (sequential / interleaved / 2 concurrent) | identical / identical / identical |
 
-![reliability and option-order rotation](../assets/charts/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm.png)
+![production load: throughput and answer time](../assets/charts/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm-load.png)
 
 ```
 hf download Qwen/Qwen3.8-27B-GPTQ-4bit --local-dir <weights>
@@ -37,14 +39,25 @@ Model guide: [Qwen3.8-27B](../docs/models/qwen3.8-27b.md) · serving recipe cred
     ("md", r"""This notebook shows that **Qwen3.8-27B can serve as a Jev-compatible
 endpoint** on one CMP 170HX: a `POST /v1/systemone` request returns a calibrated
 probability per option, for `choice`, `noul` (yes/no) and `score` questions,
-without generating a single token.
+without generating a single token. It is a **no-train method**: the stock
+W4A16 checkpoint is served read-only, and everything that shapes the answer is
+a read-time choice (which tokens are allowed, what order the options are
+presented in, a temperature divisor applied after the read). No head, no
+projector, no fine-tune — the sibling
+[LLKVApprox notebooks](2026-09-11-qwen3.8-27b-llkvapprox-1card-hf.ipynb) train
+a projector; this one trains nothing. And the one quantity that *could* have
+been fitted — a single calibration temperature — failed leave-one-out at n=42
+(section 2.6), so the configuration this notebook ships learns nothing at all.
+Qwen3.8-27B is the checkpoint this no-train recipe is measured on here.
 
 The serving stack is the one Kis established in
 [`2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm`](2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb)
 — his notebook is the reference for *how this checkpoint is served on this
 card* (W4A16 on one 170HX, the syv-ai recipe lineage, 180 W-safe, ~140 tok/s
-generation). This notebook does **not** re-measure generation; it adds the
-classification path on top of that runtime and reports what that path measures.
+generation, ~1,955 tok/s prefill at a 180 W cap). This notebook does **not**
+re-measure generation; it adds the classification path on top of that runtime
+and reports what that path measures — first as probes (2026-09-20), then under
+a real workload (2026-09-21).
 
 The Jev contract itself is documented in the
 [`jev` branch of kishida's llama.cpp fork](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md)
@@ -52,11 +65,19 @@ and is compatible with TypeSafe System One. Credit for the design — one prompt
 evaluation, label logits, `confidence = 1 - normalized entropy`, expected-level
 `score`, temperature as a calibration divisor, permutations to average out
 option order — belongs to that work. What is ours here is the vLLM
-implementation of it and the three findings in section 2 that a vLLM host has
-to know.
+implementation of it and the findings in section 2 that a vLLM host has to
+know.
 
-Executed on a single CMP 170HX (SM80) on 2026-09-20. `LIVE = False`: every
-number below is read from the committed receipts under
+On 2026-09-21 the endpoint served its **first production workload**: an
+LLM-as-judge annotation pilot speaking this exact contract — 19,045
+annotations, five permutation reads each, 16 clients, 4.5 h, zero failures,
+1,952 tok/s prefill at 178 W. Section 2.9 carries those receipts; the answer
+time goes from ~142 ms idle to a 12.0 s mean under that load, and the chart in
+the hero cell shows both.
+
+Executed on a single CMP 170HX (SM80) on 2026-09-20, with production-load
+receipts frozen on 2026-09-21. `LIVE = False`: every number below is read from
+the committed receipts under
 `results/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm/`.
 """),
     ("code", r"""# --- Status cell -------------------------------------------------------
@@ -119,11 +140,12 @@ def render_table(headers, rows):
 """),
     ("md", r"""## 1. TL;DR
 
-**Verdict: the classification contract works on this card, and the label
-probabilities are exact and repeatable. The honest reading of them is the open
-part:** on 42 author-labelled reads the endpoint is right 57% of the time,
-over-confident at T=1 (ECE 0.274), and the answer changes with the order the
-options are written in.
+**Verdict: the classification contract works on this card, it survived its
+first production workload, and the label probabilities are exact and
+repeatable — all with no training. The honest reading of the probabilities is
+the open part:** on 42 author-labelled reads the endpoint is right 57% of the
+time, over-confident at T=1 (ECE 0.274), and the answer changes with the order
+the options are written in.
 
 Three things a vLLM host has to know, each with a receipt in section 2:
 
@@ -142,6 +164,16 @@ Three things a vLLM host has to know, each with a receipt in section 2:
    shifts the probability mass by up to 0.639 and flips the argmax. Jev's
    `permutations` option exists for exactly this and the endpoint implements
    it; the un-averaged read is the one to be careful with.
+
+What the first production workload added (section 2.9): on 2026-09-21 an
+LLM-as-judge annotation pilot drove this endpoint for 4.5 h — 19,045
+annotations (five permutation reads each, 16 clients), zero failures,
+1,952 tok/s prefill at a 178 W mean, within 0.2% of the ~1,955 tok/s Kis
+measured on a short synthetic at the same 180 W cap. The **answer in ms**:
+~142 ms idle at c=1, **12.0 s mean under load** (99.8% of reads within 15 s) —
+queue-bound, not compute-bound. And one operational surprise: the engine's
+prefix cache hit **0.0%** on this traffic, so every read honestly pays its
+~1.5k-token prefill.
 
 Then the calibration picture, stated plainly: the probabilities are
 *measurable* and *reproducible* — identical to the last bit on repeat and
@@ -235,6 +267,8 @@ print(prompts["fixtures"][1]["rendered_prompt"])
 
 Every table and the chart are computed from the committed receipts. Raw
 payloads, including full logprob dictionaries, are in the receipts themselves.
+"""),
+    ("md", r"""![reliability on 42 labelled reads and option-order rotation](../assets/charts/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm.png)
 """),
     ("md", r"""### 2.1 The finding that decides the whole thing: `logprobs_mode`
 
@@ -441,6 +475,98 @@ rows = [[c["case"], c["status"], c["expected_status"],
 render_table(["Case", "Status", "Expected", ""], rows)
 print("all negatives as expected:", neg["all_as_expected"])
 """),
+    ("md", r"""### 2.9 The first production workload (2026-09-21)
+
+The probes above ran against an idle single-tenant server. On 2026-09-21 the
+same serve line carried its first real job: an LLM-as-judge annotation pilot
+speaking this exact contract over a private pool of items. Each annotation is
+one Jev read per rotation — **five permutation reads per annotation** (the
+permutations semantics from kishida's `jev` docs, now in production), driven
+by 16 client workers. The receipts here are aggregates: the pilot's
+per-annotation ledger stays outside this repository (it names pool items);
+what is committed are per-minute counts, the engine's `/metrics` counter
+deltas over a sample window, and `nvidia-smi dmon` telemetry. How they were
+frozen: `harness/collect_load_receipts.py`.
+"""),
+    ("code", r"""load = receipt("load/load-summary.json")
+led = load["ledger"]
+rows = [
+    ["Annotations", f"{led['annotations']:,}"],
+    ["Failures", str(led['failed'])],
+    ["Wall time (UTC)", f"{led['start_utc'][11:16]}-{led['end_utc'][11:16]} = {led['span_h']:.2f} h"],
+    ["Prompt tokens", f"{led['input_tokens_total']:,} (mean {led['input_tokens_mean']:.0f}/annotation, "
+                      f"p95 {led['input_tokens_p95']})"],
+    ["Billed", f"${led['usd_billed']:.2f}"],
+    ["Rate, run average", f"{led['annotations_per_h_avg']:,.0f} annotations/h"],
+    ["Rate, steady (last 30 min)", f"{led['steady_last30_annotations_per_min']:.1f}/min, "
+                                   f"{led['steady_last30_input_tokens_per_s']:.0f} tok/s prefill"],
+]
+render_table(["Production run, one card", "Value"], rows)
+
+print("per UTC hour:")
+rows = [[h["hour_utc"], f"{h['annotations']:,}", f"{h['mean_input_tokens']:.0f}"]
+        for h in load["per_hour_utc"]]
+render_table(["Hour", "Annotations", "Mean prompt tokens"], rows)
+"""),
+    ("code", r"""win = load["engine_window"]
+d = receipt("load/metrics-delta.json")
+g = load["gpu_window"]
+rows = [
+    ["Engine requests finished", f"{win['requests_finished']:.0f} in {win['window_s']:.0f} s"],
+    ["Requests per annotation", f"{win['requests_per_annotation']:.2f} (the 5 permutation reads)"],
+    ["Generated tokens per request", f"{win['generation_tokens_per_request']:.2f} "
+                                     f"(max_tokens=1: nothing generated)"],
+    ["Prompt tokens processed", f"{win['prompt_tokens']:,.0f} -> {win['prompt_tokens_per_s']:.0f} tok/s prefill"],
+    ["Answer time, mean e2e", f"{d['e2e_latency_mean_s']*1000:,.0f} ms per request"],
+    ["Answer time bounds", f"{d['e2e_latency_bounds']['within_15s']:.0f} of {d['requests_finished']:.0f} "
+                           f"within 15 s; all within 30 s"],
+    ["Prefix cache hit rate", f"{d['prefix_cache_hit_rate_pct']:.1f}% "
+                              f"({d['prefix_cache_hits']:.0f} hits / {d['prefix_cache_queries']:.0f} queried)"],
+    ["In flight at sample", f"{d['num_requests_running_at_t1']:.0f} running / "
+                            f"{d['num_requests_waiting_at_t1']:.0f} waiting"],
+    ["GPU over the telemetry window", f"{g['power_w_mean']:.0f} W mean "
+                                      f"({g['power_w_min']:.0f}-{g['power_w_max']:.0f}), SM {g['sm_util_pct_mean']:.0f}%, "
+                                      f"core {g['gpu_temp_c_range'][0]:.0f}-{g['gpu_temp_c_range'][1]:.0f} C, "
+                                      f"mem {g['mem_temp_c_range'][0]:.0f}-{g['mem_temp_c_range'][1]:.0f} C"],
+]
+render_table(["Engine window under load", "Value"], rows)
+
+littles = d["num_requests_running_at_t1"] + d["num_requests_waiting_at_t1"]
+arrival = d["requests_finished"] / d["window_s"]
+print(f"Little's law check: {littles:.0f} requests in flight / {arrival:.1f} req/s arrival "
+      f"= {littles/arrival:.1f} s expected wait+compute; measured mean {d['e2e_latency_mean_s']:.1f} s")
+"""),
+    ("md", r"""![production load: throughput and answer time](../assets/charts/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm-load.png)
+
+**The answer in ms.** Idle at c=1 the read is 141.7 ms p50 (133.0 ms
+cache-busted) — the honest cost of one forward pass over a short prompt. Under
+the pilot's 16 clients the mean is **12.0 s** and every request still finished
+within 30 s: at ~1.5k prompt tokens the engine computes a read in well under a
+second (1,952 tok/s across the window), so nearly all of the 12 s is queue.
+The five permutation reads of one annotation are in flight together, so an
+annotation's answer arrives with them — the wall-clock answer per annotation
+is the ~12 s, not five times that. For capacity planning: low concurrency buys
+latency, high concurrency buys throughput; the card is saturated either way.
+
+**Kis's 180 W learning, confirmed in production.** His
+[08-30 notebook](2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb)
+measured ~1,955 tok/s prefill for this checkpoint on a short synthetic at a
+180 W cap. The sample window holds 1,952 tok/s, and the run's steady state
+matches it too (1,952 tok/s ledger-side over the last 30 min) — for hours,
+under permutation-heavy judge traffic, at a 178 W mean with 71-72 C core and
+74-76 C memory temperature. The cap remains nearly free.
+
+**Prefix cache: measured 0.0%.** The serve line has `--enable-prefix-caching`,
+and the counters show 570,234 queried tokens with zero hits in the window:
+this pilot's prompts share no leading KV blocks, so every read pays its full
+prefill. Do not bank on prefix caching for per-item judge traffic without
+checking the hit rate; prompts that do share a long fixed preamble only make
+this card's effective rate better.
+
+Rate shape: the two dips in the timeline are the pilot's own pacing
+(client-side scheduling and pool mix), not engine errors — zero failures
+across the whole run.
+"""),
     ("md", r"""## 3. Reproduce
 
 **Hardware.** One NVIDIA CMP 170HX (SM80, 64 GiB HBM2e) with forced airflow,
@@ -504,8 +630,17 @@ MODEL_DIR=<weights> <venv>/bin/python harness/jev_probe.py \
     negatives labeled
 ```
 
-`make_chart.py` rebuilds the figure from the receipts. A smoke run of the same
-stack, without the receipts, is one request:
+`make_chart.py` rebuilds the reliability figure and `make_chart_load.py` the
+production-load figure from the receipts. The load receipts are frozen from
+the pilot's ledger, two `/metrics` snapshots and a `dmon` capture (paths
+supplied at run time; the raw ledger stays outside the repository):
+
+```bash
+python harness/collect_load_receipts.py <pilot-ledger> <metrics-t0> <metrics-t1> \
+    <window-seconds> <window-end-utc> <dmon> <gpu-index>
+```
+
+A smoke run of the same stack, without the receipts, is one request:
 
 ```bash
 curl -s http://127.0.0.1:18031/v1/systemone -H 'Content-Type: application/json' -d '{
@@ -594,8 +729,10 @@ for lp in ca["batch_position_sensitivity"]["rows"][0]["http_logprobs"]:
 - **High concurrency.** Determinism is measured for two concurrent requests on
   an idle server. Batch-composition-dependent kernels can change numerics at
   higher concurrency, and the appendix measures that effect (~0.07 logprob on
-  two copies of one prompt sharing a batch). The latency table is c=1 and does
-  not generalise to a loaded server.
+  two copies of one prompt sharing a batch). The c=1 latency table does not
+  generalise to a loaded server — section 2.9 now measures the loaded case
+  for answer time (12.0 s mean at 16 clients); determinism at high
+  concurrency is still unmeasured.
 - **Other models.** The `processed_logprobs` and `generation_config` findings
   are properties of a vLLM host, so they should hold for any checkpoint served
   this way — but they were measured on this one checkpoint and this engine
@@ -614,8 +751,10 @@ for lp in ca["batch_position_sensitivity"]["rows"][0]["http_logprobs"]:
 ### Safety
 
 Card stayed within the 80 C core / 85 C memory stop conditions during the
-serving window; no Xid, ECC or GPU-disappearance events. The card ran at its
-180 W cap. Forced airflow was in place for the whole run.
+serving window and the whole production run; no Xid, ECC or GPU-disappearance
+events. The card ran at its 180 W cap — 178 W mean with 100% SM under the
+pilot, 71-72 C core and 74-76 C memory (telemetry in
+`receipts/load/gpu-telemetry.json`). Forced airflow was in place throughout.
 
 ### Evidence
 
@@ -625,6 +764,8 @@ serving window; no Xid, ECC or GPU-disappearance events. The card ran at its
   [`2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm`](2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb)
 - The Jev contract:
   [`kishida/llama.cpp`, branch `jev`, `docs/jev.md`](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md)
+- The production-load receipts (aggregates only; the raw pilot ledger names
+  pool items and stays outside the repository): `receipts/load/`
 </details>
 """),
 ]

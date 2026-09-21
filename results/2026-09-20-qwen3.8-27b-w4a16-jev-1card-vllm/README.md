@@ -1,7 +1,7 @@
 # Qwen3.8-27B (W4A16 GPTQ) as a Jev-compatible endpoint — 1x CMP 170HX (SM80), vLLM
 
 Measured 2026-09-20 on one CMP 170HX (SM80, 64 GiB HBM2e) at the 180 W club
-cap. Notebook:
+cap, with production-load receipts frozen on 2026-09-21. Notebook:
 [`notebooks/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm.ipynb`](../../notebooks/2026-09-20-qwen3.8-27b-w4a16-jev-1card-vllm.ipynb).
 
 **Question.** Can this checkpoint serve as a Jev-compatible classification
@@ -12,9 +12,12 @@ token generated?
 **Answer.** Yes, mechanically, and the mechanics have three sharp edges a vLLM
 host has to know about. Reads are exact, repeatable and fast (~140 ms p50 at
 c=1). On 42 author-labelled reads the endpoint scores 0.571 accuracy and is
-over-confident (ECE 0.274 at T=1, 0.223 at the NLL-fitted T=2.16); option
-order moves the answer (max shift 0.639, argmax flips). Treat it as a working
-classification surface whose calibration is a project, not a property.
+over-confident (ECE 0.274 at T=1; the NLL-fitted T does not generalise,
+leave-one-out ECE 0.301). Option order moves the answer (max shift 0.639,
+argmax flips). And it is a **no-train method**: the stock W4A16 checkpoint is
+served read-only — nothing fine-tuned, nothing fitted that generalises. The
+day after the probes it carried its first production workload: 19,045
+annotations in 4.5 h, zero failures, 1,952 tok/s prefill at a 178 W mean.
 
 ## Findings
 
@@ -40,6 +43,14 @@ classification surface whose calibration is a project, not a property.
    differ by up to 0.067 in logprob when placed in one batch. The endpoint
    serves one read per request, so its reads are repeatable; a batched client
    should not expect bit-identical logits. Receipts: `crosscheck-analysis.json`.
+5. **The first production workload confirmed the serving recipe and exposed
+   the cache.** An LLM-as-judge annotation pilot (five permutation reads per
+   annotation, 16 clients, 4.5 h) ran with zero failures; engine prefill held
+   1,952 tok/s — within 0.2% of Kis's synthetic 1,955 tok/s at the same cap —
+   and the answer went from 141.7 ms idle to a 12.0 s mean under load
+   (99.8% of reads within 15 s; queue-bound, not compute-bound). The prefix
+   cache hit **0.0%** on this traffic: per-item judge prompts share no leading
+   KV blocks, so every read pays its full prefill. Receipts: `load/`.
 
 ## Measured
 
@@ -55,6 +66,12 @@ classification surface whose calibration is a project, not a property.
 | Leave-one-out ECE (honest read of the fit) | 0.301 — worse than T=1, so the fitted temperature does not generalise at n=42 | `metrics.json` |
 | Rejected requests (8 schema/image cases + engine cap) | all as expected (422 / 400) | `negatives.json` |
 | Boot | model load 18.79 GiB in 115 s; engine init ~6 min cold | `serve.log` |
+| Production run (2026-09-21, first real workload) | 19,045 annotations in 4.53 h, 0 failures, 27.87M prompt tokens, $1.17 billed | `load/load-summary.json` |
+| Answer time under load (16 clients) | mean 12,032 ms/request; 1,890 of 1,893 within 15 s; all within 30 s | `load/metrics-delta.json` |
+| Prefill under load | 1,952 tok/s in the 292 s sample window; steady state 76.6 annotations/min = 1,952 tok/s ledger-side | `load/load-summary.json` |
+| Reads per annotation / gen tokens per request | 5.01 / 1.02 (max_tokens=1: nothing generated) | `load/metrics-delta.json` |
+| Prefix cache hit rate on judge traffic | 0.0% (0 hits / 570,234 queried tokens) | `load/metrics-delta.json` |
+| GPU under sustained judge load | 178 W mean (172-186) at the 180 W cap, SM 100%, 71-72 C core, 74-76 C memory | `load/gpu-telemetry.json` |
 
 ## Receipts
 
@@ -74,6 +91,10 @@ classification surface whose calibration is a project, not a property.
 | `negatives.json` | rejected requests and status codes |
 | `labeled.jsonl` | per-example labelled predictions with label logprobs |
 | `metrics.json` | accuracy, Brier, NLL, ECE, NLL curve, per-type metrics |
+| `load/load-summary.json` | frozen aggregate of the pilot's per-annotation ledger (counts, tokens, per-hour, per-minute; no pool items) |
+| `load/metrics-delta.json` | engine `/metrics` counter deltas over a 292 s window under load, incl. e2e latency bounds and prefix-cache counters |
+| `load/load-ledger-minutes.json` | annotations and prompt tokens per UTC minute for the whole run |
+| `load/gpu-telemetry.json` | `nvidia-smi dmon` samples (45 x 2 s) during the window |
 | `crosscheck.json`, `crosscheck-analysis.json` | same prompts read in-process (vLLM `LLM.generate`) vs over HTTP, plus the duplicate-prompt pair that isolates batch-position sensitivity |
 
 ## Harness
@@ -81,9 +102,11 @@ classification surface whose calibration is a project, not a property.
 | File | What it does |
 |---|---|
 | `jev_server.py` | the Jev endpoint: `/v1/systemone` in front of vLLM's OpenAI server |
-| `jev_probe.py` | produces every receipt above, one probe per file |
-| `serve.sh` | launches the engine and the endpoint with the required flags |
+| `jev_probe.py` | produces every probe receipt above, one probe per file |
 | `make_chart.py` | rebuilds the notebook figure from the receipts |
+| `make_chart_load.py` | rebuilds the production-load figure from the receipts |
+| `collect_load_receipts.py` | freezes `receipts/load/` from the pilot ledger, two `/metrics` snapshots and a `dmon` capture |
+| `serve.sh` | launches the engine and the endpoint with the required flags |
 | `build_notebook.py` | builds the notebook from the same numbers |
 
 ## Reconstruct
@@ -91,10 +114,9 @@ classification surface whose calibration is a project, not a property.
 ```bash
 MODEL_DIR=<weights> ./serve.sh                       # engine + endpoint
 MODEL_DIR=<weights> <venv>/bin/python jev_probe.py all   # every receipt
-python make_chart.py && python build_notebook.py     # figure + notebook
+python make_chart.py && python make_chart_load.py && python build_notebook.py  # figures + notebook
 ```
 
-## Credits
 
 The serving recipe for this checkpoint on this card — W4A16 on one 170HX, the
 syv-ai lineage, the 180 W cap being nearly free — is Kis's:
@@ -104,7 +126,8 @@ The Jev contract (one prompt evaluation, label logits, confidence as
 divisor, permutations for position bias) is
 [kishida's `jev` branch docs](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md),
 API-compatible with TypeSafe System One. This bundle adds the vLLM
-implementation and the three findings above.
+implementation and the findings above, the production-load validation, and the
+no-train reading of the method.
 
 ## Limitations
 
@@ -113,5 +136,8 @@ implementation and the three findings above.
 - Classification reads only. Generation throughput on this checkpoint and card
   is Kis's notebook's subject.
 - Text path only; images return 422.
-- Determinism and latency are measured at c=1 on an idle, single-tenant
-  server; the concurrency claim covers two concurrent requests.
+- Determinism is measured at c=1 on an idle, single-tenant server (two
+  concurrent requests); answer time under load is measured in `load/` but
+  bit-identity at high concurrency is not.
+- The production receipts are aggregates; the raw pilot ledger stays outside
+  the repository because it names pool items.
