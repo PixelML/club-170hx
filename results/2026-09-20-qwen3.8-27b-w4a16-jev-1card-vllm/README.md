@@ -51,8 +51,8 @@ classification surface whose calibration is a project, not a property.
 | Temperature handling | API probabilities equal `softmax(logprobs(T=1)/T)`; max |Δ| 8.3e-17 | `temperature.json` |
 | Labelled accuracy (n=42, author labels) | 0.571 (Wilson 95% CI 0.422-0.709) | `metrics.json` |
 | Brier / NLL / ECE at T=1 | 0.5494 / 0.9543 / 0.2736 | `metrics.json` |
-| Brier / NLL / ECE at fitted T=2.16 | 0.5356 / 0.8747 / 0.2228 | `metrics.json` |
-| Leave-one-out ECE | 0.301 | `metrics.json` |
+| Brier / NLL / ECE at fitted T=2.16 (in-sample) | 0.5356 / 0.8747 / 0.2228 | `metrics.json` |
+| Leave-one-out ECE (honest read of the fit) | 0.301 — worse than T=1, so the fitted temperature does not generalise at n=42 | `metrics.json` |
 | Rejected requests (8 schema/image cases + engine cap) | all as expected (422 / 400) | `negatives.json` |
 | Boot | model load 18.79 GiB in 115 s; engine init ~6 min cold | `serve.log` |
 

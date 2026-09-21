@@ -146,10 +146,12 @@ Three things a vLLM host has to know, each with a receipt in section 2:
 Then the calibration picture, stated plainly: the probabilities are
 *measurable* and *reproducible* — identical to the last bit on repeat and
 across concurrency — but on a 42-example descriptive set they are
-over-confident. Fitting one temperature by NLL helps (ECE 0.274 → 0.223) and
-is a demonstration of the loop, not evidence of a calibrated endpoint. Do not
-read 0.22 as "calibrated"; read it as "a fitted temperature is worth having
-and n=42 cannot certify it".
+over-confident, and **the fitted temperature does not generalise at this
+sample size**. In-sample, fitting T by NLL improves ECE from 0.274 to 0.223;
+under leave-one-out fitting it comes out *worse* than leaving T=1 alone (ECE
+0.301). Read that as: the fitting loop works and is worth running, but n=42
+cannot certify a temperature, and the in-sample number is not the one to
+quote.
 
 One caveat on the word *reproducible*: the endpoint serves one read per
 request and those are bit-identical on repeat. Reads placed in the **same
@@ -329,8 +331,12 @@ for i, lp in enumerate(det["sequential_logprobs"]):
 
 Every read runs at T=1. A requested temperature is applied to the label
 logprobs as `softmax(logprobs / T)`, so the same read serves any calibration
-and changing T cannot change what was read. The table checks the endpoint's
-probabilities against that formula computed client-side.
+and changing T cannot change what was read. Note what T does and does not
+move: it cannot change the argmax (dividing by a positive scalar preserves
+order), but it does change `confidence` **and** the expected level of a
+`score` question, because a flatter distribution shifts the probability-
+weighted mean. The table checks the endpoint's probabilities against that
+formula computed client-side.
 """),
     ("code", r"""temp = receipt("temperature.json")
 rows = []
@@ -375,7 +381,11 @@ small and in-domain, so read the numbers as descriptive.
 Reported: accuracy with a Wilson 95% interval, multiclass Brier, NLL of the
 true class, and 10-bin ECE at T=1 and at the NLL-fitted temperature. The
 leave-one-out row fits the temperature on the other 41 examples for each held
-out example, which is the honest version of the ECE.
+out example, which is the honest version of the ECE — and it is **worse than
+not fitting at all** (0.301 against 0.274). With 42 examples a single
+temperature does not generalise; the in-sample gain (0.223) is the fit
+absorbing its own sample. Anything built on this should either fit T on a
+separate, larger calibration split or leave it at 1.
 """),
     ("code", r"""m = receipt("metrics.json")
 rows = []
@@ -572,8 +582,10 @@ for lp in ca["batch_position_sensitivity"]["rows"][0]["http_logprobs"]:
 
 - **Calibration.** n=42 in-domain author-labelled examples with an in-sample
   temperature fit. The ECE improvement is a demonstration of Jev's fitting
-  loop, not certification. A calibration claim needs hundreds of examples, a
-  held-out split, and per-bin counts large enough to be stable.
+  loop, not certification — and the leave-one-out row (0.301) shows the fitted
+  T is worse than T=1 on unseen examples at this sample size. A calibration
+  claim needs hundreds of examples and a held-out split; until then, treat the
+  fitted temperature as unfitted.
 - **Generation.** This notebook serves reads. Throughput, TTFT and
   speculative-decode behaviour for *generation* on this checkpoint and card
   are Kis's notebook's subject, not this one's.
