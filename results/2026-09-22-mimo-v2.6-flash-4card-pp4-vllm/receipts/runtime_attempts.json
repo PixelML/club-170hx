@@ -15,9 +15,20 @@
     }
   },
   "import_probe": {
-    "device_capability": [8, 0],
+    "device_capability": [
+      8,
+      0
+    ],
     "mimov2_registered": true,
-    "quant_methods_present": ["fp8", "fp8_per_block", "mxfp4", "mxfp8", "gpt_oss_mxfp4", "awq_marlin", "gptq_marlin"],
+    "quant_methods_present": [
+      "fp8",
+      "fp8_per_block",
+      "mxfp4",
+      "mxfp8",
+      "gpt_oss_mxfp4",
+      "awq_marlin",
+      "gptq_marlin"
+    ],
     "dedicated_model_module": "vllm: models/mimo.py + mimo_v2.py; sglang: models/mimo_v2.py, mimo_v2_nextn.py, mimo_mtp.py",
     "sglang_sink_support": "sinks plumbed through triton and flashattention backends (flashinfer sink path is SM100-only)"
   },
@@ -46,18 +57,29 @@
     {
       "id": "A4-sglang-pp4",
       "topology": "PP4, all four cards, --attention-backend triton, mem-fraction-static 0.88, expandable_segments",
-      "result": "in flight at receipt time",
-      "notes": "sglang natively detected 'MiMo-V2 mxfp4 routed-expert layout'; weights 40.3 GiB/rank leaves real headroom"
+      "result": "FAILED - eager mode too",
+      "notes": "sglang natively detected 'MiMo-V2 mxfp4 routed-expert layout'; weights 40.3 GiB/rank leaves real headroom",
+      "error": "CUDA fault in scheduler processes during warmup forward (coredump attempted, SIGQUIT); no shape guard tripped in eager - the triton kernel reads packed mxfp4 weights as fp8 and faults"
     }
   ],
   "classified_findings": [
     "MiMo-V2.6 Flash/Pro cannot serve with correct semantics via the official vLLM image on SM80: sinks + DiffKV attention both resolve to FA3 (SM90+), and the DiffKV backend is pinned in model code so no backend override escapes it.",
     "SGLang is the viable SM80 path so far: native mxfp4 routed-expert detection, sinks plumbed through the triton backend, mimo_v2_nextn.py present for the shipped MTP/DFlash drafter.",
-    "PP3 is memory-infeasible on 3x 64 GiB for this 161 GiB checkpoint with the sglang loader (load-time transients exceed the ~9.8 GiB slack)."
+    "PP3 is memory-infeasible on 3x 64 GiB for this 161 GiB checkpoint with the sglang loader (load-time transients exceed the ~9.8 GiB slack).",
+    "A5: eager mode confirms the Triton fused-MoE path cannot consume mxfp4-packed expert weights on SM80 under any mode - shape assert under capture, raw CUDA fault in eager. Both official runtimes are excluded without porting work (mxfp4->fp8/bf16 expert repack at load, or an Ampere mxfp4 kernel)."
   ],
   "spec_decode": {
     "drafter_in_checkpoint": "dflash/ (5 SWA layers, hidden 4096, qwen3 model_type, DFlashDraftModel arch, predicts 7 tokens) + model_mtp.safetensors (3-layer MTP head)",
     "vllm_support": "dflash registered as speculative method with DFlashQwen3ForCausalLM draft arch in this build",
     "sglang_support": "mimo_v2_nextn.py + EAGLE-style recipe in official cookbook (Hopper-focused); k=7 attempt queued behind a working base server"
+  },
+  "verdict": {
+    "decision": "CLASSIFIED NEGATIVE - MiMo-V2.6-Flash-RL does not serve on CMP 170HX (SM80) with stock runtimes as of 2026-09-22 builds",
+    "covers": [
+      "vLLM mimov25-cu129 (FA3 sinks + DiffKV pin)",
+      "SGLang latest (PP bug patched by us; triton MoE runner cannot read mxfp4 experts)"
+    ],
+    "runs_on_this_hardware_instead": "MiMo-V2.6-Distill-Qwen-9B (dense qwen3_5 finetune) runs on vLLM/SGLang/llama.cpp on these cards; the Pro/Flash family needs SM90+ today",
+    "porting_estimate": "expert repack (mxfp4->fp8 W8A8-block or bf16) at load + retest, or upstream Ampere mxfp4 kernel; club autoround W4A16 repack precedent exists for DeepSeek on this stack"
   }
 }

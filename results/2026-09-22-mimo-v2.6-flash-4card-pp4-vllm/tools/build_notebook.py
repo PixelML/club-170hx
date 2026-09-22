@@ -13,15 +13,19 @@ cells.append(md("\n".join([
     "",
     "| Metric | Value |",
     "|---|---|",
-    "| Verdict | *A5 verdict pending — eager-mode probe in flight* |",
-    "| Decode, c=1 | *pending* |",
-    "| Prefill | *pending* |",
-    "| TTFT | *pending* |",
+    "| Verdict | **CLASSIFIED NEGATIVE — not servable on SM80 with stock runtimes (2026-09-22 builds)** |",
+    "| Blocker chain | vLLM: FA3-sink + DiffKV pin (SM90+) · SGLang: PP bug (patched) → Triton MoE runner cannot read mxfp4 experts (capture: shape assert; eager: CUDA fault) |",
+    "| PP3 | Memory-infeasible (53.7 GiB/rank + transients OOM at 62.0/63.5 GiB) |",
+    "| PP4 | Boots past our PP patch; dies at the Triton fused-MoE runner in every mode |",
     "",
     "**The lane's headline finding is a runtime-compatibility chain, not a throughput number.**",
-    "The checkpoint serves with correct semantics on SM80 only through SGLang's Triton",
-    "attention backend plus a one-file pipeline-parallelism patch — and its mxfp4 routed",
-    "experts then trip a third bug at the Triton fused-MoE runner. Every step is receipted.",
+    "The 161 GiB MoE stores its routed experts as mxfp4 — a format whose serving kernels",
+    "upstream are deep_gemm/FA3, both SM90+. On Ampere every stock path is excluded by",
+    "measured evidence, receipts A1–A5. Porting estimate: an mxfp4→fp8/bf16 expert repack",
+    "at load (club autoround-repack precedent exists) or an Ampere mxfp4 kernel.",
+    "",
+    "Runs today on this hardware instead: **MiMo-V2.6-Distill-Qwen-9B** (dense `qwen3_5`",
+    "finetune, standard runtime support) — the family member these cards can serve.",
     "",
     "```bash",
     "docker pull lmsysorg/sglang:latest",
@@ -37,7 +41,7 @@ cells.append(code("\n".join([
     "",
     'print(f"experiment : {EXPERIMENT}")',
     'print(f"LIVE       : {LIVE}")',
-    'print("status     : runtime chain receipts A1-A5 recorded; benchmark pending the eager probe.")',
+    'print("status     : CLASSIFIED NEGATIVE - A1-A5 receipts complete; no throughput number exists to replay.")',
 ])))
 
 helpers = "\n".join([
@@ -72,8 +76,11 @@ cells.append(code(helpers))
 cells.append(md("\n".join([
     "## 1. TL;DR",
     "",
-    "*(final verdict + numbers land here after A5 resolves; the attempt table below is",
-    "already the measured record of every bring-up path tried.)*",
+    "Five bring-up attempts across both official runtimes, each reproduced and",
+    "receipted: the model family requires SM90+ serving kernels at three independent",
+    "points (attention sinks, DiffKV attention, mxfp4 MoE runners). The one-line PP",
+    "patch this lane contributed is real and reusable, but it only moves the failure",
+    "to the next SM90-only dependency.",
 ])))
 
 pins_src = "\n".join([
@@ -146,11 +153,18 @@ attempts_src = "\n".join([
 cells.append(code(attempts_src))
 
 cells.append(md("\n".join([
-    "### 2.3 Benchmark results",
+    "### 2.3 A5 — the decisive eager-mode run",
     "",
-    "*(filled if A5 serves: P1/P2 protocol per the 2026-09-05 GLM lane, receipts under",
-    "`receipts/`; an eager-mode number is labeled as such and is not compared against",
-    "graph-capture lanes.)*",
+    "`--disable-cuda-graph` removes the capture path entirely. Result: the schedulers",
+    "hit a raw CUDA fault in the same fused-MoE forward during warmup (coredump",
+    "attempted, SIGQUIT) — no shape guard trips in eager because the kernel simply",
+    "reads packed mxfp4 weights as fp8 and faults on memory. The incompatibility is",
+    "static, not capture-specific.",
+    "",
+    "**What would change this verdict:** a load-time expert repack (mxfp4 → fp8",
+    "W8A8-block or bf16) feeding the existing Triton runner — the same class of repack",
+    "this club already ran for DeepSeek via autoround W4A16 — or an upstream Ampere",
+    "mxfp4 kernel. Neither exists in any official image as of this date.",
 ])))
 
 reproduce = "\n".join([
