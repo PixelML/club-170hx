@@ -21,7 +21,7 @@ idx_path = root / "model.safetensors.index.json"
 idx = json.loads(idx_path.read_text())
 shards = sorted(set(idx["weight_map"].values()))
 
-present = sorted(p.name for p in root.glob("model_pp*.safetensors"))
+present = sorted(p.name for p in root.glob("model_*.safetensors"))
 missing = [s for s in shards if s not in present]
 extra = [p for p in present if p not in shards]
 if missing:
