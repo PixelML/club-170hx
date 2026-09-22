@@ -789,6 +789,16 @@ measured too: our entropy confidence vs jev-1.13's on the same 28
 choice/score reads — mean |Δ| 0.649, Pearson r −0.23: the two confidence
 numbers are unrelated, and only Jev's carry a calibration claim.
 
+**Production-facet alignment** (150 real pilot states x 5 facets, top-1
+agreement with live jev-1.13.0; noul excluded): **our raw read 83.5%**
+(task_family 0.740, method_family 0.727, modality 0.900,
+code_release_evidence 0.987, evaluation_type 0.820) vs Laya typed-decisions
+**33.5%** and Laya base 31.3% (modality 12-15%, near random). The 0.786
+Laya advantage from the labelled bench was on short ticket-style states —
+its home turf; on long scientific abstracts with 7-way rubrics, only the
+27B read tracks Jev. Re-annotating production with Laya would diverge from
+Jev, not converge. Receipts: `positioning-bench/production-facets/`.
+
 The read trick itself is folk knowledge — community tutorials do it with
 plain llama.cpp (`max_tokens=1`, `top_logprobs`, `e^logprob`), sometimes
 dressing several yes/no questions into one 16-way label. What separates the

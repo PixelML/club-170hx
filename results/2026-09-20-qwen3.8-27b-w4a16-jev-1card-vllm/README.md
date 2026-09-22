@@ -162,6 +162,15 @@ unrelated, and only Jev's carry a calibration claim. Closing the gap
 (temperature fit on a held-out split, trained heads, task fine-tune) is
 future work.
 
+**Production-facet alignment** (150 real pilot states x 5 facets vs live
+jev-1.13.0): our raw read agrees with Jev on **83.5%** of choice reads
+(task_family 0.740, method_family 0.727, modality 0.900,
+code_release_evidence 0.987, evaluation_type 0.820) vs Laya typed-decisions
+33.5% and base 31.3% — the labelled-bench advantage of the small RLCD model
+does not transfer to the production task. Re-annotating production with it
+would diverge from Jev. Receipts:
+`receipts/positioning-bench/production-facets/`.
+
 ## Limitations
 
 - n=42, in-domain, author-labelled; the temperature fit is in-sample and the
