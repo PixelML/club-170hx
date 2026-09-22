@@ -758,8 +758,8 @@ honest boundary is:
 | Read mechanic: one prompt evaluation, no answer generated, bit-identical at c=1, permutations average position bias | **measured** | `determinism.json`, `permutations.json` |
 | No-train operation at production rate | **measured** (2026-09-21 pilot) | `load/` |
 | Calibrated probabilities (Jev's differentiator) | **not claimed** — reads ship at T=1 and are over-confident on our labelled set: accuracy 0.571, ECE 0.274, fitted T fails leave-one-out | `metrics.json`, `labeled.jsonl` |
-| Confidence numeric parity with jev-1.13 | **not claimed** — ours is `1 − normalized entropy` (kishida's definition); TypeSafe's exact formula is undocumented (their docs demo a peak statistic) | — |
-| Accuracy parity with jev-1.13 | **untested** — no common benchmark; our 0.571 is n=42 on our task, and kishida measures this same checkpoint at 0.914 on standard multiple-choice | his `jev` docs, benchmark table |
+| Confidence numeric parity with jev-1.13 | **measured: no parity** — ours `1 − normalized entropy` vs jev-1.13 on the same 28 choice/score reads: mean |Δ| 0.649, Pearson r −0.23 | `positioning-bench/jev-leg.json` |
+| Accuracy parity with jev-1.13 | **measured on n=42: no parity** — jev-1.13.0 scores 0.881 (choice 0.95, noul 0.93, score 0.63) against our 0.571 on the same labelled set; top-1 agreement 0.619, choice-distribution JS 0.254 | `positioning-bench/jev-leg.json` |
 | More than 62 Choice options (Jev allows 255) | **not supported** — the label mask needs single-token symbols | `jev_server.py` |
 | 64k context (deployed: 8k) and multi-question single-call latency | **untested** — deployment choices and per-question reads | — |
 
@@ -771,19 +771,23 @@ probabilities are honest *rankings* from a general instruct model — usable
 for routing with thresholds you validate on your own data — not certified
 uncertainties, and not interchangeable with jev-1.13's confidence numbers.
 
-**Measured alignment** (2026-09-21, n=42, this bundle's labelled set; scripts
-and raw outputs in `positioning-bench/`): our raw read 0.571 vs Laya (base
-English checkpoint, zero-shot, 421M RLCD encoder) 0.643 vs GLiNER 2.5 Multi
-0.476. Per type: choice 0.60 / **0.90** / 0.60, noul 0.50 / 0.64 / 0.29,
-score 0.62 / not comparable (label-mapping unbuilt) / 0.50. Distributions on
-choice are close (mean JS divergence 0.054; top-1 agreement 0.70) but Laya's
-argmax is right far more often. Two honest reads: a small RLCD-trained
-encoder beats the raw 27B read on the classification judgment itself even
-zero-shot — TypeSafe's bet, validated on our data; and Laya's own card says
-its base is near chance on out-of-domain typed decisions, so this n=42
-result is a data point, not a leaderboard. The jev-1.13 leg of the bench is
-pending API access; without it nothing here ranks us against TypeSafe — it
-ranks the self-hostable options against each other.
+**Measured alignment** (2026-09-21/22, n=42, this bundle's labelled set;
+scripts and raw outputs in `positioning-bench/`): our raw read 0.571 vs
+Laya (base English checkpoint, zero-shot, 421M RLCD encoder) 0.643 vs
+GLiNER 2.5 Multi 0.476 vs **jev-1.13.0 (live API) 0.881**. Per type —
+choice: 0.60 / 0.90 / 0.60 / **0.95**; noul: 0.50 / 0.64 / 0.29 / **0.93**;
+score: 0.62 / not comparable (label-mapping unbuilt) / 0.50 / 0.62. Full
+standings on this set: jev-1.13.0 0.881 ≫ Laya 0.643 > our raw read 0.571 >
+GLiNER 0.476. Two honest reads: a small RLCD-trained encoder beats the raw
+27B read on the classification judgment itself even zero-shot, and the
+live jev-1.13 agrees with our read on only 61.9% of reads, diverging from
+our distributions (choice JS 0.254 vs Laya's 0.054) — the RLCD training is
+real and it is the product. Laya's own card says its base is near chance on
+out-of-domain typed decisions, so its 0.643 is a data point, not a
+leaderboard. Confidence parity is measured too: our entropy confidence vs
+jev-1.13's on the same 28 choice/score reads — mean |Δ| 0.649, Pearson r
+−0.23: the two confidence numbers are unrelated, and only Jev's carry a
+calibration claim.
 
 The read trick itself is folk knowledge — community tutorials do it with
 plain llama.cpp (`max_tokens=1`, `top_logprobs`, `e^logprob`), sometimes
