@@ -145,15 +145,17 @@ boundary for this bundle:
 | Accuracy parity with jev-1.13 | **untested** — no common benchmark | — |
 | >62 Choice options (Jev: 255) | **not supported** — single-token label mask | `jev_server.py` |
 
-**Measured alignment** (n=42, this bundle's labelled set;
-`receipts/positioning-bench/`): our raw read 0.571 vs Laya (421M RLCD
-encoder, zero-shot) 0.643 vs GLiNER 2.5 Multi 0.476 — per type: choice
-0.60 / **0.90** / 0.60, noul 0.50 / 0.64 / 0.29. Distributions align on
-choice (JS 0.054) but Laya's argmax is right far more often: on the
-classification judgment itself, the trained-decision direction wins even
-zero-shot. Closing our calibration gap (temperature fit on a held-out
-split, trained heads à la Solomon, or a task fine-tune) is future work.
-The jev-1.13 leg of the bench is pending API access.
+**Measured vs jev-1.13.0 and self-hostable options** (n=42, this bundle's
+labelled set; `receipts/positioning-bench/`): jev-1.13.0 (live API)
+**0.881** — choice 0.95, noul 0.93, score 0.63 — vs our raw read 0.571,
+Laya (421M RLCD encoder, zero-shot) 0.643, GLiNER 2.5 Multi 0.476 — choice
+0.60 / **0.90** / 0.60, noul 0.50 / 0.64 / 0.29. Jev agrees with our read
+on only 61.9% of reads, diverges from our choice distributions (JS 0.254),
+and its confidence is unrelated to our entropy confidence (mean |Δ| 0.649,
+Pearson r −0.23): the RLCD calibration is the product, and we do not claim
+it. On the classification judgment itself, the trained-decision direction
+wins — closing our calibration gap (temperature fit on a held-out split,
+trained heads à la Solomon, or a task fine-tune) is future work.
 
 ## Limitations
 
