@@ -772,22 +772,22 @@ for routing with thresholds you validate on your own data — not certified
 uncertainties, and not interchangeable with jev-1.13's confidence numbers.
 
 **Measured alignment** (2026-09-21/22, n=42, this bundle's labelled set;
-scripts and raw outputs in `positioning-bench/`): our raw read 0.571 vs
-Laya (base English checkpoint, zero-shot, 421M RLCD encoder) 0.643 vs
-GLiNER 2.5 Multi 0.476 vs **jev-1.13.0 (live API) 0.881**. Per type —
-choice: 0.60 / 0.90 / 0.60 / **0.95**; noul: 0.50 / 0.64 / 0.29 / **0.93**;
-score: 0.62 / not comparable (label-mapping unbuilt) / 0.50 / 0.62. Full
-standings on this set: jev-1.13.0 0.881 ≫ Laya 0.643 > our raw read 0.571 >
-GLiNER 0.476. Two honest reads: a small RLCD-trained encoder beats the raw
-27B read on the classification judgment itself even zero-shot, and the
-live jev-1.13 agrees with our read on only 61.9% of reads, diverging from
-our distributions (choice JS 0.254 vs Laya's 0.054) — the RLCD training is
-real and it is the product. Laya's own card says its base is near chance on
-out-of-domain typed decisions, so its 0.643 is a data point, not a
-leaderboard. Confidence parity is measured too: our entropy confidence vs
-jev-1.13's on the same 28 choice/score reads — mean |Δ| 0.649, Pearson r
-−0.23: the two confidence numbers are unrelated, and only Jev's carry a
-calibration claim.
+scripts and raw outputs in `positioning-bench/`): jev-1.13.0 (live API)
+**0.881** — choice 0.95, noul 0.93, score 0.63; Laya base (421M RLCD
+encoder, zero-shot) **0.786** — choice 0.90, noul 0.64, score 0.75; Laya
+typed-decisions 0.786 (agrees with Jev on 81.0% of reads — the highest
+Jev-alignment of any self-host option); Laya multilingual 0.595; our raw
+read 0.571 — choice 0.60, noul 0.50, score 0.62; GLiNER 2.5 Multi 0.476.
+Alignment-with-Jev tells the same story: Laya base 78.6% / typed 81.0% vs
+our read 61.9%, and choice-distribution JS 0.135-0.170 vs our 0.254. Two
+honest reads: a 6x-smaller RLCD-trained encoder nearly matches Jev on this
+task even zero-shot — the trained-decision direction is validated twice
+over — and its 512-1024 token context plus per-task fine-tuning needs are
+the trade. Our raw read keeps the zero-training, big-context, 27B-quality
+niche but is the weakest *judge* of the group. Confidence parity is
+measured too: our entropy confidence vs jev-1.13's on the same 28
+choice/score reads — mean |Δ| 0.649, Pearson r −0.23: the two confidence
+numbers are unrelated, and only Jev's carry a calibration claim.
 
 The read trick itself is folk knowledge — community tutorials do it with
 plain llama.cpp (`max_tokens=1`, `top_logprobs`, `e^logprob`), sometimes

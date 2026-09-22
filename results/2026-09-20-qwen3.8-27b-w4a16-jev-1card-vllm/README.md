@@ -146,16 +146,21 @@ boundary for this bundle:
 | >62 Choice options (Jev: 255) | **not supported** — single-token label mask | `jev_server.py` |
 
 **Measured vs jev-1.13.0 and self-hostable options** (n=42, this bundle's
-labelled set; `receipts/positioning-bench/`): jev-1.13.0 (live API)
-**0.881** — choice 0.95, noul 0.93, score 0.63 — vs our raw read 0.571,
-Laya (421M RLCD encoder, zero-shot) 0.643, GLiNER 2.5 Multi 0.476 — choice
-0.60 / **0.90** / 0.60, noul 0.50 / 0.64 / 0.29. Jev agrees with our read
-on only 61.9% of reads, diverges from our choice distributions (JS 0.254),
-and its confidence is unrelated to our entropy confidence (mean |Δ| 0.649,
-Pearson r −0.23): the RLCD calibration is the product, and we do not claim
-it. On the classification judgment itself, the trained-decision direction
-wins — closing our calibration gap (temperature fit on a held-out split,
-trained heads à la Solomon, or a task fine-tune) is future work.
+labelled set; `receipts/positioning-bench/`): jev-1.13.0 (live API) **0.881**
+— choice 0.95, noul 0.93, score 0.63; Laya base (421M RLCD encoder,
+zero-shot) **0.786** — choice 0.90, noul 0.64, score 0.75; Laya
+typed-decisions 0.786 (Jev-agreement 81.0%, the highest of any self-host
+option); Laya multilingual 0.595; our raw read 0.571 — choice 0.60, noul
+0.50, score 0.62; GLiNER 2.5 Multi 0.476. Jev-alignment: Laya base 78.6% /
+typed 81.0% vs our read 61.9%; choice-distribution JS 0.135-0.170 vs our
+0.254. A 6x-smaller RLCD-trained encoder nearly matches Jev on this task
+even zero-shot — the trained-decision direction is validated twice over;
+our raw read keeps the zero-training, big-context niche but is the weakest
+judge of the group. Confidence parity: our entropy confidence vs jev-1.13's
+on the same 28 choice/score reads — mean |Δ| 0.649, Pearson r −0.23:
+unrelated, and only Jev's carry a calibration claim. Closing the gap
+(temperature fit on a held-out split, trained heads, task fine-tune) is
+future work.
 
 ## Limitations
 
