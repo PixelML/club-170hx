@@ -109,17 +109,19 @@ class SWAKVPool(BaseSWAKVPool):
             self.kv_cache_dim = self.full_kv_pool.kv_cache_dim
         if isinstance(self.full_kv_pool, DSATokenToKVPool):
             self.index_head_dim = self.full_kv_pool.index_head_dim
-        # pixelml-pp-fix: outer pool must expose the real start_layer for
-        # pipeline parallelism; sub-pools already carry it (GH-unfiled PP bug:
-        # TritonAttnBackend reads token_to_kv_pool.start_layer and a rank with
-        # start_layer > 0 has no layers_mapping[0]).
-        self.start_layer = getattr(self.full_kv_pool, "start_layer", 0)
         # {layer_id: (index, is_swa_layer)}
         self.layers_mapping: Dict[int, Tuple[int, bool]] = {}
         for full_attn_layer_id, global_layer_id in enumerate(full_attention_layer_ids):
             self.layers_mapping[global_layer_id] = (full_attn_layer_id, False)
         for swa_layer_id, global_layer_id in enumerate(swa_attention_layer_ids):
             self.layers_mapping[global_layer_id] = (swa_layer_id, True)
+        # pixelml-pp-fix (GH-unfiled): TritonAttnBackend indexes
+        # token_to_kv_pool.get_value_buffer(token_to_kv_pool.start_layer), and
+        # under pipeline parallelism the layer-id lists are rank-sliced, so the
+        # rank's first global id is min(layers_mapping) - not the hardcoded 0
+        # this class used to carry. Sub-pool buffers are rank-local, so their
+        # (index, is_swa) values remain valid regardless.
+        self.start_layer = min(self.layers_mapping.keys()) if self.layers_mapping else 0
         self.full_to_swa_index_mapping: Optional[torch.Tensor] = None
 
         k_size, v_size = self.get_kv_size_bytes()
