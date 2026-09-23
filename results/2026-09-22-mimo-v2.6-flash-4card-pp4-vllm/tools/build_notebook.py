@@ -13,7 +13,7 @@ cells.append(md("\n".join([
     "",
     "| Metric | Value |",
     "|---|---|",
-    "| Verdict | **CLASSIFIED NEGATIVE — not servable on SM80 with stock runtimes (2026-09-22 builds)** |",
+    "| Verdict | **CLASSIFIED NEGATIVE — not servable on SM80 with stock runtimes (2026-09-22 builds)**; our fork gets to the last kernel (Marlin mxfp4 repack) and faults there — 0/4 boots survived, nondeterministic position |",
     "| Blocker chain | vLLM: FA3-sink + DiffKV pin (SM90+) · SGLang: PP bug (patched) → Triton MoE runner cannot read mxfp4 experts (capture: shape assert; eager: CUDA fault) |",
     "| PP3 | Memory-infeasible (53.7 GiB/rank + transients OOM at 62.0/63.5 GiB) |",
     "| PP4 | Boots past our PP patch; dies at the Triton fused-MoE runner in every mode |",
@@ -41,7 +41,7 @@ cells.append(code("\n".join([
     "",
     'print(f"experiment : {EXPERIMENT}")',
     'print(f"LIVE       : {LIVE}")',
-    'print("status     : CLASSIFIED NEGATIVE - A1-A5 receipts complete; no throughput number exists to replay.")',
+    'print("status     : official image = classified negative (A1-A5); fork image = blocked at Marlin mxfp4 repack (A6-A9, 0/4 boots survived); receipts A1-A9 complete.")',
 ])))
 
 helpers = "\n".join([
