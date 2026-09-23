@@ -1,0 +1,20 @@
+{
+  "stage": "hardware-qc",
+  "measured_utc": "2026-09-22T15:35:00Z",
+  "cards": "4x CMP 170HX (GA100, SM80, 65536 MiB each, rev a1)",
+  "power_limit_w": [180, 180, 180, 180],
+  "idle_temp_c": [39, 38, 39, 38],
+  "pwrbrk_not_active": 4,
+  "xid_in_dmesg": 0,
+  "pcie_links": [
+    {"gpu": 0, "gen_current": 1, "gen_max": 1, "width_current": 8, "width_max": 16},
+    {"gpu": 1, "gen_current": 1, "gen_max": 1, "width_current": 1, "width_max": 16},
+    {"gpu": 2, "gen_current": 1, "gen_max": 1, "width_current": 16, "width_max": 16},
+    {"gpu": 3, "gen_current": 1, "gen_max": 1, "width_current": 16, "width_max": 16}
+  ],
+  "notes": [
+    "Same slot topology as the 2026-09-05 GLM-5.3-Flash run: GPU1 sits on an x1-negotiated slot; decode is HBM-bound so PP decode is unaffected, model load and long-prompt prefill dip on GPU1.",
+    "Cards arrived from two other passthrough VMs; all four kept a 180 W runtime cap, matching the GLM bench cap for comparability.",
+    "Quad reconsolidated by host-side orchestrator; per-VM drain timeline in the infra log."
+  ]
+}
