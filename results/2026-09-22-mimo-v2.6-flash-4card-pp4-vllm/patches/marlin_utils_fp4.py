@@ -327,8 +327,10 @@ def _repack_marlin_experts(
         # over-read in-bounds memory; the kernel writes only its logical
         # output region, so the packed result is unchanged.
         raw = weight[i].view(torch.int32).T
+        # size(0) must be exactly size_k/8 (validated by the op); slack goes
+        # to columns so any layout-dependent over-read lands in zeros.
         qweight = torch.zeros(
-            raw.shape[0] + 128, raw.shape[1] + 1024,
+            raw.shape[0], raw.shape[1] * 2,
             dtype=torch.int32, device=raw.device,
         )
         qweight[: raw.shape[0], : raw.shape[1]] = raw
