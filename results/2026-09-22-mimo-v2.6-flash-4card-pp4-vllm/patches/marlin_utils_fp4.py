@@ -320,7 +320,18 @@ def _repack_marlin_experts(
     num_experts = weight.shape[0]
     out: torch.Tensor | None = None
     for i in range(num_experts):
-        qweight = weight[i].view(torch.int32).T.contiguous()
+        # pixelml-fix: pad the packed input generously. The marlin repack
+        # kernel can over-read past the logical (size_k//8, size_n) extent
+        # for some allocator layouts (observed as nondeterministic illegal
+        # memory access at 256-expert scale on SM80). Zero-padding gives any
+        # over-read in-bounds memory; the kernel writes only its logical
+        # output region, so the packed result is unchanged.
+        raw = weight[i].view(torch.int32).T
+        qweight = torch.zeros(
+            raw.shape[0] + 128, raw.shape[1] + 1024,
+            dtype=torch.int32, device=raw.device,
+        )
+        qweight[: raw.shape[0], : raw.shape[1]] = raw
         marlin_qweight = ops.gptq_marlin_repack(
             b_q_weight=qweight,
             perm=perm,
