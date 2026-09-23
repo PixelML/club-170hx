@@ -314,6 +314,7 @@ def _repack_marlin_experts(
     size_k: int,
     perm: torch.Tensor,
     is_a_8bit: bool,
+    tag: str = "w",
 ) -> torch.Tensor:
     """Repack each expert to marlin format into a preallocated output."""
     num_experts = weight.shape[0]
@@ -328,6 +329,9 @@ def _repack_marlin_experts(
             num_bits=4,
             is_a_8bit=is_a_8bit,
         )
+        if i % 32 == 0 or i == num_experts - 1:
+            torch.cuda.synchronize()
+            logger.info("pixelml-expert: %s repack %d/%d done", tag, i, num_experts)
         if out is None:
             out = torch.empty(
                 (num_experts, *marlin_qweight.shape),
@@ -652,7 +656,7 @@ def prepare_moe_mxfp4_layer_for_marlin(
 
         assert weight.shape == (e, size_n, size_k // 2)
 
-        return _repack_marlin_experts(weight, size_n, size_k, perm, is_a_8bit)
+        return _repack_marlin_experts(weight, size_n, size_k, perm, is_a_8bit, name)
 
     import torch as _t
     _t.cuda.synchronize()
