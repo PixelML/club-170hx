@@ -60,6 +60,25 @@
       "result": "FAILED - eager mode too",
       "notes": "sglang natively detected 'MiMo-V2 mxfp4 routed-expert layout'; weights 40.3 GiB/rank leaves real headroom",
       "error": "CUDA fault in scheduler processes during warmup forward (coredump attempted, SIGQUIT); no shape guard tripped in eager - the triton kernel reads packed mxfp4 weights as fp8 and faults"
+    },
+    {
+      "id": "A6-fork-pp4-marlin-repack",
+      "topology": "PP4, club fork image 487ecf187, qkv straddle fix applied",
+      "result": "FAILED - illegal memory access inside gptq_marlin_repack",
+      "error": "CUDA illegal memory access at _repack_marlin_experts (w13 256/256 done, w2 ~expert 128-160 on one rank; position varies by rank/boot)",
+      "analysis": "attention chain fully working on SM80 (TRITON_ATTN_DIFFKV + sinks + Marlin selection); the fault is in the marlin mxfp4 repack op at 256-expert scale, nondeterministic position"
+    },
+    {
+      "id": "A7-to-A9-standalone-and-mitigations",
+      "topology": "standalone probes + PP4 retries (triton moe backend, idempotency guard, expandable_segments, padded input, 12GiB safety slab)",
+      "result": "REPACK OP PASSES CLEAN in every isolated configuration; full-boot fault persists; safety-slab variant OOMed (12 GiB did not fit beside raw+packed peak)",
+      "evidence": [
+        "op passes: e=8/256, is_a_8bit both, real checkpoint tensors (all 256, NVMe copy), 4 concurrent processes on 4 GPUs, CUDA_LAUNCH_BLOCKING",
+        "compute-sanitizer unavailable: 170HX has GPU debugging features disabled (mining card)",
+        "expandable_segments ON fails separately on this driver (VMM expansion -> spurious OOM with 18 GiB free)",
+        "every repack crash poisons the guest CUDA UMD until VM reboot (3 wedges experienced)"
+      ],
+      "analysis": "the fault requires the full vLLM process context; kernel-level analysis blocked by disabled GPU debugging on this hardware"
     }
   ],
   "classified_findings": [
@@ -80,6 +99,7 @@
       "SGLang latest (PP bug patched by us; triton MoE runner cannot read mxfp4 experts)"
     ],
     "runs_on_this_hardware_instead": "MiMo-V2.6-Distill-Qwen-9B (dense qwen3_5 finetune) runs on vLLM/SGLang/llama.cpp on these cards; the Pro/Flash family needs SM90+ today",
-    "porting_estimate": "expert repack (mxfp4->fp8 W8A8-block or bf16) at load + retest, or upstream Ampere mxfp4 kernel; club autoround W4A16 repack precedent exists for DeepSeek on this stack"
+    "porting_estimate": "expert repack (mxfp4->fp8 W8A8-block or bf16) at load + retest, or upstream Ampere mxfp4 kernel; club autoround W4A16 repack precedent exists for DeepSeek on this stack",
+    "revised": "FORK IMAGE GETS MUCH FURTHER THAN OFFICIAL (attention solved, MoE routed to Marlin) but the final Marlin mxfp4 repack for 256-expert tensors faults nondeterministically inside the full process on SM80. Remaining paths: offline pre-repack + loader surgery (~1 day), newer base image when available, or upstream report."
   }
 }
