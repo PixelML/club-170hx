@@ -317,6 +317,13 @@ def _repack_marlin_experts(
     tag: str = "w",
 ) -> torch.Tensor:
     """Repack each expert to marlin format into a preallocated output."""
+    logger.info(
+        "pixelml-input: %s weight shape=%s dtype=%s contiguous=%s "
+        "storage_offset=%s data_ptr%%256=%d | perm numel=%d is_a_8bit=%s",
+        tag, tuple(weight.shape), weight.dtype, weight.is_contiguous(),
+        weight.storage_offset(), weight.data_ptr() % 256, perm.numel(),
+        is_a_8bit,
+    )
     num_experts = weight.shape[0]
     out: torch.Tensor | None = None
     for i in range(num_experts):
