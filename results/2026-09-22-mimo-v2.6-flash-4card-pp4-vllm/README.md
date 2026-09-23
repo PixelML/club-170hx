@@ -1,16 +1,14 @@
 # 2026-09-22-mimo-v2.6-flash-4card-pp4-vllm
 
-Run in progress. MiMo-V2.6-Flash-RL (XiaomiMiMo, revision 5711b268) on four
-CMP 170HX cards (SM80, 64 GiB each) behind one vLLM server, pipeline parallel 4.
+MiMo-V2.6-Flash-RL (XiaomiMiMo, revision 5711b268) on CMP 170HX cards (SM80,
+64 GiB each) behind one vLLM server with pipeline parallelism. Serves correctly;
+PP3 on three cards is the recommended shape (75 tok/s single-stream decode).
+Notebook: `notebooks/2026-09-22-mimo-v2.6-flash-4card-pp4-vllm.ipynb`.
 
-Scope and authorization: owner-directed run, committed before the first
-expensive load. Receipts land here as gates pass:
-
-- `gate.json` — boot + functional + deterministic-greedy gate
-- `p1.json` — greedy per-workload decode, median of 3
-- `p2.json` — sampled decode, median of 5
-- `conc_sweep.json` — concurrency scaling
-- `prefill.json` — prefill/TTFT sweep
-- `stability.json` — sustained rounds with power + thermals
-
-Bench scripts are committed beside the receipts they produced.
+- `receipts/bench/{pp3,pp4}/` — gate.json, p1.json, p2.json, launch.json
+- `receipts/runtime_attempts.json` — every attempt A1-A13 with evidence
+- `receipts/fork_resolution.json` — how the fork image covers the SM90-only features
+- `patches/mimo_v2.py` — the only runtime patch (upstream vLLM #57508 + #57784 backport)
+- `patches/cmpunlocker-late-pma-wprfix.diff` — driver fix for unlocked cards (Xid 31)
+- `patches/swa_memory_pool.py` — SGLang PP fix from the earlier SGLang attempts
+- `tools/` — bench_mimo.py, gate.py, verify_checkpoint.py, probe_sm80.sh, build_notebook.py

@@ -83,7 +83,11 @@ def stream_once(host, model, messages, temperature, top_p, ignore_eos, max_token
                 usage = chunk["usage"]
             choices = chunk.get("choices") or []
             if choices:
-                delta = choices[0].get("delta", {}).get("content")
+                d = choices[0].get("delta", {})
+                # reasoning deltas count as generated tokens: TTFT is the first
+                # token of either kind, or decode tok/s is inflated on thinking
+                # prompts
+                delta = d.get("content") or d.get("reasoning_content") or d.get("reasoning")
                 if delta:
                     if ttft is None:
                         ttft = time.perf_counter() - t0

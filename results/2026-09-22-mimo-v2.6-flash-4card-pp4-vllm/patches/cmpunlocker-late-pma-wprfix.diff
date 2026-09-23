@@ -1,0 +1,19 @@
+--- a/src/nvidia/src/kernel/gpu/mem_mgr/mem_mgr.c
++++ b/src/nvidia/src/kernel/gpu/mem_mgr/mem_mgr.c
+@@ -3808,6 +3808,16 @@
+         return NV_ERR_INSUFFICIENT_RESOURCES;
+     }
+ 
++    //
++    // pixelml-wprfix: the top reserved FB region holds the GSP WPR (relocated
++    // to the top of the unlocked FB). Registering it hands WPR pages to PMA:
++    // user kernels and the CE scrubber then hit Xid 31 REGION_VIOLATION.
++    //
++    NV_PRINTF(LEVEL_ERROR,
++              "SEC2_DEBUG_LATE_PMA: pixelml-wprfix: not registering 0x%llx-0x%llx (GSP WPR)\n",
++              pmaRegion.base, pmaRegion.limit);
++    return NV_OK;
++
+     status = pmaRegisterRegion(pPma, numPmaRegions, NV_FALSE, &pmaRegion, 0, NULL);
+ 
+     if (status == NV_OK)

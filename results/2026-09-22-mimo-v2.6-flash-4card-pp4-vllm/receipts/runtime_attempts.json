@@ -1,105 +1,134 @@
 {
-  "stage": "runtime-attempts",
-  "recorded_utc": "2026-09-22T16:12:00Z",
-  "images": {
-    "vllm": {
-      "reference": "vllm/vllm-openai:mimov25-cu129",
-      "digest": "sha256:39b1392da77b36187fde12858cbd1f9e2a9a0732b804b82d871a3446b28031e6",
-      "torch": "2.11.0+cu129",
-      "vllm_version": "0.1.dev16124+g4d7f212b2"
-    },
-    "sglang": {
-      "reference": "lmsysorg/sglang:latest",
-      "pulled_utc": "2026-09-22T16:00:00Z",
-      "size_gb": 52
-    }
+ "stage": "runtime-attempts",
+ "recorded_utc": "2026-09-22T16:12:00Z",
+ "images": {
+  "vllm": {
+   "reference": "vllm/vllm-openai:mimov25-cu129",
+   "digest": "sha256:39b1392da77b36187fde12858cbd1f9e2a9a0732b804b82d871a3446b28031e6",
+   "torch": "2.11.0+cu129",
+   "vllm_version": "0.1.dev16124+g4d7f212b2"
   },
-  "import_probe": {
-    "device_capability": [
-      8,
-      0
-    ],
-    "mimov2_registered": true,
-    "quant_methods_present": [
-      "fp8",
-      "fp8_per_block",
-      "mxfp4",
-      "mxfp8",
-      "gpt_oss_mxfp4",
-      "awq_marlin",
-      "gptq_marlin"
-    ],
-    "dedicated_model_module": "vllm: models/mimo.py + mimo_v2.py; sglang: models/mimo_v2.py, mimo_v2_nextn.py, mimo_mtp.py",
-    "sglang_sink_support": "sinks plumbed through triton and flashattention backends (flashinfer sink path is SM100-only)"
-  },
-  "attempts": [
-    {
-      "id": "A1-vllm-pp3-fa-backend",
-      "topology": "PP3, three >=x8 cards",
-      "result": "FAILED at attention backend init, before weight load",
-      "error": "AssertionError: Sinks are only supported in FlashAttention 3 (vllm/v1/attention/backends/flash_attn.py:661)",
-      "analysis": "checkpoint trains attention sinks into SWA layers (add_swa_attention_sink_bias=true); FA sink path requires FA3 = SM90+"
-    },
-    {
-      "id": "A2-vllm-pp3-triton-backend",
-      "topology": "PP3, VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1",
-      "result": "FAILED identically",
-      "error": "same assertion via flash_attn_diffkv",
-      "analysis": "mimo_v2.py hard-pins FlashAttentionDiffKVBackend when v_head_dim != head_dim (QK 192 vs V 128, always true); model-pinned backend defeats the env override"
-    },
-    {
-      "id": "A3-sglang-pp3",
-      "topology": "PP3, three >=x8 cards, --attention-backend triton, mem-fraction-static 0.90",
-      "result": "FAILED during weight load",
-      "error": "torch.OutOfMemoryError on PP2: 62.0 GiB allocated of 63.5, tried to allocate 1.16 GiB more",
-      "analysis": "53.7 GiB/rank of weights leaves no room for load transients; last rank also carries lm_head (~1.3 GiB). PP3 is memory-infeasible on 64 GiB cards with this loader regardless of KV budget"
-    },
-    {
-      "id": "A4-sglang-pp4",
-      "topology": "PP4, all four cards, --attention-backend triton, mem-fraction-static 0.88, expandable_segments",
-      "result": "FAILED - eager mode too",
-      "notes": "sglang natively detected 'MiMo-V2 mxfp4 routed-expert layout'; weights 40.3 GiB/rank leaves real headroom",
-      "error": "CUDA fault in scheduler processes during warmup forward (coredump attempted, SIGQUIT); no shape guard tripped in eager - the triton kernel reads packed mxfp4 weights as fp8 and faults"
-    },
-    {
-      "id": "A6-fork-pp4-marlin-repack",
-      "topology": "PP4, club fork image 487ecf187, qkv straddle fix applied",
-      "result": "FAILED - illegal memory access inside gptq_marlin_repack",
-      "error": "CUDA illegal memory access at _repack_marlin_experts (w13 256/256 done, w2 ~expert 128-160 on one rank; position varies by rank/boot)",
-      "analysis": "attention chain fully working on SM80 (TRITON_ATTN_DIFFKV + sinks + Marlin selection); the fault is in the marlin mxfp4 repack op at 256-expert scale, nondeterministic position"
-    },
-    {
-      "id": "A7-to-A9-standalone-and-mitigations",
-      "topology": "standalone probes + PP4 retries (triton moe backend, idempotency guard, expandable_segments, padded input, 12GiB safety slab)",
-      "result": "REPACK OP PASSES CLEAN in every isolated configuration; full-boot fault persists; safety-slab variant OOMed (12 GiB did not fit beside raw+packed peak)",
-      "evidence": [
-        "op passes: e=8/256, is_a_8bit both, real checkpoint tensors (all 256, NVMe copy), 4 concurrent processes on 4 GPUs, CUDA_LAUNCH_BLOCKING",
-        "compute-sanitizer unavailable: 170HX has GPU debugging features disabled (mining card)",
-        "expandable_segments ON fails separately on this driver (VMM expansion -> spurious OOM with 18 GiB free)",
-        "every repack crash poisons the guest CUDA UMD until VM reboot (3 wedges experienced)"
-      ],
-      "analysis": "the fault requires the full vLLM process context; kernel-level analysis blocked by disabled GPU debugging on this hardware"
-    }
-  ],
-  "classified_findings": [
-    "MiMo-V2.6 Flash/Pro cannot serve with correct semantics via the official vLLM image on SM80: sinks + DiffKV attention both resolve to FA3 (SM90+), and the DiffKV backend is pinned in model code so no backend override escapes it.",
-    "SGLang is the viable SM80 path so far: native mxfp4 routed-expert detection, sinks plumbed through the triton backend, mimo_v2_nextn.py present for the shipped MTP/DFlash drafter.",
-    "PP3 is memory-infeasible on 3x 64 GiB for this 161 GiB checkpoint with the sglang loader (load-time transients exceed the ~9.8 GiB slack).",
-    "A5: eager mode confirms the Triton fused-MoE path cannot consume mxfp4-packed expert weights on SM80 under any mode - shape assert under capture, raw CUDA fault in eager. Both official runtimes are excluded without porting work (mxfp4->fp8/bf16 expert repack at load, or an Ampere mxfp4 kernel)."
-  ],
-  "spec_decode": {
-    "drafter_in_checkpoint": "dflash/ (5 SWA layers, hidden 4096, qwen3 model_type, DFlashDraftModel arch, predicts 7 tokens) + model_mtp.safetensors (3-layer MTP head)",
-    "vllm_support": "dflash registered as speculative method with DFlashQwen3ForCausalLM draft arch in this build",
-    "sglang_support": "mimo_v2_nextn.py + EAGLE-style recipe in official cookbook (Hopper-focused); k=7 attempt queued behind a working base server"
-  },
-  "verdict": {
-    "decision": "CLASSIFIED NEGATIVE - MiMo-V2.6-Flash-RL does not serve on CMP 170HX (SM80) with stock runtimes as of 2026-09-22 builds",
-    "covers": [
-      "vLLM mimov25-cu129 (FA3 sinks + DiffKV pin)",
-      "SGLang latest (PP bug patched by us; triton MoE runner cannot read mxfp4 experts)"
-    ],
-    "runs_on_this_hardware_instead": "MiMo-V2.6-Distill-Qwen-9B (dense qwen3_5 finetune) runs on vLLM/SGLang/llama.cpp on these cards; the Pro/Flash family needs SM90+ today",
-    "porting_estimate": "expert repack (mxfp4->fp8 W8A8-block or bf16) at load + retest, or upstream Ampere mxfp4 kernel; club autoround W4A16 repack precedent exists for DeepSeek on this stack",
-    "revised": "FORK IMAGE GETS MUCH FURTHER THAN OFFICIAL (attention solved, MoE routed to Marlin) but the final Marlin mxfp4 repack for 256-expert tensors faults nondeterministically inside the full process on SM80. Remaining paths: offline pre-repack + loader surgery (~1 day), newer base image when available, or upstream report."
+  "sglang": {
+   "reference": "lmsysorg/sglang:latest",
+   "pulled_utc": "2026-09-22T16:00:00Z",
+   "size_gb": 52
   }
+ },
+ "import_probe": {
+  "device_capability": [
+   8,
+   0
+  ],
+  "mimov2_registered": true,
+  "quant_methods_present": [
+   "fp8",
+   "fp8_per_block",
+   "mxfp4",
+   "mxfp8",
+   "gpt_oss_mxfp4",
+   "awq_marlin",
+   "gptq_marlin"
+  ],
+  "dedicated_model_module": "vllm: models/mimo.py + mimo_v2.py; sglang: models/mimo_v2.py, mimo_v2_nextn.py, mimo_mtp.py",
+  "sglang_sink_support": "sinks plumbed through triton and flashattention backends (flashinfer sink path is SM100-only)"
+ },
+ "attempts": [
+  {
+   "id": "A1-vllm-pp3-fa-backend",
+   "topology": "PP3, three >=x8 cards",
+   "result": "FAILED at attention backend init, before weight load",
+   "error": "AssertionError: Sinks are only supported in FlashAttention 3 (vllm/v1/attention/backends/flash_attn.py:661)",
+   "analysis": "checkpoint trains attention sinks into SWA layers (add_swa_attention_sink_bias=true); FA sink path requires FA3 = SM90+"
+  },
+  {
+   "id": "A2-vllm-pp3-triton-backend",
+   "topology": "PP3, VLLM_ATTENTION_BACKEND=TRITON_ATTN_VLLM_V1",
+   "result": "FAILED identically",
+   "error": "same assertion via flash_attn_diffkv",
+   "analysis": "mimo_v2.py hard-pins FlashAttentionDiffKVBackend when v_head_dim != head_dim (QK 192 vs V 128, always true); model-pinned backend defeats the env override"
+  },
+  {
+   "id": "A3-sglang-pp3",
+   "topology": "PP3, three >=x8 cards, --attention-backend triton, mem-fraction-static 0.90",
+   "result": "FAILED during weight load",
+   "error": "torch.OutOfMemoryError on PP2: 62.0 GiB allocated of 63.5, tried to allocate 1.16 GiB more",
+   "analysis": "53.7 GiB/rank of weights leaves no room for load transients; last rank also carries lm_head (~1.3 GiB). PP3 is memory-infeasible on 64 GiB cards with this loader regardless of KV budget"
+  },
+  {
+   "id": "A4-sglang-pp4",
+   "topology": "PP4, all four cards, --attention-backend triton, mem-fraction-static 0.88, expandable_segments",
+   "result": "FAILED - eager mode too",
+   "notes": "sglang natively detected 'MiMo-V2 mxfp4 routed-expert layout'; weights 40.3 GiB/rank leaves real headroom",
+   "error": "CUDA fault in scheduler processes during warmup forward (coredump attempted, SIGQUIT); no shape guard tripped in eager - the triton kernel reads packed mxfp4 weights as fp8 and faults"
+  },
+  {
+   "id": "A6-fork-pp4-marlin-repack",
+   "topology": "PP4, club fork image 487ecf187, qkv straddle fix applied",
+   "result": "FAILED - illegal memory access inside gptq_marlin_repack",
+   "error": "CUDA illegal memory access at _repack_marlin_experts (w13 256/256 done, w2 ~expert 128-160 on one rank; position varies by rank/boot)",
+   "analysis": "attention chain fully working on SM80 (TRITON_ATTN_DIFFKV + sinks + Marlin selection); the fault is in the marlin mxfp4 repack op at 256-expert scale, nondeterministic position"
+  },
+  {
+   "id": "A7-to-A9-standalone-and-mitigations",
+   "topology": "standalone probes + PP4 retries (triton moe backend, idempotency guard, expandable_segments, padded input, 12GiB safety slab)",
+   "result": "REPACK OP PASSES CLEAN in every isolated configuration; full-boot fault persists; safety-slab variant OOMed (12 GiB did not fit beside raw+packed peak)",
+   "evidence": [
+    "op passes: e=8/256, is_a_8bit both, real checkpoint tensors (all 256, NVMe copy), 4 concurrent processes on 4 GPUs, CUDA_LAUNCH_BLOCKING",
+    "compute-sanitizer unavailable: 170HX has GPU debugging features disabled (mining card)",
+    "expandable_segments ON fails separately on this driver (VMM expansion -> spurious OOM with 18 GiB free)",
+    "every repack crash poisons the guest CUDA UMD until VM reboot (3 wedges experienced)"
+   ],
+   "analysis": "the fault requires the full vLLM process context; kernel-level analysis blocked by disabled GPU debugging on this hardware"
+  },
+  {
+   "id": "A10-driver-wpr-root-cause",
+   "topology": "all 4 cards, full-VRAM fill",
+   "result": "ROOT CAUSE of A6-A9: unlock driver registered the GSP WPR range with PMA; Xid 31 REGION_VIOLATION. Fixed; 4x63.0 GiB fill verified, 0 Xid",
+   "evidence": [
+    "late PMA region 0xff7300000-0xfffffffff contains wprStart=0xff7400000..wprEnd=0xffff00000",
+    "kernel log: Xid 31 MMU REGION_VIOLATION from python3 (GPC T1) and from the CE2 scrubber at 0xf_f7400000; scrubber timeouts",
+    "after patches/cmpunlocker-late-pma-wprfix.diff: every boot passes the Marlin repack"
+   ]
+  },
+  {
+   "id": "A11-fork-pp4-boot-garbage",
+   "topology": "PP4, fork image, straddle QKV patch",
+   "result": "BOOTS (repack passes) but output is garbage ('2,,,,,'); TP1 fp8 QKV re-shard mis-sliced scales",
+   "evidence": [
+    "checkpoint qkv scale rows = 4 chunks x ceil(rows/128) (layer0 [108,32], layer1 [116,32])",
+    "enforce-eager: same garbage -> not CUDA graphs"
+   ]
+  },
+  {
+   "id": "A12-fork-pp4-upstream-qkv-fix",
+   "topology": "PP4, all 4 cards",
+   "result": "SERVES: gate 4/4 correct (3/4 identical), P1 68.3 tok/s, P2 67.7 tok/s",
+   "evidence": [
+    "patches/mimo_v2.py = upstream vLLM #57508 + #57784 on the image file",
+    "receipts/bench/pp4/"
+   ]
+  },
+  {
+   "id": "A13-fork-pp3-three-cards",
+   "topology": "PP3 on x8/x16/x16 cards, partition 17,16,15",
+   "result": "SERVES, recommended: gate 4/4 correct + identical, P1 75.0 tok/s, P2 74.4 tok/s, 73,202-token KV cache",
+   "evidence": [
+    "default 16/16/16 split: last rank had no KV memory at 0.95",
+    "only patch mounted: mimo_v2.py",
+    "receipts/bench/pp3/"
+   ]
+  }
+ ],
+ "classified_findings": [
+  "MiMo-V2.6 Flash/Pro cannot serve with correct semantics via the official vLLM image on SM80: sinks + DiffKV attention both resolve to FA3 (SM90+), and the DiffKV backend is pinned in model code so no backend override escapes it.",
+  "SGLang is the viable SM80 path so far: native mxfp4 routed-expert detection, sinks plumbed through the triton backend, mimo_v2_nextn.py present for the shipped MTP/DFlash drafter.",
+  "PP3 is memory-infeasible on 3x 64 GiB for this 161 GiB checkpoint with the sglang loader (load-time transients exceed the ~9.8 GiB slack).",
+  "A5: eager mode confirms the Triton fused-MoE path cannot consume mxfp4-packed expert weights on SM80 under any mode - shape assert under capture, raw CUDA fault in eager. Both official runtimes are excluded without porting work (mxfp4->fp8/bf16 expert repack at load, or an Ampere mxfp4 kernel)."
+ ],
+ "spec_decode": {
+  "drafter_in_checkpoint": "dflash/ (5 SWA layers, hidden 4096, qwen3 model_type, DFlashDraftModel arch, predicts 7 tokens) + model_mtp.safetensors (3-layer MTP head)",
+  "vllm_support": "dflash registered as speculative method with DFlashQwen3ForCausalLM draft arch in this build",
+  "sglang_support": "mimo_v2_nextn.py + EAGLE-style recipe in official cookbook (Hopper-focused); k=7 attempt queued behind a working base server"
+ },
+ "verdict": "SERVES on SM80 with the club fork image plus the upstream MiMo QKV fix, after fixing the unlock driver's WPR allocation bug. The official image remains blocked (A1-A2, FA3-only sinks)."
 }
