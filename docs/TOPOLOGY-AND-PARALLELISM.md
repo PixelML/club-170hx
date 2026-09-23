@@ -107,6 +107,31 @@ base SM8x patch set and [bayley/vllm-170hx-glm5](https://github.com/bayley)
 for PP-on-170HX validation. We have not run their patch set; the numbers
 above are cited for comparison, not reused as our own measurement.
 
+**Community-reported, 2 cards: PP2 beats TP2 on every metric, including
+c=1 decode.** Qwen3.8-Flash-Next AWQ W4A16 (`wtdcode/Qwen3.8-Flash-Next-AWQ-W4A16`),
+2x CMP 170HX, bare metal (Intel X99, CPU root ports, Intel ACS blocks P2P,
+`NCCL_P2P_DISABLE=1`), cards at Gen2 x4 after `cmpunlocker`, no power cap
+(~80 W/card observed under load), `lazymio/vllm-backport:v0.11.0-sm80` +
+`plepp/patch_ple_pp_v0110.py` v0110.3, MTP k=3, PLE on CPU offload. The two
+configs differ only in the topology flag (`--tensor-parallel-size=2
+--enable-expert-parallel` vs `--pipeline-parallel-size=2`). Warm second run of
+`fulltest.py`, greedy, one run per config (no medians):
+
+| Metric | TP2+EP | PP2 |
+|---|---:|---:|
+| Decode c=1, 512 tok (tok/s) | 69.7 | **87.8** |
+| Prefill ~1.3k / ~5k / ~15k tok (tok/s) | 1,388 / 1,282 / 1,274 | **3,610 / 5,413 / 5,897** |
+| Aggregate c=4 / c=8 (tok/s) | 110.5 / 223.6 | **169.8 / 351.7** |
+| Sustained 2,048-tok decode (tok/s) | 45.3 | **50.1** |
+
+TP2's prefill is flat at ~1.3k tok/s across prompt sizes — the comm-bound
+signature this section predicts — while PP2 scales with chunk size. Tool
+calling, reasoning parser, a 21,946-token needle and image input passed on
+both configs. This is the first report that the PP-over-TP direction holds at
+two cards, on bare metal and on Intel root ports, not only on this club's
+four-card passthrough box. Source: [issue #59](https://github.com/PixelML/club-170hx/issues/59) (PhillThomas); not
+reproduced by this club.
+
 **Superseded on 2026-09-05: patched PP4 now beats TP4 on decode as well.** The
 unpatched-fork numbers below are kept as the before half of that story. With the
 24-patch port landed, PP4 + native MTP k=3 measures **87.55 tok/s** c=1 (temp 0,
@@ -248,6 +273,9 @@ there, and AWQ is the better-tested path on this club's own hardware today
 
 ## Attribution
 
+- [Issue #59](https://github.com/PixelML/club-170hx/issues/59) by PhillThomas — 2-card Qwen3.8-Flash-Next
+  PP2 vs TP2 comparison (§2). Community report, one node, single warm run
+  per config; not reproduced by this club.
 - [promisezackr/glm53-flash-170hx-pp8](https://github.com/promisezackr/glm53-flash-170hx-pp8),
   commit `90ec72e9525e90be701e742c70a20c4154418307` — PP8 cost model
   (§2), community PP8 + DFlash2 benchmark numbers (§2, §4). License:
