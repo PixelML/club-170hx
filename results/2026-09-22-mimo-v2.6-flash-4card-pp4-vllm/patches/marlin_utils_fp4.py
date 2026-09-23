@@ -333,14 +333,7 @@ def _repack_marlin_experts(
         # memory access at 256-expert scale on SM80). Zero-padding gives any
         # over-read in-bounds memory; the kernel writes only its logical
         # output region, so the packed result is unchanged.
-        raw = weight[i].view(torch.int32).T
-        # size(0) must be exactly size_k/8 (validated by the op); slack goes
-        # to columns so any layout-dependent over-read lands in zeros.
-        qweight = torch.zeros(
-            raw.shape[0], raw.shape[1] * 2,
-            dtype=torch.int32, device=raw.device,
-        )
-        qweight[: raw.shape[0], : raw.shape[1]] = raw
+        qweight = weight[i].view(torch.int32).T.contiguous()
         marlin_qweight = ops.gptq_marlin_repack(
             b_q_weight=qweight,
             perm=perm,
@@ -628,6 +621,14 @@ def prepare_moe_mxfp4_layer_for_marlin(
     Takes weight tensors as inputs and returns transformed tensors.
     Does NOT modify the layer in-place.
     """
+    # pixelml-fix: the marlin repack kernel can over-read slightly past its
+    # input tiles; depending on allocator layout that crosses into unmapped
+    # VA (nondeterministic illegal memory access on GA100 passthrough) or
+    # trips allocator expansion (unsupported on this driver). Pre-reserve a
+    # slab so over-reads land in mapped memory; released on return.
+    _pixelml_safety = torch.empty(
+        int(12 * 2**30 // 4), dtype=torch.float32, device=w13.device
+    )
     # pixelml-fix: the oracle invokes this once during weight loading and
     # again at process_weights_after_loading. After the first pass the
     # weights are Marlin-packed int32; repacking them again reads out of
@@ -637,7 +638,11 @@ def prepare_moe_mxfp4_layer_for_marlin(
             "pixelml-fix: mxfp4 weights already Marlin-packed; "
             "skipping re-prepare."
         )
-        return (
+        del _pixelml_safety
+        torch.cuda.empty_cache()
+        del _pixelml_safety
+    torch.cuda.empty_cache()
+    return (
             w13,
             w2,
             w13_scale,
