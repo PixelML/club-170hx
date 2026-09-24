@@ -117,6 +117,18 @@
     "only patch mounted: mimo_v2.py",
     "receipts/bench/pp3/"
    ]
+  },
+  {
+   "id": "A14-pp3-native-mtp",
+   "topology": "PP3 + MTP (mimo_mtp) k=2/k=3, V2 model runner",
+   "result": "SERVES, fastest: k=2 P1 116.9 tok/s, P2 90.7 tok/s; k=3 P1 113.7, P2 81.4; gate 4/4 both",
+   "evidence": [
+    "default runner under PP: AttributeError drafter on non-last ranks; with guards added, verify output was garbage (acceptance ~0)",
+    "VLLM_USE_V2_MODEL_RUNNER=1: correct output, no runner patch",
+    "patches/mimo_v2_mtp.py = image file + upstream vLLM #57508 (MTP half)",
+    "acceptance per position ~0.66/0.30/0.08; mean accepted length ~2.1",
+    "receipts/bench/pp3-mtp2/, receipts/bench/pp3-mtp3/"
+   ]
   }
  ],
  "classified_findings": [
