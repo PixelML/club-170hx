@@ -659,9 +659,21 @@ class MiMoV2Model(nn.Module, EagleModelMixin):
             prefix=f"{prefix}.layers",
         )
 
-        self.make_empty_intermediate_tensors = make_empty_intermediate_tensors_factory(
+        base_empty = make_empty_intermediate_tensors_factory(
             ["hidden_states", "residual"], config.hidden_size
         )
+
+        # pixelml-aux-relay: DFlash/EAGLE3 taps sit on several PP stages; every
+        # tap travels as its own intermediate tensor so the last stage sees all.
+        def make_empty_intermediate_tensors(batch_size, dtype, device):
+            tensors = base_empty(batch_size, dtype, device)
+            for k in range(len(self.aux_hidden_state_layers)):
+                tensors[f"aux_hidden_{k}"] = torch.zeros(
+                    (batch_size, config.hidden_size), dtype=dtype, device=device
+                )
+            return tensors
+
+        self.make_empty_intermediate_tensors = make_empty_intermediate_tensors
         if get_pp_group().is_last_rank:
             self.norm = RMSNorm(config.hidden_size, eps=config.layernorm_epsilon)
         else:
@@ -688,26 +700,41 @@ class MiMoV2Model(nn.Module, EagleModelMixin):
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
 
-        aux_hidden_states = self._maybe_add_hidden_state(
-            [], self.start_layer, hidden_states, residual
-        )
+        # pixelml-aux-relay: tap ids are global layer counts (0 = embeddings);
+        # taps from earlier PP stages arrive in the intermediate tensors.
+        aux_ids = tuple(self.aux_hidden_state_layers)
+        aux_slots: list[torch.Tensor | None] = [None] * len(aux_ids)
+        if aux_ids and intermediate_tensors is not None:
+            for k in range(len(aux_ids)):
+                aux_slots[k] = intermediate_tensors[f"aux_hidden_{k}"]
+
+        def tap(layer_count, hs, res):
+            if layer_count in aux_ids:
+                aux_slots[aux_ids.index(layer_count)] = (
+                    hs + res if res is not None else hs
+                )
+
+        if get_pp_group().is_first_rank:
+            tap(0, hidden_states, residual)
         for idx, layer in enumerate(
             islice(self.layers, self.start_layer, self.end_layer)
         ):
             hidden_states, residual = layer(positions, hidden_states, residual)
-            self._maybe_add_hidden_state(
-                aux_hidden_states, idx + 1, hidden_states, residual
-            )
+            tap(self.start_layer + idx + 1, hidden_states, residual)
 
         if not get_pp_group().is_last_rank:
-            return IntermediateTensors(
-                {"hidden_states": hidden_states, "residual": residual}
-            )
+            out = {"hidden_states": hidden_states, "residual": residual}
+            for k, aux in enumerate(aux_slots):
+                out[f"aux_hidden_{k}"] = (
+                    aux if aux is not None else torch.zeros_like(hidden_states)
+                )
+            return IntermediateTensors(out)
 
         hidden_states, _ = self.norm(hidden_states, residual)
 
-        if len(aux_hidden_states) > 0:
-            return hidden_states, aux_hidden_states
+        if aux_ids:
+            assert all(a is not None for a in aux_slots)
+            return hidden_states, list(aux_slots)
         return hidden_states
 
     def get_expert_mapping(self) -> list[tuple[str, str, int, str]]:

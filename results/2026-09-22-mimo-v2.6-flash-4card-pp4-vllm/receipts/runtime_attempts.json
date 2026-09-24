@@ -129,6 +129,26 @@
     "acceptance per position ~0.66/0.30/0.08; mean accepted length ~2.1",
     "receipts/bench/pp3-mtp2/, receipts/bench/pp3-mtp3/"
    ]
+  },
+  {
+   "id": "A15-pp3-dflash",
+   "topology": "PP3 + shipped DFlash drafter k=7/k=4, V2 runner, partition 17,17,14",
+   "result": "SERVES: k=7 P1 162.1 / P2 77.5 tok/s; k=4 P1 145.7 / P2 84.0; gate 4/4",
+   "evidence": [
+    "omni wrapper lacked SupportsEagle3 -> upstream #57784",
+    "last stage received 8192 of 20480 aux features -> aux-hidden relay in patches/mimo_v2.py (global layer ids)",
+    "16,16,15-style partition left 1.5 GiB KV with the 2.7 GiB drafter -> 17,17,14",
+    "per-position acceptance k=7: 0.72/0.48/0.31/0.19/0.12/0.09/0.07"
+   ]
+  },
+  {
+   "id": "A16-throughput-sweep",
+   "topology": "PP3, PP3+MTP2, PP4, TP4 at c=1..32",
+   "result": "c=32 aggregate: PP3+MTP2 495, PP3 447, PP4 418, TP4 78 tok/s; TP4 c=1 15.7 tok/s",
+   "evidence": [
+    "receipts/conc/*.json",
+    "tools/conc_sweep.py"
+   ]
   }
  ],
  "classified_findings": [

@@ -20,6 +20,8 @@ cells.append(md("\n".join([
     "| Decode, sampled T=1.0 (P2 median, warm) | **90.7 tok/s** PP3+MTP2 · 74.4 PP3 · 67.7 PP4 |",
     "| TTFT (short prompts, median) | 0.10 s PP3 · 0.11 s PP4 |",
     "| Functional gate | PP3 and PP3+MTP 4/4 correct + identical greedy · PP4 4/4 correct, 3/4 identical |",
+    "| DFlash k=7 (shipped drafter) | **162.1 tok/s greedy** (240 on counting, 184 math) · 77.5 sampled — best for greedy/code/math |",
+    "| Aggregate throughput, 32 streams | **495 tok/s** PP3+MTP2 · 447 PP3 · 418 PP4 · 78 TP4 |",
     "| MTP acceptance | mean accepted length ~2.1 at k=2/3; per-position ~0.66 / 0.30 / 0.08 |",
     "| KV cache (PP3, 16k context) | 73,202 tokens (4.5x concurrency at 16k) |",
     "| Runtime | club fork image (PixelML/sm80vllm) + upstream vLLM MiMo backports (mimo_v2.py, mimo_v2_mtp.py) |",
@@ -118,7 +120,7 @@ cells.append(md("\n".join([
 
 cells.append(code("\n".join([
     "rows = []",
-    "for topo in ('pp3-mtp2', 'pp3-mtp3', 'pp3', 'pp4'):",
+    "for topo in ('pp3-dflash7', 'pp3-dflash4', 'pp3-mtp2', 'pp3-mtp3', 'pp3', 'pp4'):",
     "    p1 = receipt('bench', topo, 'p1.json')",
     "    p2 = receipt('bench', topo, 'p2.json')",
     "    per = {w: statistics.median(r['decode_tok_s'] for r in v['reps']) for w, v in p1['runs'].items()}",
@@ -147,7 +149,7 @@ cells.append(md("\n".join([
     "PP4 non-identical case differs in wording only.",
     "",
     "**Untested:** concurrency sweep, long-prompt prefill sweep, sustained stability run,",
-    "and the shipped DFlash drafter. These are the next measurements.",
+    "These are the next measurements.",
     "",
     "### MTP under pipeline parallel",
     "",
@@ -212,6 +214,45 @@ cells.append(md("\n".join([
     "token of either kind; all numbers above use the fixed tool.",
 ])))
 
+cells.append(md("\n".join([
+    "### DFlash under pipeline parallel",
+    "",
+    "The checkpoint's `dflash/` drafter (5 SWA layers, block 8) reads target hidden states",
+    "after layers 0/11/23/35/47, spread over every PP stage. Three changes make it run:",
+    "",
+    "1. `patches/mimo_v2_omni.py`: upstream #57784 adds `SupportsEagle3` to the omni wrapper",
+    "   the checkpoint resolves to (`MiMoV2OmniForCausalLM`).",
+    "2. `patches/qwen3_dflash.py`: upstream #57784 applies the drafter's",
+    "   `attention_value_scale` (0.612).",
+    "3. `patches/mimo_v2.py` (this lane): an aux-hidden relay. Each PP stage ships",
+    "   `aux_hidden_{k}` slots in its intermediate tensors and fills the taps it owns,",
+    "   indexed by *global* layer count (upstream used the rank-local index, wrong under",
+    "   PP). Same pattern as the GLM lane's DFlash2 relay. No-op when no drafter is set.",
+    "",
+    "The drafter (2.7 GiB) sits on the last stage, so the partition moves to 17/17/14.",
+    "DFlash wins greedy and structured output; MTP k=2 wins at the vendor-recommended",
+    "T=1.0 and on prose. Per-position acceptance at k=7: 0.72/0.48/0.31/0.19/0.12/0.09/0.07.",
+    "",
+    "## 4b. Aggregate throughput (measured)",
+    "",
+    "`tools/conc_sweep.py`: c concurrent streams, T=1.0, `ignore_eos`, 256 output tokens,",
+    "2 rounds per level, `--max-num-seqs 32`, aggregate = completion tokens / wall time.",
+])))
+
+cells.append(code("\n".join([
+    "rows = []",
+    "for topo in ('pp3-mtp2', 'pp3', 'pp4', 'tp4'):",
+    "    lv = {l['concurrency']: l['aggregate_tok_s'] for l in receipt('conc', topo + '.json')['levels']}",
+    "    rows.append([topo.upper(), *[f\"{lv[c]:.1f}\" for c in (1, 4, 8, 16, 32)]])",
+    "render_table(['Topology', 'c=1', 'c=4', 'c=8', 'c=16', 'c=32 (tok/s)'], rows)",
+])))
+
+cells.append(md("\n".join([
+    "PP3+MTP2 leads at every concurrency. PP4 trails PP3 everywhere: the fourth stage adds",
+    "a hop across the x1 card. **TP4 is 4.6x slower single-stream and flat at ~75 tok/s",
+    "aggregate** — every layer all-reduces over Gen1 PCIe with no P2P.",
+])))
+
 cells.append(code("\n".join([
     "attempts = receipt('runtime_attempts.json')",
     "rows = []",
@@ -256,6 +297,10 @@ reproduce = "\n".join([
     "  --gpu-memory-utilization 0.97 --max-model-len 16384 --max-num-seqs 16 \\",
     "  --reasoning-parser mimo",
     "```",
+    "",
+    "**Greedy/code workloads: DFlash k=7 instead.** Add `-e VLLM_USE_V2_MODEL_RUNNER=1`,",
+    "`VLLM_PP_LAYER_PARTITION=17,17,14`, mount `$P/mimo_v2_omni.py` and `$P/qwen3_dflash.py`, and use",
+    "`--speculative-config '{\"method\":\"dflash\",\"model\":\"/models/mimo-v2.6-flash-rl/dflash\",\"num_speculative_tokens\":7}'`.",
     "",
     "**Faster: add the MTP head (k=2).** Add `-e VLLM_USE_V2_MODEL_RUNNER=1`, mount",
     "`$P/mimo_v2_mtp.py` over `.../vllm/model_executor/models/mimo_v2_mtp.py`, and append:",
