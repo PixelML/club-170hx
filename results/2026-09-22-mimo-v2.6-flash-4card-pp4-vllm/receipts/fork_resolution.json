@@ -1,0 +1,25 @@
+{
+ "stage": "resolution-fork-image",
+ "recorded_utc": "2026-09-23T04:40:00Z",
+ "finding": "The classified negative in runtime_attempts.json applies to the OFFICIAL vllm mimov25-cu129 image only. The club fork image ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905 (PixelML/sm80vllm @ 487ecf187, already proven on this fabric by the GLM-09-05 lane) contains every missing piece:",
+ "chain": [
+  {
+   "blocker": "attention sinks on SM80 (FA3-only assert in official image)",
+   "fork_resolution": "mimo_v2.py auto-falls back to TRITON_ATTN_DIFFKV when FLASH_ATTN_DIFFKV.is_supported_on_current_device(head_size, head_size_v, has_sinks) is False; the Triton DiffKV backend implements sinks (triton_attn_diffkv.py)"
+  },
+  {
+   "blocker": "DiffKV hard-pin (v_head_dim 192 vs 128)",
+   "fork_resolution": "same fallback: backend selection is conditional with an override flag (--attention-backend FLASH_ATTN_DIFFKV|TRITON_ATTN_DIFFKV)"
+  },
+  {
+   "blocker": "mxfp4-packed routed experts (deep_gemm-only upstream)",
+   "fork_resolution": "Fp8Config.get_quant_method branches on store_dtype=='mxfp4' and returns Mxfp4MoEMethod (quantization/mxfp4.py); select_mxfp4_moe_backend walks FLASHINFER_TRTLLM -> CUTLASS -> MARLIN with per-candidate is_supported_config checks - Marlin is the SM80 workhorse (BATCHED_MARLIN for cuda-graph capture)"
+  }
+ ],
+ "why_we_missed_it": "the model card recommends the official image; the fork's mimo support postdates the lane's first bring-up attempt",
+ "labels": {
+  "fork_chain": "verified by execution 2026-09-23 (A12, A13)",
+  "boot": "MEASURED - serves correctly on PP3 and PP4"
+ },
+ "launch": "see receipts/bench/pp3/launch.json and the notebook's Reproduce section"
+}

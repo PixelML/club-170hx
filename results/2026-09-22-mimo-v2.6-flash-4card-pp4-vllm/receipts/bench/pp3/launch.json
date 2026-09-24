@@ -1,0 +1,29 @@
+{
+ "image": "ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905",
+ "gpus": "device=0,2,3 (x8, x16, x16)",
+ "env": [
+  "VLLM_PP_LAYER_PARTITION=17,16,15"
+ ],
+ "vllm_args": [
+  "--model",
+  "/models/mimo-v2.6-flash-rl",
+  "--served-model-name",
+  "mimo-v2.6-flash",
+  "--pipeline-parallel-size",
+  "3",
+  "--trust-remote-code",
+  "--gpu-memory-utilization",
+  "0.97",
+  "--max-model-len",
+  "32768",
+  "--reasoning-parser",
+  "mimo",
+  "--max-num-seqs",
+  "16",
+  "--max-model-len",
+  "16384"
+ ],
+ "patch_mounts": [
+  "patches/mimo_v2.py"
+ ]
+}
