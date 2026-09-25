@@ -1,0 +1,39 @@
+{
+ "image": "ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905",
+ "gpus": "all 3 cards, PCIe x16 each (Gen1 at measurement time)",
+ "env": [
+  "VLLM_USE_V2_MODEL_RUNNER=1",
+  "VLLM_PP_LAYER_PARTITION=17,16,15",
+  "VLLM_ENABLE_CUDA_COMPATIBILITY=0",
+  "VLLM_USAGE_SOURCE=production-docker-image",
+  "VLLM_BUILD_COMMIT=unknown",
+  "VLLM_BUILD_PIPELINE=local",
+  "VLLM_BUILD_URL=",
+  "VLLM_IMAGE_TAG=local/vllm-openai:dev"
+ ],
+ "vllm_args": [
+  "--model",
+  "/models/mimo-v2.6-flash-rl",
+  "--served-model-name",
+  "mimo-v2.6-flash",
+  "--pipeline-parallel-size",
+  "3",
+  "--trust-remote-code",
+  "--gpu-memory-utilization",
+  "0.97",
+  "--max-model-len",
+  "32768",
+  "--reasoning-parser",
+  "mimo",
+  "--max-num-seqs",
+  "32",
+  "--max-model-len",
+  "32768",
+  "--speculative-config",
+  "{\"method\":\"mimo_mtp\",\"num_speculative_tokens\":2}"
+ ],
+ "patch_mounts": [
+  "patches/mimo_v2.py",
+  "patches/mimo_v2_mtp.py"
+ ]
+}

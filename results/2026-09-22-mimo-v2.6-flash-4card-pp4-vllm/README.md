@@ -4,12 +4,14 @@ MiMo-V2.6-Flash-RL (XiaomiMiMo, revision 5711b268) on CMP 170HX cards (SM80,
 64 GiB each) behind one vLLM server with pipeline parallelism. Serves correctly;
 PP3 on three cards with the native MTP head (k=2) is the recommended shape:
 117 tok/s greedy, 91 tok/s sampled single-stream decode (75 tok/s without MTP),
-495 tok/s aggregate at 32 streams. The shipped DFlash drafter reaches 162 tok/s greedy.
+495 tok/s aggregate at 32 streams (561 tok/s after the move to three x16 cards, `receipts/x16/`). The shipped DFlash drafter reaches 162 tok/s greedy.
 TP4 measured 4.6x slower (no P2P, Gen1 links).
 Notebook: `notebooks/2026-09-22-mimo-v2.6-flash-4card-pp4-vllm.ipynb`.
 
 - `receipts/bench/{pp3-dflash7,pp3-dflash4,pp3-mtp2,pp3-mtp3,pp3,pp4}/` — gate.json, p1.json, p2.json, launch.json
 - `receipts/conc/` — aggregate-throughput sweep (PP3, PP3+MTP2, PP4, TP4)
+- `receipts/x16/` — re-run on three x16 cards: decode, prefill c=1, concurrency (PP3, +MTP2, +DFlash7)
+- `media/` — "MiMo on the 170HX": 35 s song + animated explainer (YuE2 song, p5.brush animation)
 - `receipts/runtime_attempts.json` — every attempt A1-A16 with evidence
 - `receipts/fork_resolution.json` — how the fork image covers the SM90-only features
 - `patches/mimo_v2.py` — upstream vLLM #57508 + #57784 backport + PP aux-hidden relay for DFlash (required)
