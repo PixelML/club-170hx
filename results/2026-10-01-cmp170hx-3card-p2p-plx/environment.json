@@ -1,0 +1,15 @@
+{
+  "measured": "2026-10-01",
+  "cards": "3x NVIDIA CMP 170HX (GA100, SM80), memory-unlocked to 65536 MiB each",
+  "unlock": "cmpunlocker upstream (amoghmunikote/cmpunlocker @ 88e39ce), host-side, NVIDIA open kernel modules 615.71.09, plus patches/rebar-serialize.patch (this bundle)",
+  "p2p_patches": "none (no BAR1-P2P driver patches applied)",
+  "power_limit_w": [250, 250, 250],
+  "pcie_link": "Gen2 x16 on all three cards (LnkSta read by nvidia-smi)",
+  "topology": "all three cards on the same CPU socket; GPU0 and GPU1 behind one PLX PEX 8747 switch, GPU2 behind a second PEX 8747 switch; nvidia-smi topo -m: GPU0-GPU1 PIX, GPU0/1-GPU2 PHB",
+  "acs": "PLX downstream ports ACSCtl = 0x001d (source validation, request redirect, completion redirect, upstream forwarding enabled); left at firmware default",
+  "host": "dual Xeon E5-2686 v4, Proxmox VE 9 (Debian 13), kernel 7.0.2, bare metal (no passthrough)",
+  "kernel_cmdline_pci": "intel_iommu=on iommu=pt pci=realloc",
+  "bios": "Above 4G decoding enabled, MMIO high size 1024G",
+  "cuda_driver_api": "CUDA 13.4 driver (user-mode) for tools/p2p_probe.py and tools/p2p_latency.py (ctypes over libcuda, no toolkit)",
+  "nccl_runtime": "ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905 (torch 2.13.0+cu130, NCCL 2.29.7), tools/nccl_allreduce.py via torchrun"
+}

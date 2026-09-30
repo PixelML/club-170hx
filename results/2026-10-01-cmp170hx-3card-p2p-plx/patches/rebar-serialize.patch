@@ -1,0 +1,31 @@
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -530,6 +530,13 @@
+ #endif
+ }
+ 
++/*
++ * Per-GPU probe kthreads run concurrently at module load. Resizing BAR1
++ * releases/reassigns resources on the shared upstream bridge, so two GPUs
++ * behind the same switch corrupt the resource tree. Serialize it.
++ */
++static DEFINE_MUTEX(nv_rebar_lock);
++
+ static int nv_resize_pcie_bars(struct pci_dev *pci_dev) {
+ #if defined(NV_PCI_REBAR_GET_POSSIBLE_SIZES_PRESENT)
+     u16 cmd;
+@@ -2399,11 +2406,14 @@
+ 
+     nv_cmp_unlock_bar1_resize(pci_dev);
+ 
++    mutex_lock(&nv_rebar_lock);
+     if (nv_resize_pcie_bars(pci_dev)) {
++        mutex_unlock(&nv_rebar_lock);
+         nv_printf(NV_DBG_ERRORS,
+             "NVRM: Fatal Error while attempting to resize PCIe BARs.\n");
+         goto err_zero_dev;
+     }
++    mutex_unlock(&nv_rebar_lock);
+ 
+     if (pci_dev->device == 0x20C2 || pci_dev->device == 0x2082) {
+         resource_size_t bar1_len = pci_resource_len(pci_dev, NV_GPU_BAR1);

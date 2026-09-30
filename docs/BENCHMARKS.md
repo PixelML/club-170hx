@@ -572,6 +572,10 @@ The SM80 fallback patches above extend that work. The three-card baseline
 is [PixelML/DeepSeek-V4-Flash-0731-CMP-170HX](https://github.com/PixelML/DeepSeek-V4-Flash-0731-CMP-170HX)
 (83.3 tok/s aggregate decode, PP3, DSpark k=5).
 
+## Interconnect: GPU-to-GPU copies and all-reduce without P2P, three cards behind PLX switches (measured 2026-10-01)
+
+Three memory-unlocked cards at Gen2 x16, two behind one PLX PEX 8747 switch and one behind a second, bare metal, no BAR1-P2P driver patches. `cuDeviceCanAccessPeer` is 0 on all six ordered pairs, so the driver stages every GPU-to-GPU copy through host memory: 6.21–6.30 GB/s at 256 MiB (single-card D2H 6.68 GB/s), 22 µs at 4 KiB, identical same-switch and cross-switch. NCCL picks SHM: two-GPU all-reduce 3.69 GB/s (same switch) and 3.85 GB/s (cross switch) bus bandwidth at 256 MiB, 120–145 µs at 8 KiB. On hosts where cards share a switch, the unlock's concurrent BAR1 resize must be serialized (patch in the bundle). Evidence: [results/2026-10-01-cmp170hx-3card-p2p-plx](../results/2026-10-01-cmp170hx-3card-p2p-plx/README.md) · [notebook](../notebooks/2026-10-01-cmp170hx-3card-p2p-plx-cuda.ipynb).
+
 ## Negative results matter
 
 ### GLM-5.3-Flash NVFP4
