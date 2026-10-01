@@ -578,6 +578,9 @@ Three memory-unlocked cards at Gen2 x16, two behind one PLX PEX 8747 switch and 
 ## Qwen3.8-27B W4A16, TP1 vs TP2 without P2P, vLLM sm80 (measured 2026-10-01)
 
 Stock `dbirks/Qwen3.8-27B-W4A16-AutoRound` on the club SM80 vLLM image, 180 W, Gen2 x16 behind PLX switches, no P2P (NCCL SHM; vLLM uses PYNCCL only). Recipe suite (`live_benchmark.py`), prefix cache off. Decode256: TP1 54.0, TP2 72.0 (same switch) / 71.9 (cross switch), TP2 + MTP k=3 103.5 tok/s. Prefill at 6,603 tokens: 1,914 (TP1) vs 1,695–1,736 (TP2) tok/s. Aggregate at c=16: 546 (TP1), 530–535 (TP2), 385 (TP2 + MTP). TP2 buys single-stream latency and 2.5x the KV cache, not throughput. Not comparable to the DFlash2 recipe. Evidence: [results/2026-10-01-qwen3.8-27b-w4a16-2card-tp2-vllm](../results/2026-10-01-qwen3.8-27b-w4a16-2card-tp2-vllm/README.md) · [notebook](../notebooks/2026-10-01-qwen3.8-27b-w4a16-2card-tp2-vllm.ipynb).
+## MiMo-V2.6-Flash-RL PP3 re-run, Gen2 x16 behind PLX switches (measured 2026-10-01)
+
+Same image, patches and protocol as the 2026-09-24 x16 re-run, on three cards at Gen2 x16 behind two PLX switches, bare metal, no P2P, 180 W. P1 greedy c=1: PP3 74.6 (prior 75.5), PP3 + MTP k=2 113.8 (117.7) tok/s; aggregate c=32: 450 (455) and 518 (561); uncached prefill 4,107 / 4,082 tok/s at ~20.3k tokens; gates 4/4. Doubling the link rate does not move PP decode. Evidence: [results/2026-10-01-mimo-v2.6-flash-3card-pp3-vllm](../results/2026-10-01-mimo-v2.6-flash-3card-pp3-vllm/README.md) · [notebook](../notebooks/2026-10-01-mimo-v2.6-flash-3card-pp3-vllm.ipynb).
 
 ## Negative results matter
 

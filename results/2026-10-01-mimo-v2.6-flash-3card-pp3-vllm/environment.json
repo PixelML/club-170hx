@@ -1,0 +1,10 @@
+{
+  "cards": "3x CMP 170HX (GA100, SM80), memory-unlocked to 64 GB, 180 W limit",
+  "pcie": "Gen2 x16 each; two cards behind one PLX PEX 8747 switch, one behind a second; same CPU socket; bare metal; no P2P",
+  "driver": "NVIDIA open 615.71.09 + host-side cmpunlocker (upstream 88e39ce) + BAR1-resize serialization patch",
+  "image": "ghcr.io/pixelml/club-170hx@sha256:62f612b49614523e6a46e1493d35d3efd1f363917129d38cc923a31053693bfb (tag vllm-glm53-sm80-pp-20260905)",
+  "model": "XiaomiMiMo/MiMo-V2.6-Flash-RL @ 5711b268169967567844e1e560e8a3966da959b1 (65 shards, 172.9 GB)",
+  "launch": "VLLM_PP_LAYER_PARTITION=17,16,15; --pipeline-parallel-size 3 --gpu-memory-utilization 0.97 --max-model-len 32768 --max-num-seqs 32 --reasoning-parser mimo; MTP run adds VLLM_USE_V2_MODEL_RUNNER=1 and mimo_mtp k=2",
+  "patch_mounts": "mimo_v2.py (+ mimo_v2_mtp.py for MTP) from results/2026-09-22-mimo-v2.6-flash-4card-pp4-vllm/patches",
+  "cooling": "forced airflow, chassis fans fixed at full duty during the runs; 80 C core / new-Xid stop guard"
+}
