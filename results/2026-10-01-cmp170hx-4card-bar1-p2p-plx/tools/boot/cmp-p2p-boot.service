@@ -1,0 +1,13 @@
+[Unit]
+Description=CMP 170HX P2P PCIe layout (setpci + one kexec), then nvidia load
+DefaultDependencies=no
+After=local-fs.target systemd-udev-settle.service
+Before=docker.service nvidia-persistenced.service pve-guests.service gpu-fan.service multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/cmp-p2p-boot
+
+[Install]
+WantedBy=multi-user.target

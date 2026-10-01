@@ -1,0 +1,31 @@
+#!/bin/sh
+# modprobe "install nvidia" hook (also copied into the initramfs). Decides how nvidia loads:
+#  - before cmp-p2p-boot has applied the PCIe layout (no cmp_layout=done on the cmdline,
+#    no /run/cmp-safe): don't load yet
+#  - layout applied and every CMP 170HX has a 64 GB BAR1: load with static-BAR1 P2P
+#  - anything else: load the safe (non-P2P) driver so the GPUs still work
+OPTS="$*"
+P2P='NVreg_RegistryDwords=RMForceStaticBar1=1;RMPcieP2PType=1;RmForceEnableGen2=1;RMPcieLinkSpeed=0x1'
+log() { echo "cmp-guard: $*" > /dev/kmsg 2>/dev/null; }
+
+if [ ! -e /run/cmp-safe ] && ! grep -qw cmp_layout=done /proc/cmdline; then
+    log "PCIe layout not applied yet; nvidia load deferred to cmp-p2p-boot"
+    exit 0
+fi
+n=0
+for d in /sys/bus/pci/devices/*; do
+    [ "$(cat "$d/vendor")" = 0x10de ] && [ "$(cat "$d/device")" = 0x20c2 ] || continue
+    line=$(sed -n 2p "$d/resource")          # BAR1: start end flags
+    start=${line%% *}; rest=${line#* }; end=${rest%% *}
+    if [ $((end - start + 1)) -ne $((64 << 30)) ]; then
+        log "$(basename "$d") BAR1 is not 64 GB; loading without P2P"
+        exec /sbin/modprobe --ignore-install nvidia $OPTS
+    fi
+    n=$((n + 1))
+done
+if [ "$n" -gt 0 ] && [ ! -e /run/cmp-safe ]; then
+    log "$n CMP cards with 64 GB BAR1; loading with static-BAR1 P2P"
+    exec /sbin/modprobe --ignore-install nvidia $OPTS "$P2P"
+fi
+log "loading without P2P"
+exec /sbin/modprobe --ignore-install nvidia $OPTS

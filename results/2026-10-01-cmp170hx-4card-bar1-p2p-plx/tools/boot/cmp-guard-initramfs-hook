@@ -1,0 +1,7 @@
+#!/bin/sh
+# Copy the nvidia load guard into the initramfs (zz-cmp-guard.conf is copied with /etc/modprobe.d).
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0;; esac
+. /usr/share/initramfs-tools/hook-functions
+copy_file script /usr/local/sbin/cmp-nvidia-guard /usr/local/sbin/cmp-nvidia-guard
