@@ -1,0 +1,14 @@
+# 64-bit prefetchable windows, CPU2 root bus (aperture 0x30000000000-0x3ffffffffff = 1 TiB), from lspci/proc-iomem
+# (1) BIOS + kernel default, upstream driver (no P2P), 3 cards, 2026-10-01 13:05 GMT+7
+root port A (switch A, 2 cards): 0x3ffe8000000-0x3fff5ffffff  224 MiB  (top of the aperture: cannot grow upward)
+  card on port A1: BAR1 0x3fff0000000 64 MiB (fell back), BAR3 32 MiB
+  card on port A2: BAR1 0x3ffe8000000 64 MiB (fell back), BAR3 32 MiB
+root port B (switch B, 1 card): 0x31000000000-0x32001ffffff  64 GiB + 32 MiB (relocated: single child)
+  card on port B1: BAR1 0x31000000000 64 GiB, BAR3 0x32000000000 32 MiB
+# static-BAR1 P2P driver (fork) on the same layout: second card behind switch A
+#   "BAR 1 [mem size 0x1000000000]: can't assign; no space" (and 32G..8G retries) -> no BAR1 -> probe-time init -EIO every 12 s
+# (2) setpci unlock + ReBAR 64 GiB on all cards, remove + rescan of both root ports (kernel re-layout), 3 cards
+root port A: 0x31000000000-0x33003ffffff  128 GiB + 64 MiB
+  card A1: BAR1 0x31000000000 64 GiB, BAR3 0x32000000000 32 MiB   <- BAR3 placed after BAR1
+  card A2: BAR1 "can't assign; no space"   <- next 64 GiB-aligned slot 0x33000000000 needs 32 MiB more than the window
+root port B: 0x34000000000-0x35001ffffff, card B1 BAR1 0x34000000000 64 GiB

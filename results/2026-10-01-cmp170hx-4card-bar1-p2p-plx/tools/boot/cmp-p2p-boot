@@ -1,0 +1,39 @@
+#!/bin/bash
+# Boot step for CMP 170HX P2P on this host. The BIOS leaves each PLX switch's window too small
+# for two 64 GB BAR1s, so: load a kexec image, program the layout with setpci, kexec once so the
+# kernel adopts it, then load nvidia (cmp-nvidia-guard picks P2P or safe mode).
+# Any failure before the hardware is touched -> safe mode on this boot, no kexec.
+# Disable with: touch /etc/cmp-p2p-disable
+set -u
+POWER_LIMIT=180
+log() { echo "cmp-p2p-boot: $*"; }
+load_nvidia() {
+    modprobe nvidia && modprobe nvidia_uvm
+    nvidia-smi -pm 1 >/dev/null 2>&1
+    nvidia-smi -pl "$POWER_LIMIT" >/dev/null 2>&1
+    log "nvidia: $(grep -i '^RegistryDwords' /proc/driver/nvidia/params 2>/dev/null)"
+}
+safe() { log "SAFE MODE: $*"; touch /run/cmp-safe; load_nvidia; exit 0; }
+
+if grep -qw cmp_layout=done /proc/cmdline; then
+    log "layout applied by previous kexec"
+    load_nvidia
+    exit 0
+fi
+[ -e /etc/cmp-p2p-disable ] && safe "/etc/cmp-p2p-disable present"
+lsmod | grep -q '^nvidia ' && safe "nvidia already loaded; can't reprogram BARs"
+
+k=$(uname -r)
+cmd="$(sed -E 's/(^| )initrd=[^ ]*//' /proc/cmdline) cmp_layout=done"
+kexec -l "/boot/vmlinuz-$k" --initrd="/boot/initrd.img-$k" --command-line="$cmd" || safe "kexec load failed"
+
+python3 /usr/local/sbin/cmp-bar-layout.py --unlock > /run/cmp-bar-layout.log 2>&1
+rc=$?
+if [ "$rc" -eq 2 ]; then
+    kexec -u
+    safe "layout refused, hardware untouched: $(tail -1 /run/cmp-bar-layout.log)"
+fi
+# rc 0 = programmed; rc 1 = a setpci write failed part-way. Either way the hardware no longer
+# matches the kernel's view, so always kexec; the guard checks BAR1 sizes on the other side.
+log "layout rc=$rc; kexec into the same kernel"
+systemctl --no-block kexec

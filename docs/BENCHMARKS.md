@@ -582,6 +582,10 @@ Stock `dbirks/Qwen3.8-27B-W4A16-AutoRound` on the club SM80 vLLM image, 180 W, G
 
 Same image, patches and protocol as the 2026-09-24 x16 re-run, on three cards at Gen2 x16 behind two PLX switches, bare metal, no P2P, 180 W. P1 greedy c=1: PP3 74.6 (prior 75.5), PP3 + MTP k=2 113.8 (117.7) tok/s; aggregate c=32: 450 (455) and 518 (561); uncached prefill 4,107 / 4,082 tok/s at ~20.3k tokens; gates 4/4. Doubling the link rate does not move PP decode. Evidence: [results/2026-10-01-mimo-v2.6-flash-3card-pp3-vllm](../results/2026-10-01-mimo-v2.6-flash-3card-pp3-vllm/README.md) · [notebook](../notebooks/2026-10-01-mimo-v2.6-flash-3card-pp3-vllm.ipynb).
 
+## Interconnect: static-BAR1 P2P on four cards behind PLX switches (measured 2026-10-01)
+
+Four memory-unlocked cards at Gen2 x16, two per PLX PEX 8747 switch, both switches on one Broadwell socket, bare metal (plus one LXC run), 180 W. Driver: upstream cmpunlocker + serialized BAR1 resize + the four BAR1-P2P patches from admunch888/cmpunlocker, `RMForceStaticBar1=1;RMPcieP2PType=1`. Two cards behind one switch only get their 64 GiB BAR1 with a hand-programmed layout (each 32 MiB BAR3 placed below its 64 GiB-aligned BAR1) applied before the driver loads and adopted via kexec. Results: peer access and keyed 256 MiB copies pass on all 12 ordered pairs at 5.79 GB/s; latency 16 / 25 / 194 µs at 4 KiB / 64 KiB / 1 MiB vs 22 / 41 / 343 µs host-staged; above 16 MiB staged is ~8% faster. NCCL 2-GPU same-switch all-reduce busbw 3.7 → 4.8 GB/s (P2P/CUMEM). Qwen3.8-27B TP2 c=1 decode +11% (+14% with MTP k=3), prefill ±2%. GLM-5.3-Flash TP4 (Morrowmake recipe 1.6.0, DFlash2): P2P on 293/229/154 tok/s single user vs P2P off 396/306/193 — the host-staged all-reduce wins on this path; P2P off matches the recipe's published P2P-off table. Notebook: [notebooks/2026-10-01-cmp170hx-4card-bar1-p2p-plx-cuda.ipynb](../notebooks/2026-10-01-cmp170hx-4card-bar1-p2p-plx-cuda.ipynb).
+
 ## Negative results matter
 
 ### GLM-5.3-Flash NVFP4

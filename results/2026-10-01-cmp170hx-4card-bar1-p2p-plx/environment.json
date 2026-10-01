@@ -1,0 +1,16 @@
+{
+  "measured": "2026-10-01",
+  "cards": "4x NVIDIA CMP 170HX (GA100, SM80), memory-unlocked to 65536 MiB each, BAR1 64 GiB each",
+  "topology": "all four on CPU2; GPU0+GPU1 behind PLX PEX 8747 switch A, GPU2+GPU3 behind PEX 8747 switch B; Gen2 x16 per card, switch uplinks Gen3 x16",
+  "host": "dual Xeon E5-2686 v4 (Broadwell), Proxmox VE 9 (Debian 13), kernel 7.0.2, bare metal; LXC container for the GLM runs and one verify run",
+  "kernel_cmdline_pci": "intel_iommu=on iommu=pt pci=realloc",
+  "bios": "Above 4G decoding enabled, MMIO high size 1024G, MMIOH base 2T",
+  "driver": "NVIDIA open kernel modules 615.71.09 + upstream cmpunlocker (amoghmunikote/cmpunlocker @ 88e39ce) + patches/rebar-serialize.patch + the four BAR1-P2P patches from admunch888/cmpunlocker (p2p-caps-override, p2p-bar1, p2p-skip-mailbox-preinit, p2p-readcap-override), built against the upstream tree",
+  "p2p_regkeys": "NVreg_RegistryDwords=RMForceStaticBar1=1;RMPcieP2PType=1;RmForceEnableGen2=1;RMPcieLinkSpeed=0x1",
+  "bar_layout": "tools/cmp-bar-layout.py --unlock before the driver loads (setpci BAR1 unlock + ReBAR 64 GiB + hand-programmed BARs/bridge windows), then kexec into the same kernel so it adopts the layout; tools/boot/ automates it per boot",
+  "power_limit_w": 180,
+  "copy_tools": "tools/p2p_latency.py (--peer enables cuCtxEnablePeerAccess), p2p-verify.py from admunch888/cmpunlocker tools/",
+  "nccl_runtime": "ghcr.io/pixelml/club-170hx:vllm-glm53-sm80-pp-20260905 (torch 2.13.0+cu130, NCCL 2.29.7)",
+  "qwen_runtime": "same image, vLLM, Qwen3.8-27B W4A16 AutoRound, TP2, 180 W, no prefix cache",
+  "glm_runtime": "Morrowmake/glm53-flash-cmp170hx-recipe release 1.6.0 (image by digest), TP4, DFlash2 adaptive depth, 262144 ctx, 180 W"
+}
