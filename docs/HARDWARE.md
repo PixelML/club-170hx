@@ -2,6 +2,8 @@
 
 ## What this card is
 
+For the consolidated picture (lock layers, SM count, HBM clock per VBIOS, P2P, power) see [CMP 170HX understanding](CMP170HX-UNDERSTANDING.md).
+
 The CMP 170HX is a passive, compute-only NVIDIA mining card. The cards tested by this project enumerate as PCI device `10de:20c2`, expose CUDA compute capability 8.0, and report 65,536 MiB after the community unlock path is working.
 
 That makes the card interesting for memory-heavy CUDA and AI work. It does not make it equivalent to a supported A100:
@@ -48,6 +50,8 @@ nvidia-smi -q | grep -A1 'HW Power Brake Slowdown'
 Save a redacted baseline outside the public repository. A card missing from `lspci` is a hardware/firmware/power/enumeration problem; reinstalling a guest driver will not make a non-enumerated PCI device appear.
 
 ## PCIe link status
+
+> **Update 2026-10-02 (measured):** the Gen1 ceiling below is the *stock* driver's. With the cmpunlocker link patch all four cards on the 4-card PLX host train **Gen2 x16**; Gen3 is blocked by the `OPT_DISABLE_GEN3_SPEED` fuse, which reads 1 on every card we checked. Details: [CMP 170HX understanding §3](CMP170HX-UNDERSTANDING.md#3-pcie-gen3-blocked-by-a-fuse-and-the-risk-of-trying). The note below is kept as the stock-driver record.
 
 **Measured 2026-09-02, on the four-card test node.** Host-side `lspci -vv` on
 the hypervisor shows every CMP 170HX card advertising `LnkCap: Speed

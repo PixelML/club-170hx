@@ -12,6 +12,8 @@ this club's four-card CMP 170HX test node unless a different source is named.
 
 ## 1. What the link really is
 
+> **Update 2026-10-02 (measured):** this section describes the stock-driver link on the earlier VFIO test node. With the cmpunlocker link patch the link is **Gen2 x16** (6.68 GB/s device-to-host per card), host-staged copies reach 6.2–6.3 GB/s, and static-BAR1 peer-to-peer works with extra patches; it helps TP2 and slows TP4 behind PLX switches on Broadwell. Current numbers: [CMP 170HX understanding §5](CMP170HX-UNDERSTANDING.md#5-interconnect-peer-to-peer-and-parallelism).
+
 **The CMP 170HX's PCIe link is Gen1 x16 by design (measured).** Host-side
 `lspci -vv` on the hypervisor shows every tested card advertising
 `LnkCap: Speed 2.5GT/s, Width x16` — that is PCIe Gen1, and it is the card's

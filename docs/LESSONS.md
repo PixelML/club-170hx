@@ -76,6 +76,8 @@ The tested CMP 170HX fabric has **no NVLink and no P2P over PCIe Gen2 x4**
 (about 1.0 GB/s measured bus bandwidth between cards). This one fact decides
 the topology choice.
 
+> **Update 2026-10-02 (measured):** on the 4-card PLX host every card runs Gen2 x16 and static-BAR1 P2P works with extra driver patches; TP4 with a DFlash2 drafter now reaches 396–418 tok/s single-user (P2P off). The DeepSeek-V4-Flash-0731 finding below is the Gen2 x4 record. Current state: [CMP 170HX understanding §5](CMP170HX-UNDERSTANDING.md#5-interconnect-peer-to-peer-and-parallelism).
+
 | Strategy | Behavior on this fabric |
 |---|---|
 | Tensor parallel | Performs 2 all-reduces per layer (86 collectives per forward pass on a 43-layer model). Communication-bound at every sequence length: prefill measures flat at ~800 tok/s from 1.5k to 77k tokens on TP4 |
@@ -203,6 +205,8 @@ at 88% full is a stop condition for any further build activity until caches
 are relocated.
 
 ## f. Power and thermal
+
+> **Update 2026-10-02 (measured):** a live power-cap sweep on GLM-5.3-Flash TP4 (four cards) found 140 W keeps ~99% of 150 W throughput for 8% less GPU power, 110 W gives the most tokens per watt, and 165 W adds ≤1.1%. The four-card host now runs 140 W. Table and method: [CMP 170HX understanding §6](CMP170HX-UNDERSTANDING.md#6-power-and-heat).
 
 | Policy | Measured effect |
 |---|---|

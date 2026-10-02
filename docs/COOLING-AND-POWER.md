@@ -22,7 +22,8 @@ This is one timestamped snapshot; check live values with the `nvidia-smi` query 
 |---|---:|---|
 | Quiet / idle | 125 W | Administration, downloads, idle serving |
 | Benchmark | 180 W | Current reproducible performance runs with blower airflow |
-| Higher power | Untested here | Only after a cooling and PSU margin study |
+| Four-card TP4 serving (2026-10) | 140 W | GLM-5.3-Flash TP4 default after a 100–165 W sweep: ~1% below 150 W throughput for 8% less GPU power ([sweep](CMP170HX-UNDERSTANDING.md#6-power-and-heat)) |
+| Higher power | 165 W measured on four cards: +0.1–1.1% decode, HBM 82–83 °C | Not worth it for decode; only after a cooling and PSU margin study |
 
 The power limit is a ceiling, not guaranteed consumption. Record actual board power during every result.
 
