@@ -108,7 +108,7 @@ cells.append(md("""## 1. TL;DR
 - **Measured:** 70 → 74 SMs (cmpunlocker `6c442ee`) shows no clear decode gain; the comparison crosses a power-cap change (180 W → 150 W), so it is not a clean A/B.
 - **Measured:** power-cap sweep on the live server. 140 W keeps 98.7–99.7% of 150 W throughput for 8% less GPU power; 110 W gives the most tokens per watt (1.62 vs 1.40) at 13–22% lower throughput; 100 W loses on both; 165 W adds 0.1–1.1% and runs HBM at 82–83 °C. The host's default is now 140 W.
 - **Measured:** sm80vllm copy drafts: +37% on an edit reply that repeats the prompt (byte-identical), +28% on a second edit task (reply differs), −0.3 to −2.2% on general decode.
-- **Pending:** SM VF offset +200 (gates passing on 2 of 4 cards at the time of writing; serving bench not run)."""))
+- **Measured:** SM VF offset +200 at a 1,410 MHz ceiling, 140 W: 415.0 / 308.3 / 213.1 tok/s single-user and 816.3 at eight users vs 412.7 / 305.9 / 211.6 and 814.2 without it (+0.6%), 6 W less GPU power: within noise. The offset only applies on the two cards with the 300 W VBIOS; on the 250 W VBIOS cards NVML exposes a VF offset range of [0..0] and silently refuses it."""))
 
 cells.append(code("""pins = {
     "recipe": "Morrowmake/glm53-flash-cmp170hx-recipe @ a242b4f (v1.6.0); --gpus all -> --device nvidia.com/gpu=all (LXC/CDI)",
@@ -245,9 +245,41 @@ ax.set_title("Copy drafts help replies that repeat the prompt; general decode is
 fig.tight_layout(); plt.show()
 print(open(f"{RECEIPTS}/copy-drafts-on/server-key-lines.txt").read().splitlines()[-1])"""))
 
-cells.append(md("""### 2.6 SM VF offset (+200 MHz at a 1,410 MHz ceiling) — pending
+cells.append(md("""### 2.6 SM VF offset (+200 MHz at a 1,410 MHz ceiling), 140 W
 
-The offset shifts the voltage/frequency curve so a clock is reached at a lower voltage. The risk is silent wrong results when hot, so each card is gated hot first (`170tune -i N gate 200 1410 12`). At the time of writing GPU 0 and GPU 1 had passed (12/12 sweeps + compute, peak HBM 75 °C / 76 °C), GPU 2 and GPU 3 were still running, and no serving bench with the offset exists. No number is claimed here; this section is updated when the receipts exist."""))
+The offset shifts the voltage/frequency curve so a clock is reached at a lower voltage; the risk is silent wrong results when hot, so each card was gated hot first (`170tune -i N gate 200 1410 12`). All four gates reported a pass (12/12 sweeps + compute; peak HBM 75 / 76 / 70 / 76 °C; GPU 2 gated at `GATE_TEMP=70`, its serving range).
+
+**Measured caveat:** on the two cards with the 250 W VBIOS (`92.00.67.00.01`, stock HBM NDIV 54) NVML reports the GPC VF offset range as [0..+0] MHz; `nvmlDeviceSetGpcClkVfOffset` returns *Unknown Error* and reads back +0. Their gate therefore ran at offset 0 (stock voltage, 1,410 MHz ceiling), and 170tune still reported a pass. Only the two 300 W VBIOS cards (`92.00.6D.00.0A`, range ±1000 MHz) take the undervolt, and only they keep it persisted.
+
+The bench below is the 140 W matrix with the offset on GPU 0 and GPU 3 only, compared with the 140 W run without it."""))
+
+cells.append(code("""def per_card(run):
+    rows = [r for r in csv.reader(open(f"{RECEIPTS}/{run}/telemetry.csv"), skipinitialspace=True) if len(r) >= 8 and r[1].strip().isdigit()]
+    out = []
+    for i in range(4):
+        busy = [r for r in rows if int(r[1]) == i and num(r[7]) > 50]
+        clk = sorted(num(r[5]) for r in busy)
+        out.append((sum(num(r[4]) for r in busy) / len(busy), clk[len(clk) // 2], max(num(r[3]) for r in rows if int(r[1]) == i)))
+    return out
+OFF = "sm74-hbm64-off200-140w"
+M[OFF], T[OFF] = matrix(RECEIPTS, OFF), telemetry(OFF)
+pair = [("sm74-hbm64-140w", "140 W, no offset"), (OFF, "140 W, +200 @ 1,410 (GPU 0/3)")]
+table(["run", "1 user tok/s (struct / code / prose)", "8 users tok/s", "ms/step (1u struct)", "busy GPU W"],
+      [[lab, " / ".join(f"{M[k][(p, 1)]['tok']:.1f}" for p in PROMPTS), " / ".join(f"{M[k][(p, 8)]['tok']:.1f}" for p in PROMPTS),
+        f"{M[k][('structured', 1)]['step']:.2f}", f"{T[k]['busy_w']:.0f}"] for k, lab in pair])
+a, b = M["sm74-hbm64-140w"][("structured", 1)]["tok"], M[OFF][("structured", 1)]["tok"]
+print(f"structured 1-user change with the offset: {(b / a - 1) * 100:+.1f}%  |  busy GPU power {T[OFF]['busy_w'] - T['sm74-hbm64-140w']['busy_w']:+.0f} W")
+table(["card", "busy power W (no offset → offset)", "busy SM clock p50 MHz (no offset → offset)", "peak HBM °C with offset"],
+      [[f"gpu{i}", f"{x[0]:.0f} → {y[0]:.0f}", f"{x[1]:.0f} → {y[1]:.0f}", f"{y[2]:.0f}"] for i, (x, y) in enumerate(zip(per_card("sm74-hbm64-140w"), per_card(OFF)))])"""))
+
+cells.append(md("""Reading: the two undervolted cards reach the 1,410 MHz ceiling at lower power, but the two cards that could not take the offset stay power-limited near 1,290 MHz, and TP4 runs at the slowest card's pace. Net: +0.6% and −6 W, within noise.
+
+**Coherence probe (measured):** `coherence.json` in this run reads `coherent: false`. The failing item is the `cmp` probe ("is 9.9 greater than 9.11"): its token budget ended while the model was still writing its reasoning preamble, before the answer. A direct request with `max_tokens` 800 answered "9.9" twice (67 tokens each, `finish_reason=stop`). This is a probe-budget artifact, not output corruption."""))
+
+print_probe = """c = receipt(RECEIPTS, OFF, "coherence.json")["coherence"]
+for k in ("paris", "cmp", "sky"):
+    print(f"{k:5}  ok={c[k]['ok']!s:5}  ...{c[k]['text'][-90:]!r}")"""
+cells.append(code(print_probe))
 
 cells.append(md(f"""## 3. Reproduce
 
@@ -293,7 +325,7 @@ cells.append(md("""<details><summary>Appendix</summary>
 - **nvidia-smi does not show the new HBM clock.** After `170tune` raises NDIV live, `nvidia-smi --query-gpu=clocks.mem` keeps reporting the value cached at driver load (1,458 MHz on the re-clocked cards). `170tune -i N status` reads the PLL. Telemetry in these receipts therefore shows 1,458 MHz for two cards in every run.
 - **Gate temperature.** 170tune's default `GATE_TEMP` is 60 °C. This host serves at HBM 72–75 °C, so the HBM gates ran at 75 °C. The coolest card never reached 75 °C (or 72 °C) during the SM-offset gate and each sweep waited out the 600 s soak; it was re-run at 70 °C, its measured serving range.
 - **Power-limit side effects.** 170tune soaks at 300 W and its `recover` / crash-revert paths set 250 W. A systemd drop-in re-applies the host cap after 170tune's services.
-- **Not measured:** prefill and long-context at 74 SM / equal HBM, quality suites, and the SM offset serving bench.
+- **NVML silently refuses the offset on the 250 W VBIOS.** `nvidia-smi`/NVML report a GPC VF offset range of [0..0] on those cards, the set call fails, and 170tune's gate still passes because it gates whatever the card actually runs. Check `nvml_oc` (the range query) before trusting an offset gate.\n- **Not measured:** prefill and long-context at 74 SM / equal HBM, and quality suites.
 - **Licences.** Recipe MIT; drafter CC BY-NC-ND 4.0 (benchmark only); MiaAI-Lab bench AGPL-3.0, referenced by commit, not vendored; `bench_edit.py` uses Python's own `textwrap.py` (PSF licence) as the edit input.
 
 </details>"""))

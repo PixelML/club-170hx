@@ -180,7 +180,8 @@ From a two-day session that rebuilt the unlock driver (+4 SMs, HBM clock control
 | 7 | Tuners reset the power limit | `170tune recover` and its crash-revert path set 250 W, silently undoing a 140–150 W cap | Re-apply the cap after any tuner recovery; a systemd drop-in after the tuner's services covers boots |
 | 8 | `pkill -f <pattern>` over SSH kills your own session | The pattern also matched the remote shell running the kill, twice; the cleanup stopped halfway and left orphaned test processes | Find PIDs with a pattern that cannot match itself (`grep '[p]attern'`), then `kill <pid>` |
 | 9 | Editing a running shell script does not change the running copy | `sed -i` writes a new file; the running bash keeps reading the old one, so a changed power value applied only to later runs | Change the value in a new script and restart, or apply the change by hand after the run |
-| 10 | Separate lanes need a lock on shared GPUs | A software lane (engine A/B) and a hardware lane (gates, sweeps) both wanted the same four cards | Keep a lock file on the GPU host naming the owner and phase; check it before stopping or starting the server |
+| 10 | A tuner's PASS can mean the setting never applied | Two cards with the 250 W VBIOS report a GPC VF offset range of [0..0]; the +200 offset set failed silently (NVML *Unknown Error*, readback +0) and the hot gate still reported GATED, because it tested the card at offset 0 | Query the offset range and read the value back before gating; record the readback next to the gate result |
+| 11 | Separate lanes need a lock on shared GPUs | A software lane (engine A/B) and a hardware lane (gates, sweeps) both wanted the same four cards | Keep a lock file on the GPU host naming the owner and phase; check it before stopping or starting the server |
 
 ## See also
 

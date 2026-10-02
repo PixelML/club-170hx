@@ -21,7 +21,7 @@ Hosts named below:
 | BAR1 | small stock; **64 GiB** with the unlock; static-BAR1 peer-to-peer works with extra patches | measured |
 | NVLink | not present (bridge components unpopulated) | community-reported |
 | FP8 / FP4 tensor cores | none (GA100 tops out at FP16/BF16/TF32 tensor math) | vendor architecture |
-| Board power | 250 W VBIOS limit; we run 140 W | measured |
+| Board power | 250 W or 300 W depending on VBIOS (community-reported naming, see §4); we run 140 W | measured cap |
 | Cooling | passive heatsink, forced air required | measured |
 
 ## 2. The lock layers, and what software can move
@@ -34,7 +34,7 @@ Hosts named below:
 | PCIe speed | Gen1 (2.5 GT/s) | Gen2 (5 GT/s) | cmpunlocker link patch: fuse-override register + retrain at probe | measured |
 | PCIe Gen3 | — | not reachable | `OPT_DISABLE_GEN3_SPEED` fuse (BAR0 `0x820250` bit 0) reads 1 | measured on 4/4 cards — see §3 |
 | HBM clock | VBIOS NDIV 54 or 64 | NDIV 64 on all four | PR #60 opens the FBPA PLL / FBPA_MEM privilege masks; [170tune](https://github.com/cachenetics/170tune) writes the PLL live after a hot gate | measured — see §4 |
-| SM voltage/frequency offset | 0 | +200 at a 1,410 MHz ceiling (being gated) | NVML VF offset (undervolt) via 170tune | pending — see the [2026-10-02 notebook](../notebooks/2026-10-02-glm-5.3-flash-4card-tp4-sm74-hbm-power-vllm.ipynb) |
+| SM voltage/frequency offset | 0 | +200 at a 1,410 MHz ceiling on the 300 W VBIOS cards only | NVML VF offset (undervolt) via 170tune | measured: +0.6% / −6 W at 140 W, within noise; the 250 W VBIOS exposes no offset range ([2026-10-02 notebook §2.6](../notebooks/2026-10-02-glm-5.3-flash-4card-tp4-sm74-hbm-power-vllm.ipynb)) |
 | BAR1 peer-to-peer | not supported | 12/12 card pairs at 5.79 GB/s | static BAR1 + 4 P2P patches + hand-placed PCIe layout | measured — see §5 |
 | ECC | off | off | upstream work in progress ([cmpunlocker #56](https://github.com/amoghmunikote/cmpunlocker/pull/56)) | untested |
 | NVLink | none | none | hardware absent | community-reported |
@@ -61,6 +61,8 @@ What this means in practice:
 |---|---:|---:|---:|
 | `92.00.67.00.01` | 54 | 1,458 MHz | 2 |
 | `92.00.6D.00.0A` | 64 | 1,728 MHz | 2 |
+
+The two 8 GB VBIOS variants are **250 W / NDIV 54** (`92.00.67.00.01`) and **300 W / NDIV 64** (`92.00.6D.00.0A`); the 250 W / 300 W naming is from 170tune's source notes (community-reported). Only the 300 W variant exposes a GPC VF offset: on the 250 W variant NVML reports the offset range as [0..+0] MHz and refuses a set (measured).
 
 Memory timings read identical on all four (`RC 67, RFC 657, RAS 43, RP 24, RD_RCD 27, WR_RCD 18, WR 25, FAW 22, RRD 5`, refresh 6). The 1,728 MHz cards run that timing table at the higher clock from the factory.
 
@@ -117,8 +119,9 @@ Older guidance that "PP beats TP on this card" ([Topology and parallelism](TOPOL
 - **Gate at the card's real serving temperature.** The default `GATE_TEMP` is 60 °C; we serve at HBM 72–75 °C, so we gated at 75 °C. A cooler card that cannot reach the target waits out the whole soak (`GATE_SOAK_MAX`) before every sweep: 8 min per sweep instead of 3. Gate such a card at its own measured serving peak.
 - **Power-limit side effects.** Gates soak at 300 W; `recover` and the crash-revert boot path set **250 W**. Re-apply your cap afterwards (we use a systemd drop-in after 170tune's services).
 - **The card boots stock first.** A persisted profile is applied after the driver is up; if a tuning run was in flight when the machine went down, the next boot stays stock.
+- **A passed SM-offset gate does not prove the offset applied.** On the 250 W VBIOS NVML exposes a VF offset range of [0..0]; the set fails and reads back 0, and the gate still reports GATED because it tests whatever the card runs. Check the range (`nvml_oc`) and the readback first (measured).
 - **Do not combine with a driver that bakes a memory clock** (`--mclk-ndiv` in some cmpunlocker forks): 170tune refuses, because the stock snapshot would be wrong.
-- **What it bought here:** the HBM equalization (+6% single-user). Its reference card's own data says the SM offset mainly saves power at a fixed clock (same throughput at −24% power) and that the memory overclock buys little for single-stream decode; our sweep is consistent with that.
+- **What it bought here:** the HBM equalization (+6% single-user). The SM offset (+200 at 1,410 MHz on the two cards that accept it) gave +0.6% and −6 W at 140 W, within noise: in TP4 the two cards without an offset still set the pace. Its reference card's own data says the offset mainly saves power at a fixed clock (same throughput at −24% power).
 
 ## 8. The driver stack we run
 
@@ -150,7 +153,7 @@ Build check before installing: apply the full patch series to a clean source tre
 | NVLink | hardware absent |
 | ECC | upstream in progress; untested |
 | HBM above NDIV 64 | needs HBM ≤ ~76 °C under load; not tried |
-| SM VF offset | gate in progress; serving effect not measured |
+| SM VF offset | measured: within noise in TP4 here; impossible on the 250 W VBIOS |
 | Single-user code decode gap vs Morrowmake (310 vs 377 tok/s) | open; same acceptance, so engine/kernel |
 | An Apache-2.0 drafter that loads (DFlash2-G) | open |
 | 500 tok/s structured single-user (now 418) | needs ~15.3 ms per step or ~8 accepted tokens per step; hardware levers above add a few percent at most, so this sits with the engine/drafter work (inferred) |
