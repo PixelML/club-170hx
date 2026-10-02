@@ -74,8 +74,8 @@ in service as documented across this repository (2026-06, our measurement).
 **[community, measured]** Stock: PCIe Gen1 x4 electrical (`lspci`: `LnkCap: Speed 2.5GT/s, Width x16`; `LnkSta: Speed 2.5GT/s, Width x4 (downgraded)`; measured throughput ~0.85 GB/s). `LnkCap2` on stock cards lists only 2.5GT/s (Gen1) as a supported speed.
 
 - **x16 width mod (hardware):** 12 of 16 PCIe lanes are missing AC-coupling capacitors on the PCB. Soldering ~24 capacitors (0402 package, exact value reported inconsistently across sources) restores x16 width. At least one named community member reported success in April 2026. Measured result: stock Gen1 x4 ~1.58 Gbit/s vs. modded Gen1 x16 ~6.37 GB/s. Guide: 170th Street gitbook, https://170th-street.gitbook.io/hx/modifications/pcie-capacitor-mod.
-- **Gen2 software claim:** A community patch reportedly raises link speed to Gen2 purely via register override, no soldering. This claim is **contested**: it conflicts with our own cards, which continue to report LnkCap 2.5GT/s on the host, and with independent teardown data showing the stock LnkCap2 field lists only 2.5GT/s as supported at all. Treat as **rumor/unreliable pending independent reproduction.** Community data point ([issue #59](https://github.com/PixelML/club-170hx/issues/59)): after `cmpunlocker`, two cards on a bare-metal Intel X99 board report `LnkCap` Gen2 x16 / `LnkSta` Gen2 x4 in `lspci`, i.e. the link capability itself changed. Not yet reproduced on our cards.
-- **Gen3/Gen4:** Universally reported as blocked by a factory-burned OTP fuse, with no known software bypass. No credible report of a working Gen3/4 unlock was found in English or via Chinese-language search terms.
+- **Gen2 software claim — resolved 2026-10 (our measurement):** the cmpunlocker link patch (upstream [PR #20](https://github.com/amoghmunikote/cmpunlocker/pull/20)) trains all four of our cards at Gen2 x16 (`LnkCap`/`LnkSta` 5 GT/s x16) on a bare-metal host; see [CMP 170HX understanding §3](CMP170HX-UNDERSTANDING.md#3-pcie-gen3-blocked-by-a-fuse-and-the-risk-of-trying). Original 2026-09-02 text follows. A community patch reportedly raises link speed to Gen2 purely via register override, no soldering. This claim was **contested**: it conflicts with our own cards, which continue to report LnkCap 2.5GT/s on the host, and with independent teardown data showing the stock LnkCap2 field lists only 2.5GT/s as supported at all. Treat as **rumor/unreliable pending independent reproduction.** Community data point ([issue #59](https://github.com/PixelML/club-170hx/issues/59)): after `cmpunlocker`, two cards on a bare-metal Intel X99 board report `LnkCap` Gen2 x16 / `LnkSta` Gen2 x4 in `lspci`, i.e. the link capability itself changed. Not yet reproduced on our cards.
+- **Gen3/Gen4:** Universally reported as blocked by a factory-burned OTP fuse, with no known software bypass. **Our measurement (2026-10-01):** `OPT_DISABLE_GEN3_SPEED` (BAR0 `0x820250` bit 0) reads 1 on all four of our cards. Upstream [PR #37](https://github.com/amoghmunikote/cmpunlocker/pull/37) raises the link to Gen3 only on fuse-clear cards; its author reports that forcing 8 GT/s on a fuse-set card drops it off the bus until a chassis power cycle. No credible report of a working Gen3/4 unlock was found in English or via Chinese-language search terms.
 
 ## 4. NVLink
 
@@ -121,8 +121,8 @@ The GA100 die supports NVLink, but 170HX boards are reported (via direct teardow
 | "~50% failure rate above 8GB" | Unverified — no source found |
 | Stock PCIe is Gen1 x4 | Verified (measured) |
 | x16 width unlock via capacitor soldering | Verified (community, named successful builder) |
-| PCIe Gen2 software unlock | Contested — one community report of Gen2 LnkCap after `cmpunlocker` (issue #59); not reproduced on our cards |
-| PCIe Gen3/Gen4 unlock | Not achieved — OTP-fused, no bypass found |
+| PCIe Gen2 software unlock | Verified — Gen2 x16 on all four of our cards with the cmpunlocker link patch (2026-10, our measurement) |
+| PCIe Gen3/Gen4 unlock | Not achieved — fuse reads set on all four of our cards (our measurement); upstream PR #37 only helps fuse-clear cards |
 | NVLink enable | Not achieved — board likely lacks populated bridge hardware |
 | Tensor Cores software-gated | Plausible, unconfirmed — single-benchmark inference |
 | SM80 vLLM MoE inference (~98 tok/s decode on 4 cards) | Community-measured, self-reported, not third-party-reproduced |
@@ -131,6 +131,8 @@ The GA100 die supports NVLink, but 170HX boards are reported (via direct teardow
 | Price spike to $1,000–2,000+ after unlock release | Verified (multiple independent outlets) |
 
 ## What we could test on our four modded cards
+
+> **Update 2026-10-02:** item 1 is resolved (Gen2 x16 measured, Gen3 fuse-blocked). Measured HBM clocks per VBIOS, 74 SMs and the P2P results are in [CMP 170HX understanding](CMP170HX-UNDERSTANDING.md).
 
 Our cards currently show LnkCap 2.5GT/s on the host; i.e., the claimed PCIe Gen2 software mod has not visibly changed host-reported link capability. Ranked by expected value:
 

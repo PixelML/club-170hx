@@ -66,7 +66,7 @@ silicon as the A100, cut down. Public teardown and benchmark data
 (TechPowerUp, an arXiv survey of mining-GPU silicon, and independent
 reviews) converge on:
 
-- **70 SMs**, **4,480 CUDA cores**, **280 Tensor Cores** (not the
+- **70 SMs** stock (**74** with cmpunlocker `6c442ee`, our measurement 2026-10; see [CMP 170HX understanding](CMP170HX-UNDERSTANDING.md)), **4,480 CUDA cores**, **280 Tensor Cores** (not the
   108 SM / 6,912-core / 432-Tensor-Core config of the full A100 PCIe 80GB)
 - **8 GB HBM2e** stock, 4096-bit bus, ~1,493-1,500 GB/s theoretical
   bandwidth (bus width matches a 4-stack HBM2e configuration)

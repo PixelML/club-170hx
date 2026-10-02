@@ -165,6 +165,24 @@ measurement — a card silently back at its default (higher) power limit
 after a "recovery" is itself a new risk factor for the exact transient this
 section describes.
 
+## 7. Driver, clock and power tuning on a four-card host (2026-10-01 to 2026-10-02)
+
+From a two-day session that rebuilt the unlock driver (+4 SMs, HBM clock control, BAR1 P2P), equalised the HBM clock across cards and swept power caps on a live GLM-5.3-Flash TP4 server. Card-level findings are in [CMP 170HX understanding](CMP170HX-UNDERSTANDING.md); this is the process layer.
+
+| # | Lesson | What happened | Do this |
+|---|---|---|---|
+| 1 | Read a fuse before chasing a feature | Gen3 looked one PR away; the `OPT_DISABLE_GEN3_SPEED` fuse read 1 on all four cards, which ends that line before any risky retrain | Read the gating fuse/register first (read-only); only try a link change on a card where it can succeed |
+| 2 | Dry-run the whole patch series on clean sources | 17 patches from three sources had to stack on one driver version | Extract a fresh tarball and `patch --dry-run` every patch in build order before installing; then install and cold-boot |
+| 3 | A shutdown that "ran" may not have | A stop script refused (another process held its lock) and the operator assumed the host had gone down; it was still up on the old driver an hour later | Verify with uptime / `last -x` / the BMC's power state, not with the command's exit |
+| 4 | Fans at 100% after a cold boot | The fan controller set the BMC to Full mode and wrote duties once; the BMC applied the mode after the writes and every fan stayed at 100% | Read the zone duty back every few seconds and rewrite it if it changed |
+| 5 | `nvidia-smi` misreports a live memory clock | After a live HBM PLL change the reported memory clock stayed at the driver-load value | Read the PLL (`170tune -i N status`) before concluding a clock did not apply |
+| 6 | Gate at the real serving temperature | The tuner's default gate temperature (60 °C) is below this host's serving HBM temperature (72–75 °C); one cooler card could not reach 75 °C and waited out a 10-minute soak before every sweep | Measure serving HBM peaks first (telemetry during a bench), gate each card at its own peak |
+| 7 | Tuners reset the power limit | `170tune recover` and its crash-revert path set 250 W, silently undoing a 140–150 W cap | Re-apply the cap after any tuner recovery; a systemd drop-in after the tuner's services covers boots |
+| 8 | `pkill -f <pattern>` over SSH kills your own session | The pattern also matched the remote shell running the kill, twice; the cleanup stopped halfway and left orphaned test processes | Find PIDs with a pattern that cannot match itself (`grep '[p]attern'`), then `kill <pid>` |
+| 9 | Editing a running shell script does not change the running copy | `sed -i` writes a new file; the running bash keeps reading the old one, so a changed power value applied only to later runs | Change the value in a new script and restart, or apply the change by hand after the run |
+| 10 | A tuner's PASS can mean the setting never applied | Two cards with the 250 W VBIOS report a GPC VF offset range of [0..0]; the +200 offset set failed silently (NVML *Unknown Error*, readback +0) and the hot gate still reported GATED, because it tested the card at offset 0 | Query the offset range and read the value back before gating; record the readback next to the gate result |
+| 11 | Separate lanes need a lock on shared GPUs | A software lane (engine A/B) and a hardware lane (gates, sweeps) both wanted the same four cards | Keep a lock file on the GPU host naming the owner and phase; check it before stopping or starting the server |
+
 ## See also
 
 - [LESSONS.md](LESSONS.md) — kernel, runtime, topology, memory/storage, power/thermal, and hardware failure-mode lessons.

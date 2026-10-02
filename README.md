@@ -16,6 +16,7 @@ The CMP 170HX shares useful traits with A100-class hardware, including SM80 comp
 
 | Goal | Guide |
 |---|---|
+| **Everything we know about the card, in one page** | [CMP 170HX understanding](docs/CMP170HX-UNDERSTANDING.md) |
 | Understand the card and trade-offs | [Hardware](docs/HARDWARE.md) |
 | Install it in a Proxmox VM | [Installation](docs/INSTALLATION.md) |
 | Validate a new or used card | [QC and acceptance testing](docs/QC.md) |
@@ -41,6 +42,7 @@ outputs. The schema and the LIVE-replay convention are in
 
 | Date | Experiment | Headline | Notebook | Video |
 |---|---|---|---|---|
+| 2026-10-02 | GLM-5.3-Flash W4A16 + DFlash2 TP4 on 4x CMP 170HX behind two PLX switches: 70 → 74 SMs, HBM clock equalised across cards, power-cap sweep 165–100 W; plus a copy-drafts A/B on the PixelML/sm80vllm fork | **Two cards shipped a VBIOS running HBM at 1,458 MHz vs 1,728 on the other two; equalising them (hot-gated, 0 errors) gives 418.0 / 309.9 / 214.1 tok/s single-user and 816.5 at eight users (+6% / +3%), the best on this host.** +4 SMs: no clear decode gain. Power: 140 W keeps ~99% of 150 W throughput for 8% less GPU power (new default); 110 W is the tokens-per-watt peak (1.62 vs 1.40); 165 W adds ≤1.1% and runs HBM at 82–83 °C. Copy drafts: +37% on an edit reply that repeats the prompt, −0.3 to −2.2% elsewhere. SM VF offset +200: within noise, and impossible on the 250 W VBIOS cards (NVML range [0..0], the gate still passes) | [notebooks/2026-10-02-glm-5.3-flash-4card-tp4-sm74-hbm-power-vllm.ipynb](notebooks/2026-10-02-glm-5.3-flash-4card-tp4-sm74-hbm-power-vllm.ipynb) | — |
 | 2026-10-01 | GLM-5.3-Flash W4A16 + DFlash2, Morrowmake recipe 1.6.0, TP4 on 4x CMP 170HX at Gen2 x16 behind two PLX switches (Broadwell host), P2P on vs off | **Matches Morrowmake's EPYC TP4 P2P-off numbers on a PLX + Broadwell host: 396.0 tok/s structured single-user (theirs 394.0), 798.6 at eight users (797.9), cold prefill 2,701 tok/s (2,669), same 1,072,150-token KV pool.** BAR1 P2P makes TP4 decode 20–26% slower for one user and 38–48% for eight here (steps 26.1 vs 19.4 ms), the opposite of Morrowmake's EPYC result; best variant P2P off + replicated embedding 398.4 / 812.0. Single-user code is 19% under theirs (open). Apache-2.0 DFlash2-G drafter does not load on this engine | [notebooks/2026-10-01-glm-5.3-flash-morrowmake-1.6.0-4card-tp4-vllm.ipynb](notebooks/2026-10-01-glm-5.3-flash-morrowmake-1.6.0-4card-tp4-vllm.ipynb) | — |
 | 2026-10-01 | Static-BAR1 P2P on 4x CMP 170HX at Gen2 x16 behind two PLX switches (Broadwell host): upstream unlock + serialized BAR1 resize + 4 BAR1-P2P patches + a hand-programmed PCIe layout adopted via kexec | **Direct P2P on all 12 ordered pairs, every byte verified, 5.79 GB/s each; copy latency 16 vs 22 µs at 4 KiB and 194 vs 343 µs at 1 MiB (up to 1.77× faster than host-staged), large copies 8% slower.** Qwen3.8-27B W4A16 TP2 single-user decode +11% (80.0 vs 71.8 tok/s), +14% with MTP k=3 (110.8 vs 97.6); GLM-5.3-Flash TP4 decode −26% to −44% with P2P (293 vs 396 tok/s structured, 1 user) — leave P2P off for TP4 on PLX + Broadwell ([GLM TP4 notebook](notebooks/2026-10-01-glm-5.3-flash-morrowmake-1.6.0-4card-tp4-vllm.ipynb)). The BIOS leaves no room for two 64 GiB BAR1s behind one switch; placing each BAR3 below its BAR1 fixes it. Same-switch = cross-switch | [notebooks/2026-10-01-cmp170hx-4card-bar1-p2p-plx-cuda.ipynb](notebooks/2026-10-01-cmp170hx-4card-bar1-p2p-plx-cuda.ipynb) | — |
 | 2026-10-01 | GPU-to-GPU copies and NCCL all-reduce, 3x CMP 170HX at Gen2 x16 behind two PLX switches, no P2P patches | **No direct P2P (canAccessPeer 0 on all pairs); host-staged copies still hit 6.2–6.3 GB/s at 256 MiB, ~94% of the 6.68 GB/s single-card link, and cost 22 µs at 4 KiB.** Same-switch and cross-switch pairs measure the same. NCCL uses SHM: 2-GPU all-reduce 3.7–3.8 GB/s busbw, 120–145 µs at 8 KiB. Also ships a driver patch that serializes the unlock's 64 GB BAR1 resize — without it, cards sharing a PLX switch corrupted the kernel on every boot | [notebooks/2026-10-01-cmp170hx-3card-p2p-plx-cuda.ipynb](notebooks/2026-10-01-cmp170hx-3card-p2p-plx-cuda.ipynb) | — |
@@ -104,7 +106,9 @@ and [Benchmarks](docs/BENCHMARKS.md#deepseek-v4-flash-vision-exp-four-cards). Th
 
 ## Verified baseline
 
-The current hardware and repeatable software baseline is:
+**Current (2026-10-02), 4-card PLX host:** bare-metal Proxmox VE 9.2 (kernel 7.0.2-6-pve), NVIDIA 615.71.09 open modules, cmpunlocker `88e39ce` + `6c442ee` (74 SMs) + HBM-control PLMs + serialized BAR1 resize + BAR1 P2P patches; every card 64 GiB, Gen2 x16, HBM 1,728 MHz, 140 W; serving from a GPU LXC. Details and the full patch list: [CMP 170HX understanding](docs/CMP170HX-UNDERSTANDING.md#8-the-driver-stack-we-run).
+
+The earlier baseline (VFIO guest, August–September notebooks) was:
 
 - 4 × CMP 170HX installed, each reporting 64 GiB VRAM;
 - published load tests on one-, three-, and four-card topologies;

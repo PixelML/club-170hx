@@ -1,0 +1,1168 @@
+{
+  "phase": "coding-c8",
+  "health_code": 200,
+  "health_body": "",
+  "runs": [
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.12040684400199098,
+          "wall_s": 4.37063414700242,
+          "decode_s": 4.250227303000429,
+          "tok_s": 93.8773320942924,
+          "delivered_tok_s": 91.51989998392756,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50, -",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4688416179997148,
+          "wall_s": 4.560945122000703,
+          "decode_s": 4.092103504000988,
+          "tok_s": 97.50486506753414,
+          "delivered_tok_s": 87.7011209958466,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list w",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is a clean one-liner using a list comprehension. The `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\nAlternative implementations:\n1. Using a conditional expression:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\n2. Using a loop:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThe `max(0, min(50, v))` approach is the most idiomatic and concise. I should also consider type hints since the user mentioned \"list of ints\":\n\n```python\ndef clamp_range(values: list[int]) -> list[int]:\n    \"\"\"Return a new list with each value clamped to the range",
+          "text_len": 1471,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.46880484700159286,
+          "wall_s": 4.5440144240019436,
+          "decode_s": 4.075209577000351,
+          "tok_s": 97.90907497172033,
+          "delivered_tok_s": 88.02788958748889,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify it works:\n- v = -5:",
+          "text_len": 1430,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.46872283999982756,
+          "wall_s": 4.448388826000155,
+          "decode_s": 3.9796659860003274,
+          "tok_s": 100.25967038530433,
+          "delivered_tok_s": 89.92019709744368,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50",
+          "text_len": 1422,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.46866990200214786,
+          "wall_s": 4.488474900001165,
+          "decode_s": 4.019804997999017,
+          "tok_s": 99.25854617291502,
+          "delivered_tok_s": 89.11712974041498,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify it works:\n- v = -5: min(50,",
+          "text_len": 1419,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.468976500997087,
+          "wall_s": 4.490983119998418,
+          "decode_s": 4.022006619001331,
+          "tok_s": 99.20421267209952,
+          "delivered_tok_s": 89.0673577058871,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` ensures it's at least 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50,",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.46828943000218715,
+          "wall_s": 4.516787602002296,
+          "decode_s": 4.048498172000109,
+          "tok_s": 98.55506487801603,
+          "delivered_tok_s": 88.55851442354289,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using a loop with conditionals**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThis is more verbose but perhaps more readable for beginners.\n\n**Approach 3: Using a helper function**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    def clamp(v):\n        return max(0, min(50, v))\n    return [clamp(v) for v in values]\n```\n\nThe first approach is cleanest. Let me verify the logic:\n- For v = -5: min(50, -5) = -5, max(",
+          "text_len": 1427,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4685842059989227,
+          "wall_s": 4.492914345999452,
+          "decode_s": 4.024330140000529,
+          "tok_s": 99.14693529590679,
+          "delivered_tok_s": 89.02907315741842,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify the logic:\n- If v = -5",
+          "text_len": 1433,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 4.563449506000325,
+      "tok_s": 98.8510000869614,
+      "ttft_s": 0.4686963710009877,
+      "decode_s": 4.036414156000319,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 701.2239306674543,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 876,
+        "draft_tokens": 2629,
+        "accepted": 2332,
+        "accept_ratio": 0.887,
+        "accepted_per_step": 2.662,
+        "mean_draft_tokens_per_step": 3.001,
+        "pos": [
+          0.9543,
+          0.9075,
+          0.7991,
+          0.0011,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.12036230599915143,
+          "wall_s": 4.363664520999009,
+          "decode_s": 4.243302214999858,
+          "tok_s": 94.03054031587834,
+          "delivered_tok_s": 91.66607517033063,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50, -",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.458369418996881,
+          "wall_s": 4.547803366996959,
+          "decode_s": 4.089433948000078,
+          "tok_s": 97.5685156120762,
+          "delivered_tok_s": 87.95455030065011,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list w",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is a clean one-liner using a list comprehension. The `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\nAlternative implementations:\n1. Using a conditional expression:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\n2. Using a loop:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThe `max(0, min(50, v))` approach is the most idiomatic and concise. I should also consider type hints since the user mentioned \"list of ints\":\n\n```python\ndef clamp_range(values: list[int]) -> list[int]:\n    \"\"\"Return a new list with each value clamped to the range",
+          "text_len": 1471,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4583212029974675,
+          "wall_s": 4.530999639999209,
+          "decode_s": 4.072678437001741,
+          "tok_s": 97.96992474901583,
+          "delivered_tok_s": 88.28073974423663,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify it works:\n- v = -5:",
+          "text_len": 1430,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45827936199930264,
+          "wall_s": 4.441481716999988,
+          "decode_s": 3.983202355000685,
+          "tok_s": 100.17065778721437,
+          "delivered_tok_s": 90.06003525106959,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50",
+          "text_len": 1422,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4581222259985225,
+          "wall_s": 4.4795284289975825,
+          "decode_s": 4.02140620299906,
+          "tok_s": 99.21902435581767,
+          "delivered_tok_s": 89.29511361299943,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify it works:\n- v = -5: min(50,",
+          "text_len": 1419,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4579708639976161,
+          "wall_s": 4.506202112999745,
+          "decode_s": 4.048231249002129,
+          "tok_s": 98.56156317610358,
+          "delivered_tok_s": 88.76654663270818,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using a loop with conditionals**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThis is more verbose but perhaps more readable for beginners.\n\n**Approach 3: Using a helper function**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    def clamp(v):\n        return max(0, min(50, v))\n    return [clamp(v) for v in values]\n```\n\nThe first approach is cleanest. Let me verify the logic:\n- For v = -5: min(50, -5) = -5, max(",
+          "text_len": 1427,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45801295099954586,
+          "wall_s": 4.484312435000902,
+          "decode_s": 4.026299484001356,
+          "tok_s": 99.09844053713358,
+          "delivered_tok_s": 89.19985076818573,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify the logic:\n- If v = -5",
+          "text_len": 1433,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45739357699858374,
+          "wall_s": 4.4812275570002384,
+          "decode_s": 4.023833980001655,
+          "tok_s": 99.15916063709864,
+          "delivered_tok_s": 89.26125596437296,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` ensures it's at least 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50,",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 4.549112103999505,
+      "tok_s": 98.83000185661858,
+      "ttft_s": 0.4580675884990342,
+      "decode_s": 4.037265366501742,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 703.4339727936386,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 876,
+        "draft_tokens": 2629,
+        "accepted": 2332,
+        "accept_ratio": 0.887,
+        "accepted_per_step": 2.662,
+        "mean_draft_tokens_per_step": 3.001,
+        "pos": [
+          0.9543,
+          0.9075,
+          0.7991,
+          0.0011,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.11994451099963044,
+          "wall_s": 4.362329605999548,
+          "decode_s": 4.242385094999918,
+          "tok_s": 94.05086786446192,
+          "delivered_tok_s": 91.69412587482539,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50, -",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4555523369999719,
+          "wall_s": 4.547813805998885,
+          "decode_s": 4.092261468998913,
+          "tok_s": 97.50110129145953,
+          "delivered_tok_s": 87.95434841074011,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list w",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is a clean one-liner using a list comprehension. The `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\nAlternative implementations:\n1. Using a conditional expression:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\n2. Using a loop:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThe `max(0, min(50, v))` approach is the most idiomatic and concise. I should also consider type hints since the user mentioned \"list of ints\":\n\n```python\ndef clamp_range(values: list[int]) -> list[int]:\n    \"\"\"Return a new list with each value clamped to the range",
+          "text_len": 1471,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4555069240013836,
+          "wall_s": 4.530892170001607,
+          "decode_s": 4.075385246000224,
+          "tok_s": 97.9048546126032,
+          "delivered_tok_s": 88.282833709516,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify it works:\n- v = -5:",
+          "text_len": 1430,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45540904800145654,
+          "wall_s": 4.44085235500097,
+          "decode_s": 3.985443306999514,
+          "tok_s": 100.11433340407787,
+          "delivered_tok_s": 90.07279864856318,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50",
+          "text_len": 1422,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45521971600101097,
+          "wall_s": 4.479245377002371,
+          "decode_s": 4.02402566100136,
+          "tok_s": 99.1544372758077,
+          "delivered_tok_s": 89.30075634027679,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify it works:\n- v = -5: min(50,",
+          "text_len": 1419,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45516204399973503,
+          "wall_s": 4.505875090999325,
+          "decode_s": 4.05071304699959,
+          "tok_s": 98.50117630414327,
+          "delivered_tok_s": 88.77298902471061,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using a loop with conditionals**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThis is more verbose but perhaps more readable for beginners.\n\n**Approach 3: Using a helper function**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    def clamp(v):\n        return max(0, min(50, v))\n    return [clamp(v) for v in values]\n```\n\nThe first approach is cleanest. Let me verify the logic:\n- For v = -5: min(50, -5) = -5, max(",
+          "text_len": 1427,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45500142200035043,
+          "wall_s": 4.481439800998487,
+          "decode_s": 4.026438378998137,
+          "tok_s": 99.09502206247092,
+          "delivered_tok_s": 89.25702849135182,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` ensures it's at least 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50,",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4548422240004584,
+          "wall_s": 4.483758289999969,
+          "decode_s": 4.0289160659995105,
+          "tok_s": 99.03408099444097,
+          "delivered_tok_s": 89.21087492430436,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify the logic:\n- If v = -5",
+          "text_len": 1433,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 4.548946967999655,
+      "tok_s": 98.76762864929212,
+      "ttft_s": 0.455190880000373,
+      "decode_s": 4.03981455649955,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 703.4595088733606,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 876,
+        "draft_tokens": 2629,
+        "accepted": 2332,
+        "accept_ratio": 0.887,
+        "accepted_per_step": 2.662,
+        "mean_draft_tokens_per_step": 3.001,
+        "pos": [
+          0.9543,
+          0.9075,
+          0.7991,
+          0.0011,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.11967428299976746,
+          "wall_s": 4.366491937002138,
+          "decode_s": 4.2468176540023705,
+          "tok_s": 93.95270353177666,
+          "delivered_tok_s": 91.60671902548486,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50, -",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4571983649984759,
+          "wall_s": 4.552181216997269,
+          "decode_s": 4.094982851998793,
+          "tok_s": 97.4363054549166,
+          "delivered_tok_s": 87.86996407490338,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list w",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is a clean one-liner using a list comprehension. The `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\nAlternative implementations:\n1. Using a conditional expression:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\n2. Using a loop:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThe `max(0, min(50, v))` approach is the most idiomatic and concise. I should also consider type hints since the user mentioned \"list of ints\":\n\n```python\ndef clamp_range(values: list[int]) -> list[int]:\n    \"\"\"Return a new list with each value clamped to the range",
+          "text_len": 1471,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4573133850026352,
+          "wall_s": 4.445350281999708,
+          "decode_s": 3.988036896997073,
+          "tok_s": 100.04922479539758,
+          "delivered_tok_s": 89.9816605273371,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50",
+          "text_len": 1422,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4568365079976502,
+          "wall_s": 4.535082641999907,
+          "decode_s": 4.078246134002256,
+          "tok_s": 97.8361743969667,
+          "delivered_tok_s": 88.20125928810103,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify it works:\n- v = -5:",
+          "text_len": 1430,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4569568859988067,
+          "wall_s": 4.483497918001376,
+          "decode_s": 4.026541032002569,
+          "tok_s": 99.09249572493749,
+          "delivered_tok_s": 89.21605570373708,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify it works:\n- v = -5: min(50,",
+          "text_len": 1419,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45673840600284166,
+          "wall_s": 4.510304634000931,
+          "decode_s": 4.05356622799809,
+          "tok_s": 98.43184434587411,
+          "delivered_tok_s": 88.68580560714237,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using a loop with conditionals**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThis is more verbose but perhaps more readable for beginners.\n\n**Approach 3: Using a helper function**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    def clamp(v):\n        return max(0, min(50, v))\n    return [clamp(v) for v in values]\n```\n\nThe first approach is cleanest. Let me verify the logic:\n- For v = -5: min(50, -5) = -5, max(",
+          "text_len": 1427,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45664651300103287,
+          "wall_s": 4.485584705002111,
+          "decode_s": 4.028938192001078,
+          "tok_s": 99.03353712205403,
+          "delivered_tok_s": 89.17455054498001,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` ensures it's at least 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50,",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45647353700042004,
+          "wall_s": 4.487934102002328,
+          "decode_s": 4.0314605650019075,
+          "tok_s": 98.97157458609823,
+          "delivered_tok_s": 89.12786839306237,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify the logic:\n- If v = -5",
+          "text_len": 1433,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 4.553334164000262,
+      "tok_s": 98.70170946598617,
+      "ttft_s": 0.4567874570002459,
+      "decode_s": 4.042513396499999,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 702.7817165935147,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 876,
+        "draft_tokens": 2629,
+        "accepted": 2332,
+        "accept_ratio": 0.887,
+        "accepted_per_step": 2.662,
+        "mean_draft_tokens_per_step": 3.001,
+        "pos": [
+          0.9543,
+          0.9075,
+          0.7991,
+          0.0011,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.4590974879974965,
+          "wall_s": 4.559624051998981,
+          "decode_s": 4.100526564001484,
+          "tok_s": 97.30457632022686,
+          "delivered_tok_s": 87.72653083638252,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list w",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation:\n\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is a clean one-liner using a list comprehension. The `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\nAlternative implementations:\n1. Using a conditional expression:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\n2. Using a loop:\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThe `max(0, min(50, v))` approach is the most idiomatic and concise. I should also consider type hints since the user mentioned \"list of ints\":\n\n```python\ndef clamp_range(values: list[int]) -> list[int]:\n    \"\"\"Return a new list with each value clamped to the range",
+          "text_len": 1471,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.11998559199855663,
+          "wall_s": 4.373328102999949,
+          "decode_s": 4.253342511001392,
+          "tok_s": 93.80857501317494,
+          "delivered_tok_s": 91.46352402089705,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` raises the floor to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50, -",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4587303520020214,
+          "wall_s": 4.542505430999881,
+          "decode_s": 4.08377507899786,
+          "tok_s": 97.70371587112795,
+          "delivered_tok_s": 88.0571319233301,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify it works:\n- v = -5:",
+          "text_len": 1430,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45861726500152145,
+          "wall_s": 4.452165047001472,
+          "decode_s": 3.9935477819999505,
+          "tok_s": 99.91116214970705,
+          "delivered_tok_s": 89.84392891485447,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50",
+          "text_len": 1422,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45848127600038424,
+          "wall_s": 4.490514618999441,
+          "decode_s": 4.032033342999057,
+          "tok_s": 98.95751499495805,
+          "delivered_tok_s": 89.07665021456414,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify it works:\n- v = -5: min(50,",
+          "text_len": 1419,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45839074600007734,
+          "wall_s": 4.517406663002475,
+          "decode_s": 4.059015917002398,
+          "tok_s": 98.29968843646796,
+          "delivered_tok_s": 88.546378451158,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using a loop with conditionals**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nThis is more verbose but perhaps more readable for beginners.\n\n**Approach 3: Using a helper function**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    def clamp(v):\n        return max(0, min(50, v))\n    return [clamp(v) for v in values]\n```\n\nThe first approach is cleanest. Let me verify the logic:\n- For v = -5: min(50, -5) = -5, max(",
+          "text_len": 1427,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.4582658960025583,
+          "wall_s": 4.492688804999489,
+          "decode_s": 4.03442290899693,
+          "tok_s": 98.89890301540115,
+          "delivered_tok_s": 89.03354257585742,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, and `max(0, ...)` ensures it's at least 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest. Let me verify the logic:\n- If v = -5: min(50,",
+          "text_len": 1417,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.45806300999902305,
+          "wall_s": 4.49494676500035,
+          "decode_s": 4.036883755001327,
+          "tok_s": 98.83861518322784,
+          "delivered_tok_s": 88.9888180911457,
+          "completion_tokens": 400,
+          "prompt_tokens": 48,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_",
+          "text": "The user wants a Python function named `clamp_range` that:\n1. Takes a list of ints as input\n2. Returns a new list with each value clamped to the range [0, 50]\n3. Includes a short docstring\n\nClamping means:\n- Values below 0 become 0\n- Values above 50 become 50\n- Values within [0, 50] stay the same\n\nLet me think about the implementation approaches:\n\n**Approach 1: Using min/max**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [max(0, min(50, v)) for v in values]\n```\n\nThis is the most Pythonic and concise way. `min(50, v)` caps the value at 50, then `max(0, ...)` raises anything below 0 to 0.\n\n**Approach 2: Using conditional expression**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    return [0 if v < 0 else 50 if v > 50 else v for v in values]\n```\n\nThis works too but is less readable.\n\n**Approach 3: Explicit loop**\n```python\ndef clamp_range(values):\n    \"\"\"Return a new list with each value clamped to the range [0, 50].\"\"\"\n    result = []\n    for v in values:\n        if v < 0:\n            result.append(0)\n        elif v > 50:\n            result.append(50)\n        else:\n            result.append(v)\n    return result\n```\n\nMore verbose but very clear for beginners.\n\nThe first approach with `max(0, min(50, v))` is the cleanest and most idiomatic. Let me verify the logic:\n- If v = -5",
+          "text_len": 1433,
+          "usage": {
+            "prompt_tokens": 48,
+            "total_tokens": 448,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 4.560475498001324,
+      "tok_s": 98.56915180984791,
+      "ttft_s": 0.4584360110002308,
+      "decode_s": 4.047949836001862,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 701.6812175402397,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 876,
+        "draft_tokens": 2629,
+        "accepted": 2332,
+        "accept_ratio": 0.887,
+        "accepted_per_step": 2.662,
+        "mean_draft_tokens_per_step": 3.001,
+        "pos": [
+          0.9543,
+          0.9075,
+          0.7991,
+          0.0011,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "ts": 1790876316.4106207,
+  "prompt": "coding-clamp-range",
+  "thinking": false,
+  "temperature": 0,
+  "concurrency": 8,
+  "note": "decode_ms_per_draft_step is a serving-cycle ratio, not a kernel timing",
+  "warmup": {
+    "tok_s": 324.5607052428255,
+    "ttft_s": 0.09234187800029758,
+    "completion_tokens": 32
+  },
+  "tok_s_median": 98.76762864929212,
+  "tok_s_min": 98.56915180984791,
+  "tok_s_max": 98.8510000869614,
+  "ttft_median_s": 0.4580675884990342,
+  "completion_tokens_median": 3200.0,
+  "accept_ratio_median": 0.887,
+  "accepted_per_step_median": 2.662,
+  "mean_draft_tokens_per_step_median": 3.001,
+  "aggregate_tok_s_median": 702.7817165935147,
+  "decode_ms_per_draft_step_median": 4.611660452625057,
+  "any_nan": false,
+  "health_code_after": 200,
+  "short_after": {
+    "http": 200,
+    "ttft_s": 0.10615826399953221,
+    "wall_s": 0.15884017999997013,
+    "decode_s": 0.05268191600043792,
+    "tok_s": 132.87291980689943,
+    "delivered_tok_s": 50.36509024354861,
+    "completion_tokens": 8,
+    "prompt_tokens": 39,
+    "finish_reason": "length",
+    "nan": false,
+    "text_head": "The user wants a detailed, thorough explanation",
+    "text": "The user wants a detailed, thorough explanation",
+    "text_len": 47,
+    "usage": {
+      "prompt_tokens": 39,
+      "total_tokens": 47,
+      "completion_tokens": 8,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  }
+}
