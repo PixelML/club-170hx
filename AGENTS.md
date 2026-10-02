@@ -26,6 +26,24 @@ If a value is not necessary for reproducing the result, omit it. If uncertain wh
 - Never invent a measurement, version, citation, or successful test.
 - Do not publish a new measured benchmark as prose alone. It ships with a runnable artifact carrying immutable pins, clean recorded outputs, structured source data, a generated chart, and an editable final API request — either an executed experiment notebook under `notebooks/` with its receipts under `results/`, or a self-contained recipe folder under `recipes/<model-runtime>/`. Use `recipes/` when the goal is a reader reproducing the run on their own hardware.
 
+## Reproducibility pins
+
+A reader must be able to rebuild the exact run without asking anyone. Every published result lists these pins verbatim in its notebook pins table and its Reproduce section:
+
+| Input | Required form | Not enough |
+|---|---|---|
+| Container image | `registry/name@sha256:<64 hex>` that an anonymous `docker pull` accepts | a tag, a truncated digest, "built locally" |
+| An image we built | pushed to a public registry (for example `ghcr.io/pixelml/...`) and a pinned build recipe (Dockerfile with the base image by digest and full source commits) in a public repository | an image that exists only on a lab host |
+| Engine or fork source | repository URL and full 40-character commit on a public branch or tag | a short SHA, a private branch |
+| Driver and kernel patches | public repository, tag and full commit, the exact install command, driver and kernel versions | a list of patch names |
+| Model and drafter | Hugging Face repository and full revision, licence stated | "latest" |
+| Server configuration | the complete `.env` or serve arguments from the run receipt (secrets and private paths masked) | a summary of the important flags |
+| Host tuning | every live change as a command: power cap, clocks or NDIV, offsets, fan policy | prose only |
+| Tools | tool repository and full commit, plus the build dependencies it needs | the tool name |
+| Evidence files | every receipt the notebook reads is committed (check `.gitignore`) | files that exist only in the author's checkout |
+
+`scripts/validate_recipe_notebooks.py` fails on truncated digests and on "built locally" / "not published" in every dated notebook and result README.
+
 ## Infrastructure safety
 
 By default, agents may inspect files and run read-only checks. They must not start or stop VMs, reboot or power-cycle hosts, change passthrough, change a GPU power limit, flash firmware, install drivers, build software, download model weights, or launch a GPU workload without explicit user authorization for that action.

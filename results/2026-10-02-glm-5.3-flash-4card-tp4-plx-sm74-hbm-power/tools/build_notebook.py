@@ -111,12 +111,13 @@ cells.append(md("""## 1. TL;DR
 - **Measured:** SM VF offset +200 at a 1,410 MHz ceiling, 140 W: 415.0 / 308.3 / 213.1 tok/s single-user and 816.3 at eight users vs 412.7 / 305.9 / 211.6 and 814.2 without it (+0.6%), 6 W less GPU power: within noise. The offset only applies on the two cards with the 300 W VBIOS; on the 250 W VBIOS cards NVML exposes a VF offset range of [0..0] and silently refuses it."""))
 
 cells.append(code("""pins = {
-    "recipe": "Morrowmake/glm53-flash-cmp170hx-recipe @ a242b4f (v1.6.0); --gpus all -> --device nvidia.com/gpu=all (LXC/CDI)",
-    "engine image": "ghcr.io/morrowmake/vllm-cmp170hx@sha256:cc26c8abb639… (vLLM fork v0.30.1rc1.dev301+g3a2bf16da)",
-    "copy-drafts image": "pixelml/sm80vllm:tf-learnings-c93c274c8 (built locally from PixelML/sm80vllm, not published)",
-    "target / drafter": "canada-quant/GLM-5.3-Flash-W4A16-MTP @ 5723f4d02a · incoai/GLM-5.3-Flash-DFlash2 @ bf582e4eac (CC BY-NC-ND 4.0, benchmark only)",
-    "driver": "615.71.09 open; cmpunlocker 88e39ce + 6c442ee (+4 SM) + PR #60 HBM PLMs + rebar-serialize + 4 BAR1-P2P patches",
-    "HBM clock": "170tune 5eb4775: NDIV 64 on the two NDIV-54 cards (hot gate, persisted)",
+    "recipe": "Morrowmake/glm53-flash-cmp170hx-recipe @ a242b4fc53724bc5216f416fbbfaf7bf318b9f2c (v1.6.0); --gpus all -> --device nvidia.com/gpu=all (LXC/CDI)",
+    "engine image (stock runs)": "ghcr.io/morrowmake/vllm-cmp170hx@sha256:cc26c8abb63953a37c6c1861cadc9188e99c1cceab403600b5822740f3a82ae0 (Morrowmake/vllm-cmp170hx @ 3a2bf16dae8b97f5ff2c7e9bc5809d24545e6340; the recipe's default IMAGE)",
+    "copy-drafts image": "ghcr.io/pixelml/sm80vllm@sha256:f0dbb483b000f85ac66adb6f190c11d1af395914df67a0d9b7e54dfe2258fa86 (tf-learnings-c93c274c8 = PixelML/sm80vllm @ c93c274c86543d513c67243859480aeec46bc951 overlay on @ 127c6f0761b2c81d2c0ba7e2d8a5cf71e3247903, image sha256:704cbb8841be7c99bd1d5d6a8136fc118ca22cfc85457ef4a669a07ef957e8ff); build recipe: PixelML/sm80vllm docker/cmp170hx/",
+    "target": "canada-quant/GLM-5.3-Flash-W4A16-MTP @ 5723f4d02af36366c23ace8668866ca7775855c1",
+    "drafter": "incoai/GLM-5.3-Flash-DFlash2 @ bf582e4eacc1810f76656d1811693ff6c6737d2a (CC BY-NC-ND 4.0, benchmark only)",
+    "driver": "NVIDIA open 615.71.09 + PixelML/cmpunlocker tag cmp170hx-plx-p2p-2026-10-02 @ 6ca4da72f078553d37089ee741cd128aa7804504 (upstream 6c442ee +4 SM, PR #60 HBM PLMs, rebar-serialize, 4 static-BAR1 P2P patches); ./install.sh --profile=8gb --no-gen2-service --no-iommu",
+    "HBM / SM tuning": "cachenetics/170tune @ 5eb4775063b6cc055607ee5affecd210b13f0156; build deps: CUDA nvcc + cudart/cublas/nvml dev headers (cuda-nvcc-13-2, cuda-cudart-dev-13-2, libcublas-dev-13-2, cuda-nvml-dev-13-2)",
     "host": "Proxmox VE 9.2.2, kernel 7.0.2-6-pve; server in a privileged LXC sharing the host driver",
     "topology": "TP4, P2P off + replicated embedding, 4 × Gen2 x16, 2 cards per PLX PEX 8747, one CPU socket",
 }
@@ -124,7 +125,7 @@ table(["pin", "value"], pins.items())"""))
 
 cells.append(md("""## 2. Results (measured)
 
-Decode matrix: MiaAI-Lab `bench_decode.py` @ 943912cd, T=0, thinking off, 400 tokens, median of 5, at 1 and 8 users. Busy power = mean board power while utilisation > 50%, summed over four cards. Tokens per watt = eight-user structured aggregate ÷ busy power."""))
+Decode matrix: MiaAI-Lab `bench_decode.py` @ 943912cd, T=0, 400 tokens (the harness sends `enable_thinking: false`, but this GLM-5.3-Flash chat template has no such switch: reasoning streams in `content` and counts as output tokens), median of 5, at 1 and 8 users. Busy power = mean board power while utilisation > 50%, summed over four cards. Tokens per watt = eight-user structured aggregate ÷ busy power."""))
 
 cells.append(code("""RUNS = [
     ("sm74-150w", "74 SM, mixed HBM", 150),
@@ -283,36 +284,66 @@ cells.append(code(print_probe))
 
 cells.append(md(f"""## 3. Reproduce
 
-Hardware: 4 × CMP 170HX exposing 65,536 MiB each, forced-air cooling, ~200 GB disk for weights. Driver: cmpunlocker with `6c442ee` for 74 SMs; for the HBM step, PR #60's `hbm-control-plm.patch` plus [170tune](https://github.com/cachenetics/170tune).
+Hardware: 4 × CMP 170HX exposing 65,536 MiB each, forced-air cooling, ~200 GB disk for weights. Every pin below is in the table in section 1.
 
 ```bash
-# 1. Serve (as in the 2026-10-01 notebook; P2P off on PLX/older-Xeon hosts)
-git clone https://github.com/Morrowmake/glm53-flash-cmp170hx-recipe && cd glm53-flash-cmp170hx-recipe && git checkout v1.6.0
-printf 'LAYOUT=tp4\\nMODELS_DIR=/path/to/models\\nVLLM_ALLOW_PCIE_P2P_CUSTOM_ALLREDUCE=0\\nVLLM_GLM5_REPLICATED_EMBED=1\\n' > .env
-./install.sh && ./download.sh && ./start.sh
+# 1. Driver: NVIDIA open 615.71.09 + the exact patch stack (GPL-2.0 fork, tagged)
+git clone https://github.com/PixelML/cmpunlocker && cd cmpunlocker
+git checkout cmp170hx-plx-p2p-2026-10-02          # = 6ca4da72f078553d37089ee741cd128aa7804504
+sudo ./install.sh --profile=8gb --no-gen2-service --no-iommu    # then cold-boot; expect 74 SM, 64 GB, Gen2 x16
+# static-BAR1 P2P behind PLX switches is optional here (the served config runs P2P off): platform/plx-static-bar1/README.md
 
-# 2. Check each card's stock HBM clock (NDIV x 27 MHz); 54 = 1,458 MHz, 64 = 1,728 MHz
-sudo 170tune -i 0 snapshot-stock    # repeat for each card
+# 2. Serve: recipe at the pinned commit, complete .env from receipts/<run>/env.txt with the image pinned by digest
+git clone https://github.com/Morrowmake/glm53-flash-cmp170hx-recipe && cd glm53-flash-cmp170hx-recipe
+git checkout a242b4fc53724bc5216f416fbbfaf7bf318b9f2c
+cat > .env <<'EOF'
+IMAGE=ghcr.io/morrowmake/vllm-cmp170hx@sha256:cc26c8abb63953a37c6c1861cadc9188e99c1cceab403600b5822740f3a82ae0
+VLLM_GLM5_REPLICATED_EMBED=1
+LAYOUT=tp4
+MODELS_DIR=/path/to/models
+SPEC_MODE=dflash
+VLLM_ALLOW_PCIE_P2P_CUSTOM_ALLREDUCE=0
+HOST=0.0.0.0
+PORT=8030
+EOF
+./install.sh && ./download.sh && ./start.sh      # cold start ~13 min on this host
 
-# 3. Gate and persist NDIV 64 on cards that ship at 54 (server stopped; one card at a time)
+# 3. Tools: 170tune at the pinned commit (its gate needs CUDA nvcc; compiler packages only, no driver packages)
+sudo apt-get install --no-install-recommends cuda-nvcc-13-2 cuda-cudart-dev-13-2 libcublas-dev-13-2 cuda-nvml-dev-13-2
+git clone https://github.com/cachenetics/170tune && cd 170tune && git checkout 5eb4775063b6cc055607ee5affecd210b13f0156 && sudo ./install.sh
+
+# 4. HBM: read each card's stock NDIV (x 27 MHz; 54 = 1,458 MHz, 64 = 1,728 MHz); gate + persist 64 on cards at 54
+for i in 0 1 2 3; do sudo 170tune -i $i snapshot-stock; done
+./stop.sh                                        # gates need the cards to themselves; one card at a time
 sudo GATE_TEMP=75 GATE_SOAK_MAX=600 170tune -i 1 hbm-gate --ndiv 64 --sweeps 12
 sudo 170tune -i 1 persist save --ndiv 64 && sudo 170tune -i 1 persist enable
 
-# 4. Bench: run_decode.sh at one cap, or sweep.sh across caps (live, no restart)
+# 5. SM offset (optional, measured within noise): check the range first; [0..0] means the VBIOS refuses it
+sudo nvml_oc -i 0                                # "GPC clock VF offset allowed range" must not be [0 .. +0]
+sudo GATE_TEMP=75 GATE_SOAK_MAX=600 170tune -i 0 gate 200 1410 12
+sudo 170tune -i 0 persist save --offset 200 --clk 1410   # cards that also run NDIV 64: add --ndiv 64
+
+# 6. Power cap (live, no restart) and benches
+sudo nvidia-smi -pl 140                          # 170tune's recover/crash paths reset to 250 W: re-apply after
+./start.sh && bash run_decode.sh                 # one cap; or: bash sweep.sh (150 140 130 120 110 100 W)
+
+# 7. Copy-drafts A/B: the same .env with these two lines changed, one boot each
+#    IMAGE=ghcr.io/pixelml/sm80vllm@sha256:f0dbb483b000f85ac66adb6f190c11d1af395914df67a0d9b7e54dfe2258fa86
+#    VLLM_GLM5_COPY_DRAFTS=0   (then =1)  -> python3 bench_edit.py --runs 3 --out receipts/edit.json
 ```
 
-Set `GATE_TEMP` to the card's real serving HBM peak: a card that never reaches the target waits out the full soak before every sweep. 170tune's recover and crash-revert paths set the power limit to 250 W; re-apply your cap afterwards. Harness: [`run_decode.sh`](../results/{EXP}/run_decode.sh), [`sweep.sh`](../results/{EXP}/sweep.sh), [`bench_edit.py`](../results/{EXP}/bench_edit.py)."""))
+Set `GATE_TEMP` to the card's real serving HBM peak: a card that never reaches the target waits out the full soak before every sweep. Harness: [`run_decode.sh`](../results/{EXP}/run_decode.sh), [`sweep.sh`](../results/{EXP}/sweep.sh), [`bench_edit.py`](../results/{EXP}/bench_edit.py). The sm80vllm images can also be rebuilt from `docker/cmp170hx/` in [PixelML/sm80vllm](https://github.com/PixelML/sm80vllm) (pinned CUDA base digest and full commits)."""))
 
 cells.append(md("""## Try your own prompt
 
-Edit `PROMPT`; with `LIVE = False` this prints the recorded structured run at 150 W (HBM equalised) instead."""))
+Edit `PROMPT`. The served template has no thinking switch (only `reasoning_effort` low/high/max, default max), so the reply starts with reasoning text. With `LIVE = False` this prints the recorded structured run at 150 W (HBM equalised) instead."""))
 
 cells.append(code("""PROMPT = "Count from 1 to 200. Output only the numbers, separated by spaces. No other text."
 if LIVE:
     import urllib.request
     url = os.environ[ENDPOINT_ENV_VAR]
-    body = {"model": "glm-5.3-flash", "messages": [{"role": "user", "content": PROMPT}], "max_tokens": 400, "temperature": 0,
-            "chat_template_kwargs": {"enable_thinking": False}}
+    # No thinking switch: this GLM-5.3-Flash template has no enable_thinking; reasoning streams in content.
+    body = {"model": "glm-5.3-flash", "messages": [{"role": "user", "content": PROMPT}], "max_tokens": 400, "temperature": 0}
     req = urllib.request.Request(url + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
     resp = json.load(urllib.request.urlopen(req, timeout=600))
     print(resp["choices"][0]["message"].get("content")); print(resp["usage"])
