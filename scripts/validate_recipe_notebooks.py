@@ -32,6 +32,10 @@ PROHIBITED_TEXT = (
     "PIXELML_API_SECRET_FILE",
     "pixelml-qwen38-api-key",
 )
+# Reproducibility pins (AGENTS.md): enforced for every dated notebook and result README.
+PIN_CHECK_FROM = "2000-01-01"
+TRUNCATED_DIGEST = re.compile(r"sha256:(?:[0-9a-f]{0,63}(?![0-9a-f])|[0-9a-f]*(?:\u2026|\.\.\.))")
+UNPUBLISHED = re.compile(r"built locally|not published", re.IGNORECASE)
 REQUIRED_RUNTIME_VERSIONS = {
     "vllm": "0.27.1",
     "torch": "2.13.0",
@@ -166,6 +170,29 @@ def validate_recipe(manifest_path: Path) -> list[str]:
     return errors
 
 
+def pinned_documents(root: Path) -> list[Path]:
+    paths = sorted(root.glob("notebooks/*.ipynb")) + sorted(root.glob("results/*/README.md"))
+    dated = []
+    for path in paths:
+        stem = path.stem if path.suffix == ".ipynb" else path.parent.name
+        if re.match(r"\d{4}-\d{2}-\d{2}", stem) and stem[:10] >= PIN_CHECK_FROM:
+            dated.append(path)
+    return dated
+
+
+def pin_errors(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    if path.suffix == ".ipynb":
+        notebook = json.loads(text)
+        text = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
+    errors = []
+    for match in TRUNCATED_DIGEST.finditer(text):
+        errors.append(f"{path}: truncated image digest {match.group(0)!r}; pin the full sha256")
+    for match in UNPUBLISHED.finditer(text):
+        errors.append(f"{path}: {match.group(0)!r}; publish the artifact and pin it (AGENTS.md, Reproducibility pins)")
+    return errors
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("root", nargs="?", default=Path.cwd(), type=Path)
@@ -174,9 +201,11 @@ def main() -> None:
     if not manifests:
         raise SystemExit("no published recipe manifests found")
     errors = [error for manifest in manifests for error in validate_recipe(manifest)]
+    pinned = pinned_documents(args.root)
+    errors += [error for path in pinned for error in pin_errors(path)]
     if errors:
         raise SystemExit("\n".join(errors))
-    print(f"validated {len(manifests)} reproducible recipe notebook(s)")
+    print(f"validated {len(manifests)} reproducible recipe notebook(s) and pins in {len(pinned)} dated document(s)")
 
 
 if __name__ == "__main__":
