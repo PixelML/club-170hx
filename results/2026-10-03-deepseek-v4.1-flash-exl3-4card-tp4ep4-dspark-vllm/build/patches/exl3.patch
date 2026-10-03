@@ -1,0 +1,106 @@
+--- a/exl3.py
++++ b/exl3.py
+@@ -576,9 +576,26 @@
+ 
+ def _resolve_tp_geometry(*owners: Any) -> tuple[int, int]:
+     """Resolve per-layer TP metadata before consulting process-wide TP state."""
++    from vllm.model_executor.layers.linear import ReplicatedLinear
++
++    # MoE owners (FusedMoE, or a RoutedExperts wrapper via moe_config) split
++    # experts by their own MoE parallel config: with expert parallelism the
++    # MoE tp_size is 1 and every local expert stays whole.
++    for owner in owners:
++        if owner is None:
++            continue
++        moe_cfg = getattr(owner, "moe_parallel_config", None)
++        if moe_cfg is None:
++            moe_cfg = getattr(getattr(owner, "moe_config", None), "moe_parallel_config", None)
++        if moe_cfg is not None and getattr(moe_cfg, "tp_size", None) is not None:
++            return int(getattr(moe_cfg, "tp_rank", 0)), int(moe_cfg.tp_size)
++
+     for owner in owners:
+         if owner is None:
+             continue
++        # ReplicatedLinear reports the world tp_size but holds the whole weight.
++        if isinstance(owner, ReplicatedLinear):
++            return 0, 1
+         rank = getattr(owner, "tp_rank", None)
+         size = getattr(owner, "moe_tp_size", None)
+         if size is None:
+@@ -3223,9 +3240,15 @@
+             )
+         if padded:
+             _, _pad_tp = _resolve_tp_geometry(layer)
+-            if int(_pad_tp) > 1:
++            # At TP > 1 only output padding of a column-sharded layer is
++            # supported (e.g. a vocab-parallel lm_head: 129,280 / 4 = 32,320 rows
++            # per rank): the rank's unpadded slice loads into the front of the
++            # padded buffer, the pad gets svh = 0 and apply() trims it.
++            if int(_pad_tp) > 1 and (is_row_parallel or in_per_partition != true_in):
+                 raise NotImplementedError(
+-                    "EXL3 padded linear geometry requires tensor parallel size 1"
++                    "EXL3 padded linear geometry at tensor parallel size > 1 is "
++                    "supported for output padding of column-sharded layers only: "
++                    f"in={true_in} out={true_out_sizes}"
+                 )
+             # vLLM registers the bias after create_weights with this instance's
+             # weight_loader; a padded checkpoint bias is trimmed to the true size.
+@@ -3503,6 +3526,35 @@
+             else:
+                 shard_tp_size = tp_size
+                 shard_tp_rank = tp_rank
++
++            # Vocab-parallel head: take this rank's exact vocab range from vLLM's
++            # shard indices (128-aligned with the EXL3 padding above) and zero
++            # the padded tail; an even split would cut a 128-row Hadamard block.
++            shard_indices = getattr(layer, "shard_indices", None)
++            if shard_indices is not None and suffix in ("trellis", "svh") and tp_size > 1:
++                start = int(shard_indices.org_vocab_start_index)
++                end = int(shard_indices.org_vocab_end_index)
++                if start % 128 or (end - start) % 16:
++                    raise RuntimeError(
++                        f"EXL3 vocab shard [{start}, {end}) is not 128-aligned; "
++                        "build the lm_head with padding_size = 128 * tp"
++                    )
++                if suffix == "trellis":
++                    piece = loaded[:, start // 16 : end // 16, :]
++                    dest = param.data
++                    out_dim = 1
++                else:
++                    piece = loaded[start:end]
++                    dest = param.data
++                    out_dim = 0
++                n = int(piece.shape[out_dim])
++                if n > int(dest.shape[out_dim]):
++                    raise RuntimeError(
++                        f"EXL3 vocab shard {suffix}: {n} rows > buffer {tuple(dest.shape)}"
++                    )
++                dest.zero_()
++                dest.narrow(out_dim, 0, n).copy_(piece)
++                return
+ 
+             # Apply TP slicing based on layer type
+             if is_row_parallel:
+@@ -3531,6 +3583,22 @@
+             else:
+                 raise ValueError(f"unknown EXL3 suffix={suffix}")
+ 
++            if (
++                getattr(layer, "_exl3_linear_padded", False)
++                and suffix in ("trellis", "svh")
++                and sharded.dim() == dest.dim()
++            ):
++                # Padded output geometry at TP > 1: the TP slice is unpadded.
++                out_dim = 1 if suffix == "trellis" else 0
++                n = int(sharded.shape[out_dim])
++                if n < int(dest.shape[out_dim]) and all(
++                    int(sharded.shape[d]) == int(dest.shape[d])
++                    for d in range(dest.dim())
++                    if d != out_dim
++                ):
++                    dest.zero_()
++                    dest.narrow(out_dim, 0, n).copy_(sharded)
++                    return
+             if tuple(dest.shape) != tuple(sharded.shape):
+                 raise RuntimeError(
+                     f"EXL3 linear load shape mismatch shard={shard_idx} "

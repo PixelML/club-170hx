@@ -1,0 +1,126 @@
+--- a/vllm/models/deepseek_v4_1/common/engram.py
++++ b/vllm/models/deepseek_v4_1/common/engram.py
+@@ -34,6 +34,7 @@
+   cache for the rest.
+ """
+ 
++import os
+ import weakref
+ 
+ import numpy as np
+@@ -618,10 +619,70 @@
+         tl.store(
+             out + rows[:, None] * DIM + cols[None, :],
+             (values * scale).to(tl.bfloat16),
++            mask=valid[:, None],
++        )
++
++
++@triton.jit
++def _engram_lookup_int4_kernel(
++    weight,
++    scales,
++    ids,
++    out,
++    vocab_start,
++    vocab_end,
++    num_rows,
++    ids_stride_t,
++    ids_stride_h,
++    HEAD_START: tl.constexpr,
++    LOCAL_HEADS: tl.constexpr,
++    TOTAL_HEADS: tl.constexpr,
++    DIM: tl.constexpr,
++    QUANT_BLOCK: tl.constexpr,
++    BLOCK_R: tl.constexpr,
++    GRID: tl.constexpr,
++):
++    """DSV41_ENGRAM_INT4 twin of _engram_lookup_kernel: rows are int4 offset-binary
++    (value = (q - 8) * scale), two per byte with the even column in the low nibble,
++    and scales are fp16 per QUANT_BLOCK."""
++    cols = tl.arange(0, DIM)
++    scale_cols = cols // QUANT_BLOCK
++    byte_cols = cols // 2
++    shift = (cols % 2) * 4
++    for base in tl.range(tl.program_id(0) * BLOCK_R, num_rows, GRID * BLOCK_R):
++        rows = base + tl.arange(0, BLOCK_R)
++        valid = rows < num_rows
++        head = HEAD_START + rows % LOCAL_HEADS
++        token = (rows // LOCAL_HEADS).to(tl.int64)
++        index = tl.load(
++            ids + token * ids_stride_t + head * ids_stride_h,
++            mask=valid & (head < TOTAL_HEADS),
++            other=-1,
++        ).to(tl.int64)
++        owned = valid & (head < TOTAL_HEADS)
++        owned &= (index >= vocab_start) & (index < vocab_end)
++        local = tl.where(owned, index - vocab_start, 0)
++        packed = tl.load(
++            weight + local[:, None] * (DIM // 2) + byte_cols[None, :],
++            mask=owned[:, None],
++            other=8,
++        ).to(tl.int32)
++        q = (packed >> shift[None, :]) & 0xF
++        scale = tl.load(
++            scales + local[:, None] * (DIM // QUANT_BLOCK) + scale_cols[None, :],
++            mask=owned[:, None],
++            other=0.0,
++        ).to(tl.float32)
++        tl.store(
++            out + rows[:, None] * DIM + cols[None, :],
++            ((q - 8).to(tl.float32) * scale).to(tl.bfloat16),
+             mask=valid[:, None],
+         )
+ 
+ 
++_ENGRAM_INT4 = os.environ.get("DSV41_ENGRAM_INT4") == "1"
++
++
+ class ParallelEngramEmbedding(nn.Module):
+     """The n-gram hash table, sharded by complete hash heads over TP ranks.
+     Rows stay fp8 and are dequantized with ue8m0 per-32 scales on lookup.
+@@ -667,9 +728,14 @@
+         # Explicit device: model init runs under a `torch.device("cuda")`
+         # context, which would otherwise put the shard in HBM.
+         kwargs = {"device": "cpu", "pin_memory": False} if cpu_offload else {}
++        # DSV41_ENGRAM_INT4: rows are packed int4 (dim // 2 bytes) with fp16 scales.
++        self.int4 = _ENGRAM_INT4
+         self.weight = nn.Parameter(
+             torch.empty(
+-                self.part_num_embeddings, dim, dtype=torch.float8_e4m3fn, **kwargs
++                self.part_num_embeddings,
++                dim // 2 if self.int4 else dim,
++                dtype=torch.uint8 if self.int4 else torch.float8_e4m3fn,
++                **kwargs,
+             ),
+             requires_grad=False,
+         )
+@@ -677,7 +743,7 @@
+             torch.empty(
+                 self.part_num_embeddings,
+                 dim // block_size,
+-                dtype=torch.uint8,
++                dtype=torch.float16 if self.int4 else torch.uint8,
+                 **kwargs,
+             ),
+             requires_grad=False,
+@@ -704,7 +770,8 @@
+                 "%.2f GiB per rank",
+                 self.part_num_embeddings,
+                 dim,
+-                self.part_num_embeddings * (dim + dim // block_size) / 1024**3,
++                (self.weight.numel() * self.weight.element_size()
++                 + self.weight_scale_inv.numel() * self.weight_scale_inv.element_size()) / 1024**3,
+             )
+ 
+     def _storage(self) -> tuple[torch.Tensor, torch.Tensor]:
+@@ -740,7 +807,8 @@
+         # beats one program per row; halve it to leave SMs for the main stream.
+         tiles = triton.cdiv(rows, 16)
+         grid = min(tiles, self._num_sms // 2 if background else self._num_sms)
+-        _engram_lookup_kernel[(grid,)](
++        kernel = _engram_lookup_int4_kernel if self.int4 else _engram_lookup_kernel
++        kernel[(grid,)](
+             weight.view(torch.uint8),
+             scales,
+             indices,

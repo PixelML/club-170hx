@@ -1,0 +1,23 @@
+--- a/v41model.py
++++ b/v41model.py
+@@ -1031,11 +1031,20 @@
+             vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
+         )
+         if get_pp_group().is_last_rank:
++            # EXL3 heads mix output rows in 128-row Hadamard blocks, so each TP
++            # rank's vocab slice must start on a 128 boundary: pad the vocab
++            # to 128 * tp (vLLM trims the padded logits).
++            lm_head_padding = {}
++            if getattr(vllm_config.quant_config, "get_name", lambda: "")() == "exl3":
++                lm_head_padding["padding_size"] = (
++                    128 * vllm_config.parallel_config.tensor_parallel_size
++                )
+             self.lm_head = ParallelLMHead(
+                 config.vocab_size,
+                 config.hidden_size,
+                 quant_config=vllm_config.quant_config,
+                 prefix=maybe_prefix(prefix, "lm_head"),
++                **lm_head_padding,
+             )
+         else:
+             self.lm_head = PPMissingLayer()

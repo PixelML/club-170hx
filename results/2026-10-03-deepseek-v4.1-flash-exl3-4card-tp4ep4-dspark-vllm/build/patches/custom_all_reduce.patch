@@ -1,0 +1,34 @@
+--- a/custom_all_reduce.py
++++ b/custom_all_reduce.py
+@@ -4,6 +4,8 @@
+ from contextlib import contextmanager
+ from typing import cast
+ 
++import os
++
+ import torch
+ import torch.distributed as dist
+ from torch.distributed import ProcessGroup
+@@ -233,6 +235,10 @@
+             physical_device_ids = [t.item() for t in gather_list]
+             assert current_platform.is_cuda_alike()
+             fully_connected = current_platform.is_fully_connected(physical_device_ids)
++            # VLLM_FORCE_CUSTOM_AR_PCIE=1: treat PCIe GPUs with working P2P as fully
++            # connected (the P2P self-test below still runs and can disable it).
++            if os.environ.get("VLLM_FORCE_CUSTOM_AR_PCIE") == "1":
++                fully_connected = True
+         if same_node and world_size > 2 and not fully_connected:
+             logger.warning(
+                 "Custom allreduce is disabled because it's not supported on"
+@@ -416,7 +422,10 @@
+         # for 4 or more non NVLink-capable GPUs, custom allreduce provides
+         # little performance improvement over NCCL.
+         if self.world_size == 2 or self.fully_connected:
+-            return inp_size < self.max_size
++            # VLLM_CUSTOM_AR_MAX_BYTES: use the custom kernel only below this size
++            # (small single-user decode messages) and NCCL above it.
++            cap = int(os.environ.get("VLLM_CUSTOM_AR_MAX_BYTES", "0") or 0)
++            return inp_size < (min(self.max_size, cap) if cap > 0 else self.max_size)
+         return False
+ 
+     def all_reduce(
