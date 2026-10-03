@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 470" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="470" fill="#ffffff"/>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">How the model is split over 4 cards (TP4 + EP4)</text>
+  <text x="24" y="56" fill="#57606a">Each card holds 54.4 GiB of weights. After each layer the cards add their partial results (all-reduce).</text>
+  <g id="cards">
+    <rect x="24" y="80" width="225" height="250" rx="10" fill="#ddf4ff" stroke="#0969da"/>
+    <rect x="264" y="80" width="225" height="250" rx="10" fill="#ddf4ff" stroke="#0969da"/>
+    <rect x="504" y="80" width="225" height="250" rx="10" fill="#ddf4ff" stroke="#0969da"/>
+    <rect x="744" y="80" width="225" height="250" rx="10" fill="#ddf4ff" stroke="#0969da"/>
+  </g>
+  <text x="40" y="104" font-weight="bold" fill="#0969da">Card 0</text>
+  <text x="280" y="104" font-weight="bold" fill="#0969da">Card 1</text>
+  <text x="520" y="104" font-weight="bold" fill="#0969da">Card 2</text>
+  <text x="760" y="104" font-weight="bold" fill="#0969da">Card 3</text>
+  <g fill="#ffffff" stroke="#8250df">
+    <rect x="40" y="116" width="193" height="44" rx="6"/><rect x="280" y="116" width="193" height="44" rx="6"/>
+    <rect x="520" y="116" width="193" height="44" rx="6"/><rect x="760" y="116" width="193" height="44" rx="6"/>
+  </g>
+  <text x="52" y="135" fill="#1f2328">Routed experts 0–95</text><text x="292" y="135" fill="#1f2328">Routed experts 96–191</text>
+  <text x="532" y="135" fill="#1f2328">Routed experts 192–287</text><text x="772" y="135" fill="#1f2328">Routed experts 288–383</text>
+  <text x="52" y="152" fill="#8250df">EP: whole experts</text><text x="292" y="152" fill="#8250df">EP: whole experts</text>
+  <text x="532" y="152" fill="#8250df">EP: whole experts</text><text x="772" y="152" fill="#8250df">EP: whole experts</text>
+  <g fill="#ffffff" stroke="#9a6700">
+    <rect x="40" y="170" width="193" height="44" rx="6"/><rect x="280" y="170" width="193" height="44" rx="6"/>
+    <rect x="520" y="170" width="193" height="44" rx="6"/><rect x="760" y="170" width="193" height="44" rx="6"/>
+  </g>
+  <g fill="#1f2328"><text x="52" y="189">Shared expert, full copy</text><text x="292" y="189">Shared expert, full copy</text><text x="532" y="189">Shared expert, full copy</text><text x="772" y="189">Shared expert, full copy</text></g>
+  <g fill="#9a6700"><text x="52" y="206">output × 1/4</text><text x="292" y="206">output × 1/4</text><text x="532" y="206">output × 1/4</text><text x="772" y="206">output × 1/4</text></g>
+  <g fill="#ffffff" stroke="#0969da">
+    <rect x="40" y="224" width="193" height="44" rx="6"/><rect x="280" y="224" width="193" height="44" rx="6"/>
+    <rect x="520" y="224" width="193" height="44" rx="6"/><rect x="760" y="224" width="193" height="44" rx="6"/>
+  </g>
+  <g fill="#1f2328"><text x="52" y="243">Attention: 1/4 of heads</text><text x="292" y="243">Attention: 1/4 of heads</text><text x="532" y="243">Attention: 1/4 of heads</text><text x="772" y="243">Attention: 1/4 of heads</text></g>
+  <g fill="#0969da"><text x="52" y="260">TP</text><text x="292" y="260">TP</text><text x="532" y="260">TP</text><text x="772" y="260">TP</text></g>
+  <g fill="#ffffff" stroke="#0969da">
+    <rect x="40" y="278" width="193" height="40" rx="6"/><rect x="280" y="278" width="193" height="40" rx="6"/>
+    <rect x="520" y="278" width="193" height="40" rx="6"/><rect x="760" y="278" width="193" height="40" rx="6"/>
+  </g>
+  <g fill="#1f2328"><text x="52" y="303">lm_head: 1/4 of vocabulary</text><text x="292" y="303">lm_head: 1/4 of vocabulary</text><text x="532" y="303">lm_head: 1/4 of vocabulary</text><text x="772" y="303">lm_head: 1/4 of vocabulary</text></g>
+  <rect x="24" y="344" width="945" height="36" rx="6" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="40" y="367" fill="#1f2328">All-reduce after each layer over PCIe peer-to-peer (2 PLX switches, Gen2): custom kernel below 128 KiB, NCCL above</text>
+  <text x="24" y="410" font-weight="bold" fill="#cf222e">Why not plain TP4?</text>
+  <text x="24" y="430" fill="#1f2328">EXL3 stores rows in blocks of 128. The shared expert split 4 ways has 576 rows: not a multiple of 128. Fix: keep a full copy</text>
+  <text x="24" y="448" fill="#1f2328">on each card and scale its output by 1/4, so the all-reduce adds back exactly one copy. The lm_head uses vocabulary padding 128 × 4</text>
+  <text x="24" y="466" fill="#1f2328">for the same reason: a split of 32,320 rows cut a 128-row block and the server repeated one token.</text>
+</svg>

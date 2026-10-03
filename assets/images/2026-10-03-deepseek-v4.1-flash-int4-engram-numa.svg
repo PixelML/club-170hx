@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 420" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="420" fill="#ffffff"/>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Next step: 4-bit Engram in pinned RAM, and why it did not start</text>
+  <text x="24" y="56" fill="#57606a">Int4 row = 128 B of 4-bit values + 8 fp16 scales = 144 B (fp8 row: 264 B). Two tables: 103 GiB. Cosine 0.995 vs fp8.</text>
+  <rect x="24" y="80" width="440" height="230" rx="10" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="40" y="104" font-weight="bold" fill="#1f2328">NUMA node 0: ~126 GB RAM</text>
+  <text x="40" y="126" fill="#57606a">CPU 0. Not available to the server container.</text>
+  <rect x="40" y="140" width="408" height="150" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-dasharray="6 4"/>
+  <text x="56" y="220" fill="#57606a">free for the table if the container may use node 0</text>
+  <rect x="512" y="80" width="444" height="230" rx="10" fill="#ffebe9" stroke="#cf222e"/>
+  <text x="528" y="104" font-weight="bold" fill="#cf222e">NUMA node 1: ~126 GB RAM (container pinned here)</text>
+  <text x="528" y="126" fill="#57606a">cpuset.mems = 1</text>
+  <rect x="528" y="140" width="300" height="70" rx="6" fill="#fbefff" stroke="#8250df"/>
+  <text x="540" y="164" font-weight="bold" fill="#8250df">int4 Engram table, pinned</text>
+  <text x="540" y="184" fill="#1f2328">103 GiB = 111 GB</text>
+  <rect x="528" y="218" width="230" height="70" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+  <text x="540" y="242" font-weight="bold" fill="#9a6700">4 vLLM workers + engine</text>
+  <text x="540" y="262" fill="#1f2328">tens of GB host memory</text>
+  <text x="770" y="250" font-weight="bold" fill="#cf222e">does not fit:</text>
+  <text x="770" y="268" fill="#cf222e">OOM kill of one worker</text>
+  <text x="770" y="286" fill="#cf222e">(CONSTRAINT_CPUSET)</text>
+  <text x="24" y="346" font-weight="bold" fill="#1f2328">Options (untested)</text>
+  <text x="24" y="368" fill="#1f2328">1. Let the container use both NUMA nodes (cpuset.mems 0-1). Some table reads then cross the CPU link.</text>
+  <text x="24" y="388" fill="#1f2328">2. Add RAM to the host (16 slots are empty).</text>
+  <text x="24" y="408" fill="#57606a">With the rows in pinned RAM, the GPUs read them directly (UVA). The CPU callback goes away. Ceiling with rows in RAM: ~5,660 tok/s prefill.</text>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="360" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker></defs>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Hybrid all-reduce: the message size picks the kernel</text>
+  <text x="24" y="56" fill="#57606a">One decode step with DSpark k=5 sends 6 tokens per user × 5,120 values × 2 bytes per all-reduce.</text>
+  <line x1="60" y1="170" x2="920" y2="170" stroke="#57606a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="860" y="194" fill="#57606a">message size</text>
+  <rect x="60" y="110" width="400" height="60" fill="#dafbe1" stroke="#1a7f37"/>
+  <rect x="460" y="110" width="450" height="60" fill="#ddf4ff" stroke="#0969da"/>
+  <text x="76" y="134" font-weight="bold" fill="#1a7f37">Custom all-reduce (PCIe peer-to-peer)</text>
+  <text x="76" y="154" fill="#1f2328">low latency, one kernel</text>
+  <text x="476" y="134" font-weight="bold" fill="#0969da">NCCL</text>
+  <text x="476" y="154" fill="#1f2328">better bandwidth on large messages</text>
+  <line x1="460" y1="90" x2="460" y2="200" stroke="#cf222e" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="400" y="84" font-weight="bold" fill="#cf222e">128 KiB limit</text>
+  <text x="340" y="220" fill="#cf222e">VLLM_CUSTOM_AR_MAX_BYTES=131072</text>
+  <circle cx="250" cy="170" r="7" fill="#1a7f37"/>
+  <text x="200" y="250" font-weight="bold" fill="#1f2328">1 user: ~61 KB</text>
+  <text x="200" y="268" fill="#1f2328">code 63.8 → 79.3 tok/s</text>
+  <line x1="250" y1="178" x2="250" y2="234" stroke="#57606a"/>
+  <circle cx="700" cy="170" r="7" fill="#0969da"/>
+  <text x="640" y="250" font-weight="bold" fill="#1f2328">4 users: ~245 KB</text>
+  <text x="640" y="268" fill="#1f2328">custom only: code 100.9 tok/s</text>
+  <text x="640" y="286" fill="#1f2328">NCCL (hybrid): code 143.3 tok/s</text>
+  <line x1="700" y1="178" x2="700" y2="234" stroke="#57606a"/>
+  <text x="24" y="330" fill="#57606a">Required: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False. Without it, start-up fails at custom_all_reduce.cuh:164 'invalid argument'.</text>
+</svg>

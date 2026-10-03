@@ -11,6 +11,8 @@ Notebook: [`notebooks/2026-10-03-deepseek-v4.1-flash-exl3-4card-tp4ep4-dspark-vl
 
 ![Engram prefill path](../../assets/images/2026-10-03-deepseek-v4.1-flash-engram-prefill-path.svg)
 
+![How the model is split over 4 cards](../../assets/images/2026-10-03-deepseek-v4.1-flash-tp4ep4-layout.svg)
+
 ## Hardware
 
 - Cards: 4 × CMP 170HX, 65,536 MiB each (64 GiB unlock), PCIe Gen2 behind two PLX switches. Three cards ran at x16 and one at x8.
@@ -81,6 +83,8 @@ Decode: T=0, 400 tokens, median of 3, through the OpenAI API. Generated tokens c
 - KV pool at 65,536 context, fp8: 570,145 tokens without a drafter, 263,972 with DSpark k=5.
 - With the Engram rows already in RAM (repeated text), the GPUs prefill about 5,660 tok/s. This is a server log line. It is not in the receipts.
 
+![Hybrid all-reduce](../../assets/images/2026-10-03-deepseek-v4.1-flash-hybrid-allreduce.svg)
+
 ## What did not help (measured)
 
 - TP4 without EP: EXL3 refuses the 576-row shared-expert slice.
@@ -94,6 +98,8 @@ Decode: T=0, 400 tokens, median of 3, through the OpenAI API. Generated tokens c
 ## Next (untested)
 
 A 4-bit Engram table pinned in RAM. Int4 rows with an fp16 scale for each 32 values use 144 bytes per row, 103 GiB in total (cosine 0.995 against the fp8 rows on 4,096 rows). The GPUs then read the rows directly, with no CPU callback. On this host the server container uses one NUMA node with 126 GB. The pinned table and the server do not fit there: the first start stopped with an out-of-memory kill of one worker.
+
+![Int4 Engram and the NUMA limit](../../assets/images/2026-10-03-deepseek-v4.1-flash-int4-engram-numa.svg)
 
 ## Receipts
 
