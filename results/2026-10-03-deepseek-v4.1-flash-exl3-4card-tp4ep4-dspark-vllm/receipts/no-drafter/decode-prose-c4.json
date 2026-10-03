@@ -1,0 +1,434 @@
+{
+  "phase": "prose-c4",
+  "health_code": 200,
+  "health_body": "",
+  "runs": [
+    {
+      "concurrency": 4,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.32136329800414387,
+          "wall_s": 66.91349034200539,
+          "decode_s": 66.59212704400124,
+          "tok_s": 5.991699285057493,
+          "delivered_tok_s": 5.977867810445054,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey \u2500\u2500\u25ba hash function \u2500\u2500\u25ba index \u2500\u2500\u25ba bucket (slot in array) \u2500\u2500\u25ba value\n```\n\nThe array is typically of fixed size `m`, and each slot holds either:\n- A single key-value pair, or\n- A pointer to a chain/list of pairs (for collision handling), or\n- A reference to a bucket structure.\n\n---\n\n## 2. Step-by-Step Operation\n\n### Step 1: Compute the Hash Code\nGiven a key `k`, compute an integer hash `h(k)`. A good hash function:\n- Is **deterministic** (same key \u2192 same hash).\n- Distributes keys **uniformly** across the table.\n- Is **fast** to compute.\n\nExample (Java-style):\n```\nh = k.hashCode()\n```\n\n### Step 2: Compress the Hash to an Index\nThe raw hash may be huge, so we map it into `[0, m-1]`:\n```\nindex = h mod m\n```\nIf `m` is a power of two, `index = h & (m - 1)` is faster.\n\n### Step 3: Store or Retrieve\n- **Insert:** place `(k, v)` at `array[index]`.\n- **Lookup:** compute `index`, then search the bucket for key `k`.\n- **Delete:** find the bucket, remove the matching entry.\n\n",
+          "text_len": 1468,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 1.2535034370012,
+          "wall_s": 67.2765589490009,
+          "decode_s": 66.0230555119997,
+          "tok_s": 6.0433434488272315,
+          "delivered_tok_s": 5.9456072999099225,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. This document walks through its internals step by step.\n\n---\n\n## 1. The Core Idea\n\nA hash map maps **keys** to **values** using an array of \"buckets.\" Instead of searching lin",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. This document walks through its internals step by step.\n\n---\n\n## 1. The Core Idea\n\nA hash map maps **keys** to **values** using an array of \"buckets.\" Instead of searching linearly, it computes an index directly from the key using a **hash function**.\n\n```\nkey  \u2500\u2500\u25ba  hash function  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: turn a potentially huge key space (strings, integers, objects) into a small, bounded array index.\n\n---\n\n## 2. Step-by-Step Operation\n\n### Step 1: Choose a Hash Function\n\nA hash function takes a key and returns an integer (the hash code). Good hash functions have:\n\n- **Determinism**: same key \u2192 same hash, always.\n- **Uniformity**: outputs spread evenly across the range.\n- **Speed**: cheap to compute.\n- **Avalanche**: small input changes \u2192 large output changes.\n\nExamples:\n- Integers: `hash(x) = x` (or a mixing function like MurmurHash).\n- Strings: polynomial rolling hash, e.g. `h = h * 31 + c` for each character.\n- Objects: combine field hashes.\n\n### Step 2: Compress the Hash to an Array Index\n\nThe hash may be a 64-bit integer, but the array has only `N` slots. Compress it:\n\n```\nindex = hash(key) mod N\n```\n\nIf `N` is a power of two, `index = hash(key) & (N - 1)` is faster (bitwise AND).\n\n### Step 3: Store the Entry\n\n```\nbuckets",
+          "text_len": 1504,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 1.2529808199979016,
+          "wall_s": 67.27587017099722,
+          "decode_s": 66.02288935099932,
+          "tok_s": 6.043358658219049,
+          "delivered_tok_s": 5.945668171713086,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\nThe basic idea:\n1. Take a key.\n2. Compute `hash(key)` \u2192 an integer.\n3. Compress that integer into a valid array index (e.g., `hash % capacity`).\n4. Store the value at that index.\n\nBecause the array index is computed directly from the key, lookups don't require scanning \u2014 hence the O(1) average time.\n\n---\n\n## 2. The Hash Function\n\nA hash function takes a key of arbitrary type (string, integer, object) and returns an integer. Good hash functions have two properties:\n\n- **Deterministic**: Same key always produces the same hash.\n- **Uniform distribution**: Keys spread evenly across the output range to minimize collisions.\n\n### Examples\n\n- **Integers**: Often the integer itself, or a mixing function like `h = x * 2654435761 mod 2^32` (Knuth's multiplicative method).\n- **Strings**: Common algorithms include:\n  - **djb2**: `hash = 5381; for c in s: hash = hash * 33 + c`\n  - **FNV-1a**: `hash = 2166136261; for c in s: hash ^= c; hash *= 16777619`\n- **Objects**: Combine the hashes of fields, often with prime multipliers.\n\n### Compressing to an Array Index\n\nThe raw hash is usually a 32-",
+          "text_len": 1580,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 1.2525035319995368,
+          "wall_s": 67.27527879199624,
+          "decode_s": 66.0227752599967,
+          "tok_s": 6.0433691014766335,
+          "delivered_tok_s": 5.945720436725832,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. The Core Idea\n\nA hash map uses an **array of buckets** (slots) plus a **hash function** that converts each key in",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. The Core Idea\n\nA hash map uses an **array of buckets** (slots) plus a **hash function** that converts each key into an integer index into that array.\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nInstead of searching linearly, you compute where the value *should* be and jump directly there.\n\n---\n\n## 2. Step-by-Step Operation\n\n### Step 1: Choose a hash function\nThe hash function `h(key)` maps a key of arbitrary type (string, integer, object) to an integer. Good hash functions:\n\n- Are **deterministic** \u2014 same key always yields the same hash.\n- Distribute keys **uniformly** across the index range.\n- Are **fast** to compute.\n- Minimize **collisions** (different keys mapping to the same index).\n\nExample (Java-style for strings):\n```\nh(\"cat\") = 'c'*31^2 + 'a'*31^1 + 't'*31^0\n```\n\n### Step 2: Compress the hash to an array index\nThe raw hash may be huge, so we reduce it to `[0, capacity-1]`:\n\n```\nindex = hash(key) % capacity\n```\n\nIf `capacity` is a power of two, you can use bitwise AND instead:\n```\nindex = hash(key) & (capacity - 1)\n```\nThis is faster than modulo.\n\n### Step 3: Store the entry\n```\nbuckets[index] = (key, value)\n",
+          "text_len": 1451,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 67.27876055399975,
+      "tok_s": 6.04335105352314,
+      "ttft_s": 1.2527421759987192,
+      "decode_s": 66.02297243149951,
+      "completion_tokens": 1600,
+      "aggregate_tok_s": 23.78165095232093,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 0,
+        "draft_tokens": 0,
+        "accepted": 0,
+        "accept_ratio": null,
+        "accepted_per_step": null,
+        "mean_draft_tokens_per_step": null,
+        "pos": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 4,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.26652320800349116,
+          "wall_s": 39.09111346099962,
+          "decode_s": 38.82459025299613,
+          "tok_s": 10.276991911568437,
+          "delivered_tok_s": 10.232504643263015,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe array holds **buckets**, and each bucket stores one or more entries (key-value pairs).\n\n---\n\n## 2. Step-by-Step Operation\n\n### Step 1: Compute the Hash Code\nGiven a key `k`, compute an integer hash:\n\n```\nh = hash(k)\n```\n\nA good hash function:\n- Is **deterministic** (same key \u2192 same hash).\n- Distributes keys **uniformly** across the table.\n- Is **fast** to compute.\n- Uses all bits of the key (avoids clustering).\n\nExample (Java-style for a string):\n```\nh = 31 * h + c   // for each character c\n```\n\n### Step 2: Compress the Hash to an Index\nThe hash may be huge; we map it into `[0, capacity - 1]`:\n\n```\nindex = h mod capacity\n```\n\nIf `capacity` is a power of two, this is often done with a bitmask:\n```\nindex = h & (capacity - 1)\n```\n\n### Step 3: Store or Retrieve\n- **Insert:** place `(key, value)` in `buckets[index]`.\n- **Lookup:** go to `buckets[index]`, then find the entry",
+          "text_len": 1445,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.6942821920019924,
+          "wall_s": 39.32577084199875,
+          "decode_s": 38.631488649996754,
+          "tok_s": 10.32836201615113,
+          "delivered_tok_s": 10.171447156296093,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, compute its index in O(1) time and retrieve the value stored there.\n\n---\n\n## 2. The Bucket Array\n\nThe hash map maintains an array of **buckets** (slots). Each bucket can hold:\n\n- A single key-value pair (simple case), or\n- A reference to a chain/list of pairs (chaining), or\n- A reference to a tree (in Java 8+ when chains get long).\n\nThe array size is typically a **power of two** (e.g., 16, 32, 64...) or a **prime number**, depending on the implementation. Power-of-two sizes allow fast modulo via bit masking: `index = hash & (n - 1)`.\n\n---\n\n## 3. The Hash Function\n\nA hash function takes a key and returns an integer. Good hash functions have:\n\n1. **Determinism** \u2014 same key always yields the same hash.\n2. **Uniformity** \u2014 keys spread evenly across buckets.\n3. **Speed** \u2014 cheap to compute.\n4. **Avalanche** \u2014 small key changes produce very different hashes.\n\n### Example (Java-style for a string):\n\n```java\nint h = 0",
+          "text_len": 1506,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.6941087759987568,
+          "wall_s": 39.32568197799992,
+          "decode_s": 38.631573202001164,
+          "tok_s": 10.328339410711115,
+          "delivered_tok_s": 10.171470140651932,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, compute its index in O(1) time and retrieve the value stored there.\n\n---\n\n## 2. The Bucket Array\n\nThe hash map maintains an internal array of **buckets** (slots). Each bucket can hold:\n\n- A single key-value pair (in simple designs), or\n- A reference to a chain/list of pairs (in chaining designs), or\n- A probe sequence marker (in open addressing designs).\n\nThe array size is typically a **power of two** or a **prime number**, depending on the collision strategy.\n\n---\n\n## 3. The Hash Function\n\nA hash function takes a key and returns an integer. Requirements:\n\n1. **Deterministic** \u2014 same key always yields the same hash.\n2. **Uniform** \u2014 distributes keys evenly across buckets.\n3. **Fast** \u2014 computed in O(1) (or O(length of key) for strings).\n4. **Avalanching** \u2014 small changes in input produce large changes in output.\n\n### Common techniques\n\n- **Integer keys:** multiply by a large prime and shift bits (e.g., Knuth's multiplicative method).\n- **String keys:** polynomial rolling hash, e.g. `h = h",
+          "text_len": 1586,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.6939392189960927,
+          "wall_s": 39.324882308996166,
+          "decode_s": 38.63094309000007,
+          "tok_s": 10.328507876973998,
+          "delivered_tok_s": 10.171676976856302,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, compute its index in O(1) time and retrieve the value stored there.\n\n---\n\n## 2. The Bucket Array\n\nThe hash map maintains an array of **buckets** (slots). Each bucket can hold:\n\n- A single key-value pair (simple case), or\n- A reference to a chain/list of pairs (chaining), or\n- A reference to a tree (e.g., Java's `HashMap` uses a red-black tree when a bucket gets large).\n\nThe array size is typically a power of two (e.g., 16, 32, 64...) or a prime number, depending on the implementation.\n\n---\n\n## 3. The Hash Function\n\nThe hash function takes a key and returns an integer. That integer is then compressed into a valid array index, usually via:\n\n```\nindex = hash(key) % array_size\n```\n\nor, when `array_size` is a power of two:\n\n```\nindex = hash(key) & (array_size - 1)\n```\n\n### Properties of a Good Hash Function\n\n1. **Deterministic** \u2014 same key always produces the same hash.\n2. **Uniform** \u2014 distributes keys evenly across buckets.\n3. **Fast**",
+          "text_len": 1529,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 39.32692372299789,
+      "tok_s": 10.328350713431123,
+      "ttft_s": 0.6940239974974247,
+      "decode_s": 38.63153092599896,
+      "completion_tokens": 1600,
+      "aggregate_tok_s": 40.68459590863804,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 0,
+        "draft_tokens": 0,
+        "accepted": 0,
+        "accept_ratio": null,
+        "accepted_per_step": null,
+        "mean_draft_tokens_per_step": null,
+        "pos": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 4,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.2669784370009438,
+          "wall_s": 37.085684179000964,
+          "decode_s": 36.81870574200002,
+          "tok_s": 10.836882827873298,
+          "delivered_tok_s": 10.785833101239968,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. This explanation covers its internals, collision handling, resizing, and complexity.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function**",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. This explanation covers its internals, collision handling, resizing, and complexity.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\nThe basic idea:\n1. Compute `hash(key)` \u2192 an integer.\n2. Compress it to a valid array index: `index = hash(key) % capacity`.\n3. Store the key-value pair at `buckets[index]`.\n\nBecause the array is directly indexed, retrieval is fast \u2014 as long as we can find the right slot.\n\n---\n\n## 2. The Hash Function\n\nA good hash function must be:\n\n- **Deterministic**: same key \u2192 same hash every time.\n- **Uniform**: distributes keys evenly across the array to minimize collisions.\n- **Fast**: cheap to compute.\n- **Avalanching**: small changes in the key produce very different hashes.\n\nCommon approaches:\n- **Integer keys**: mix bits (e.g., multiply by a large prime, XOR-shift).\n- **String keys**: polynomial rolling hash, e.g., `h = h * 31 + c` for each character.\n- **Java-style**: `hashCode()` combined with a secondary mixing step.\n\nExample (Java's `HashMap`):\n```\nh = key.hashCode();\nh ^= (h >>> 16);   // spread high bits into low bits\nindex = h & (capacity - 1);  // capacity is a power of 2\n```\n\nUsing `& (capacity - 1)` instead of `%` works only when capacity is a power of two",
+          "text_len": 1597,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.690438018005807,
+          "wall_s": 37.25446335900051,
+          "decode_s": 36.564025340994704,
+          "tok_s": 10.912365262821618,
+          "delivered_tok_s": 10.736968511542438,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, compute its index in O(1) time and retrieve the value stored there.\n\n---\n\n## 2. The Bucket Array\n\nThe hash map maintains an array of **buckets** (slots). Each bucket can hold:\n\n- A single key-value pair (simple case), or\n- A reference to a chain/list of pairs (for collision handling), or\n- A reference to a tree (for large chains in some implementations).\n\nThe array size is typically a **power of two** (e.g., 16, 32, 64) or a **prime number**, depending on the implementation. This choice affects how the hash is reduced to an index.\n\n---\n\n## 3. The Hash Function\n\nA hash function takes a key and returns an integer. Requirements:\n\n1. **Deterministic** \u2014 same key always yields the same hash.\n2. **Uniform** \u2014 distributes keys evenly across buckets.\n3. **Fast** \u2014 computed in O(1) (or O(length of key) for strings).\n\n### Examples\n\n- **Integers:** often `hash(x) = x` (identity), then mixed with a bit-mixing function.\n- **Strings:** polynomial rolling hash, e.g",
+          "text_len": 1547,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.6902500680007506,
+          "wall_s": 37.25456247200054,
+          "decode_s": 36.56431240399979,
+          "tok_s": 10.912279590860107,
+          "delivered_tok_s": 10.736939946634147,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, compute its index in O(1) time and retrieve the value stored there.\n\n---\n\n## 2. The Bucket Array\n\nThe hash map maintains an array of **buckets** (slots). Each bucket can hold:\n\n- A single key-value pair (open addressing), or\n- A pointer to a linked list / tree of pairs (separate chaining).\n\nThe array size is typically a **power of two** or a **prime number**, depending on the implementation, to reduce clustering and make modulo operations efficient.\n\n---\n\n## 3. The Hash Function\n\nA hash function takes a key and returns an integer. Requirements:\n\n1. **Deterministic** \u2014 same key always yields the same hash.\n2. **Uniform** \u2014 distributes keys evenly across buckets.\n3. **Fast** \u2014 computed in O(1) (or O(length of key) for strings).\n4. **Avalanche effect** \u2014 small key changes produce very different hashes.\n\n### Common techniques\n\n- **Integer keys:** multiply by a large prime and mix bits (e.g., `key * 2654435761`), or use bit-mixing (MurmurHash, xxHash).\n- **String keys:**",
+          "text_len": 1563,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.6896822970011272,
+          "wall_s": 37.25398914900143,
+          "decode_s": 36.5643068520003,
+          "tok_s": 10.912281247803065,
+          "delivered_tok_s": 10.737105183559162,
+          "completion_tokens": 400,
+          "prompt_tokens": 32,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. This document walks through its internals step by step.\n\n---\n\n## 1. The Core Idea\n\nA hash map maps **keys** to **values** using an array of \"buckets.\" Instead of searching lin",
+          "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. This document walks through its internals step by step.\n\n---\n\n## 1. The Core Idea\n\nA hash map maps **keys** to **values** using an array of \"buckets.\" Instead of searching linearly, it computes an index directly from the key using a **hash function**.\n\n```\nkey  \u2500\u2500\u25ba  hash function  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: turn a potentially huge key space (strings, integers, objects) into a small, fixed range of array indices.\n\n---\n\n## 2. Step-by-Step Operation\n\n### Step 1: Choose a Hash Function\n\nA hash function takes a key and returns an integer. Good hash functions have:\n\n- **Determinism**: same key \u2192 same hash, always.\n- **Uniformity**: outputs spread evenly across the range.\n- **Speed**: cheap to compute.\n- **Avalanche**: small input changes \u2192 large output changes.\n\nExample (simplified) for strings:\n\n```\nhash(\"cat\") = (c * 31^2 + a * 31^1 + t * 31^0) mod M\n```\n\nFor integers, a common trick is mixing bits (e.g., MurmurHash, xxHash, or Java's `hashCode()`).\n\n### Step 2: Compress the Hash to an Array Index\n\nThe raw hash may be a 64-bit integer, but the array has only `N` slots. Compress it:\n\n```\nindex = hash(key) mod N\n```\n\nIf `N` is a power of two, you can use bit masking instead:\n\n```\nindex = hash(key) & (N - 1",
+          "text_len": 1475,
+          "usage": {
+            "prompt_tokens": 32,
+            "total_tokens": 432,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 37.25576618500054,
+      "tok_s": 10.912280419331587,
+      "ttft_s": 0.6899661825009389,
+      "decode_s": 36.564309628000046,
+      "completion_tokens": 1600,
+      "aggregate_tok_s": 42.946372168402014,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 0,
+        "draft_tokens": 0,
+        "accepted": 0,
+        "accept_ratio": null,
+        "accepted_per_step": null,
+        "mean_draft_tokens_per_step": null,
+        "pos": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "ts": 1791029223.0357454,
+  "prompt": "hashmap-prose",
+  "thinking": false,
+  "temperature": 0,
+  "concurrency": 4,
+  "note": "decode_ms_per_draft_step is a serving-cycle ratio, not a kernel timing",
+  "warmup": {
+    "tok_s": 25.274373152901706,
+    "ttft_s": 0.31657867100147996,
+    "completion_tokens": 32
+  },
+  "tok_s_median": 10.328350713431123,
+  "tok_s_min": 6.04335105352314,
+  "tok_s_max": 10.912280419331587,
+  "ttft_median_s": 0.6940239974974247,
+  "completion_tokens_median": 1600.0,
+  "accept_ratio_median": null,
+  "accepted_per_step_median": null,
+  "mean_draft_tokens_per_step_median": null,
+  "aggregate_tok_s_median": 40.68459590863804,
+  "decode_ms_per_draft_step_median": null,
+  "any_nan": false,
+  "health_code_after": 200,
+  "short_after": {
+    "http": 200,
+    "ttft_s": 0.2804947530021309,
+    "wall_s": 0.5607869140003459,
+    "decode_s": 0.28029216099821497,
+    "tok_s": 24.973941386982204,
+    "delivered_tok_s": 14.265668117917363,
+    "completion_tokens": 8,
+    "prompt_tokens": 32,
+    "finish_reason": "length",
+    "nan": false,
+    "text_head": "# How a Hash Map Works: A",
+    "text": "# How a Hash Map Works: A",
+    "text_len": 25,
+    "usage": {
+      "prompt_tokens": 32,
+      "total_tokens": 40,
+      "completion_tokens": 8,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  }
+}
