@@ -1,26 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 420" font-family="Helvetica, Arial, sans-serif" font-size="13">
-  <rect width="980" height="420" fill="#ffffff"/>
-  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Next step: 4-bit Engram in pinned RAM, and why it did not start</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 470" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="470" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker></defs>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Int4 Engram in pinned RAM: the GPUs read rows directly</text>
   <text x="24" y="56" fill="#57606a">Int4 row = 128 B of 4-bit values + 8 fp16 scales = 144 B (fp8 row: 264 B). Two tables: 103 GiB. Cosine 0.995 vs fp8.</text>
-  <rect x="24" y="80" width="440" height="230" rx="10" fill="#f6f8fa" stroke="#57606a"/>
-  <text x="40" y="104" font-weight="bold" fill="#1f2328">NUMA node 0: ~126 GB RAM</text>
-  <text x="40" y="126" fill="#57606a">CPU 0. Not available to the server container.</text>
-  <rect x="40" y="140" width="408" height="150" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-dasharray="6 4"/>
-  <text x="56" y="220" fill="#57606a">free for the table if the container may use node 0</text>
-  <rect x="512" y="80" width="444" height="230" rx="10" fill="#ffebe9" stroke="#cf222e"/>
-  <text x="528" y="104" font-weight="bold" fill="#cf222e">NUMA node 1: ~126 GB RAM (container pinned here)</text>
-  <text x="528" y="126" fill="#57606a">cpuset.mems = 1</text>
-  <rect x="528" y="140" width="300" height="70" rx="6" fill="#fbefff" stroke="#8250df"/>
-  <text x="540" y="164" font-weight="bold" fill="#8250df">int4 Engram table, pinned</text>
-  <text x="540" y="184" fill="#1f2328">103 GiB = 111 GB</text>
-  <rect x="528" y="218" width="230" height="70" rx="6" fill="#fff8c5" stroke="#9a6700"/>
-  <text x="540" y="242" font-weight="bold" fill="#9a6700">4 vLLM workers + engine</text>
-  <text x="540" y="262" fill="#1f2328">tens of GB host memory</text>
-  <text x="770" y="250" font-weight="bold" fill="#cf222e">does not fit:</text>
-  <text x="770" y="268" fill="#cf222e">OOM kill of one worker</text>
-  <text x="770" y="286" fill="#cf222e">(CONSTRAINT_CPUSET)</text>
-  <text x="24" y="346" font-weight="bold" fill="#1f2328">Options (untested)</text>
-  <text x="24" y="368" fill="#1f2328">1. Let the container use both NUMA nodes (cpuset.mems 0-1). Some table reads then cross the CPU link.</text>
-  <text x="24" y="388" fill="#1f2328">2. Add RAM to the host (16 slots are empty).</text>
-  <text x="24" y="408" fill="#57606a">With the rows in pinned RAM, the GPUs read them directly (UVA). The CPU callback goes away. Ceiling with rows in RAM: ~5,660 tok/s prefill.</text>
+  <rect x="24" y="78" width="932" height="200" rx="10" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="40" y="102" font-weight="bold" fill="#1f2328">Host RAM: 251 GB on 2 NUMA nodes. Server container limit 192 GiB, may use both nodes (cpuset.mems 0-1)</text>
+  <g fill="#fbefff" stroke="#8250df">
+    <rect x="40" y="118" width="214" height="62" rx="6"/><rect x="264" y="118" width="214" height="62" rx="6"/>
+    <rect x="488" y="118" width="214" height="62" rx="6"/><rect x="712" y="118" width="228" height="62" rx="6"/>
+  </g>
+  <g fill="#8250df" font-weight="bold"><text x="52" y="140">Rows for card 0</text><text x="276" y="140">Rows for card 1</text><text x="500" y="140">Rows for card 2</text><text x="724" y="140">Rows for card 3</text></g>
+  <g fill="#1f2328"><text x="52" y="162">2 layers × 12.87 GiB, pinned</text><text x="276" y="162">2 layers × 12.87 GiB, pinned</text><text x="500" y="162">2 layers × 12.87 GiB, pinned</text><text x="724" y="162">2 layers × 12.87 GiB, pinned</text></g>
+  <rect x="40" y="192" width="438" height="70" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+  <text x="52" y="216" font-weight="bold" fill="#9a6700">4 vLLM workers + API server</text>
+  <text x="52" y="238" fill="#1f2328">container total after start-up: 115 GB used</text>
+  <rect x="488" y="192" width="452" height="70" rx="6" fill="#ffebe9" stroke="#cf222e"/>
+  <text x="500" y="216" font-weight="bold" fill="#cf222e">First try: container on 1 NUMA node (126 GB)</text>
+  <text x="500" y="238" fill="#1f2328">table + workers did not fit: OOM kill of one worker</text>
+  <g stroke="#57606a" stroke-width="1.6" marker-end="url(#a)">
+    <line x1="147" y1="282" x2="147" y2="330"/><line x1="371" y1="282" x2="371" y2="330"/>
+    <line x1="595" y1="282" x2="595" y2="330"/><line x1="826" y1="282" x2="826" y2="330"/>
+  </g>
+  <rect x="156" y="296" width="604" height="22" fill="#ffffff"/>
+  <text x="160" y="312" fill="#57606a">PCIe reads of 144 B rows (UVA), one Triton kernel per Engram layer. No CPU callback, no disk reads.</text>
+  <g fill="#ddf4ff" stroke="#0969da">
+    <rect x="40" y="334" width="214" height="44" rx="6"/><rect x="264" y="334" width="214" height="44" rx="6"/>
+    <rect x="488" y="334" width="214" height="44" rx="6"/><rect x="712" y="334" width="228" height="44" rx="6"/>
+  </g>
+  <g fill="#0969da" font-weight="bold"><text x="52" y="361">Card 0</text><text x="276" y="361">Card 1</text><text x="500" y="361">Card 2</text><text x="724" y="361">Card 3</text></g>
+  <text x="24" y="414" font-weight="bold" fill="#1a7f37">Result: prefill 981–1,262 tok/s (fp8 from disk: 475–791). Prose, 1 user: 51.2 tok/s (26–38).</text>
+  <text x="24" y="438" font-weight="bold" fill="#cf222e">Cost: greedy output matches the fp8 table on 4 of 12 test prompts (fp8 vs fp8: 10 of 12). Known answers: 5 / 5.</text>
+  <text x="24" y="460" fill="#57606a">Switch: DSV41_ENGRAM_DISK=0 DSV41_ENGRAM_INT4=1 and mount the int4 shards. Default (DISK=1) keeps the fp8 disk tier.</text>
 </svg>

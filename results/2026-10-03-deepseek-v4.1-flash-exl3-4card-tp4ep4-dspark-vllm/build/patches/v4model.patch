@@ -1,0 +1,30 @@
+--- a/v4model.py
++++ b/v4model.py
+@@ -111,6 +111,18 @@
+         prefix: str = "",
+     ) -> None:
+         super().__init__()
++
++        # DSV41_REPLICATE_SHARED=1 (plain TP): the weights are replicated, as under
++        # sequence parallelism, because an EXL3 shard of 2304 / tp is not 128-aligned
++        # at tp=4; the output is scaled by 1 / tp (exact, tp a power of two) so the
++        # MoE all-reduce that sums the routed and shared outputs counts it once.
++        self.out_scale = None
++        import os
++        if os.environ.get("DSV41_REPLICATE_SHARED") == "1" and not is_sequence_parallel:
++            tp = get_tensor_model_parallel_world_size()
++            if tp > 1 and ".shared_experts" in prefix:
++                is_sequence_parallel = True
++                self.out_scale = 1.0 / tp
+ 
+         # If is_sequence_parallel, the input and output tensors are sharded
+         # across the ranks within the tp_group. In this case the weights are
+@@ -155,6 +167,8 @@
+         gate_up, _ = self.gate_up_proj(x)
+         x = self.act_fn(gate_up)
+         x, _ = self.down_proj(x)
++        if self.out_scale is not None:
++            x = x * self.out_scale
+         return x
+ 
+ 

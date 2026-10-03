@@ -1,0 +1,59 @@
+--- a/engram_disk.py
++++ b/engram_disk.py
+@@ -9,7 +9,8 @@
+ from torch import nn
+ from vllm.models.deepseek_v4_1.common.engram import _engram_lookup_kernel
+ from vllm.model_executor.utils import set_weight_attrs
+-from vllm.distributed import get_tensor_model_parallel_world_size
++from vllm.distributed import (get_tensor_model_parallel_rank, get_tensor_model_parallel_world_size,
++                              tensor_model_parallel_all_reduce)
+ from vllm.config import get_current_vllm_config
+ 
+ _TABLES={}
+@@ -38,7 +39,7 @@
+ class DiskEngramEmbedding(nn.Module):
+     def __init__(self,num_embeddings,dim,head_sizes,block_size=32,cpu_offload=True,table_prefix=None):
+         super().__init__()
+-        assert get_tensor_model_parallel_world_size()==1,'Disk tier currently supports the requested single GPU only'
++        # TP>1: every rank looks up all heads from the shared mmap (no all-gather).
+         assert table_prefix is not None
+         self.num_embeddings=num_embeddings
+         self.dim=dim
+@@ -46,6 +47,9 @@
+         self.n_hash_cols=len(head_sizes)
+         self.part_n_hash_cols=self.n_hash_cols
+         self.tp_size=1
++        self._tp_size=get_tensor_model_parallel_world_size()
++        self._tp_rank=get_tensor_model_parallel_rank()
++        self._single=os.environ.get('DSV41_ENGRAM_SINGLE','0')=='1'
+         self.cpu_offload=True
+         cfg=get_current_vllm_config()
+         pack=Path(os.environ['DSV41_PACK'])
+@@ -79,11 +83,22 @@
+         if n not in self._jobs:
+             self._jobs[n]=_Job(self._weights.ctypes.data,self._scales.ctypes.data,self._hi.data_ptr(),self._hw.data_ptr(),self._hs.data_ptr(),n,self.num_embeddings,self.dim,self.block_size)
+         # D2H -> CPU callback -> H2D -> unchanged GPU dequantizer, all on one stream.
+-        self._hi[:n].copy_(indices.flatten(),non_blocking=True)
+-        rc=_LIB.engram_enqueue(torch.cuda.current_stream().cuda_stream,ctypes.byref(self._jobs[n]))
+-        assert rc==0,f'cudaLaunchHostFunc: {rc}'
+-        self._gw[:n].copy_(self._hw[:n],non_blocking=True)
+-        self._gs[:n].copy_(self._hs[:n],non_blocking=True)
++        # TP > 1 (DSV41_ENGRAM_SINGLE=1): only rank 0 reads the rows from the mmap; the
++        # other ranks zero their staging buffers and an all-reduce (sum) hands them
++        # rank 0's bytes exactly, so the host lookup and disk reads happen once.
++        lookup_here = self._tp_size == 1 or not self._single or self._tp_rank == 0
++        if lookup_here:
++            self._hi[:n].copy_(indices.flatten(),non_blocking=True)
++            rc=_LIB.engram_enqueue(torch.cuda.current_stream().cuda_stream,ctypes.byref(self._jobs[n]))
++            assert rc==0,f'cudaLaunchHostFunc: {rc}'
++            self._gw[:n].copy_(self._hw[:n],non_blocking=True)
++            self._gs[:n].copy_(self._hs[:n],non_blocking=True)
++        else:
++            self._gw[:n].zero_()
++            self._gs[:n].zero_()
++        if self._tp_size > 1 and self._single:
++            self._gw[:n].copy_(tensor_model_parallel_all_reduce(self._gw[:n]))
++            self._gs[:n].copy_(tensor_model_parallel_all_reduce(self._gs[:n]))
+         ids=self._ids[:n].view_as(indices)
+         grid=min((n+15)//16,torch.cuda.get_device_properties(0).multi_processor_count)
+         _engram_lookup_kernel[(grid,)](self._gw,self._gs,ids,out,0,n,n,ids.stride(0),ids.stride(1),HEAD_START=0,LOCAL_HEADS=self.n_hash_cols,TOTAL_HEADS=self.n_hash_cols,DIM=self.dim,QUANT_BLOCK=self.block_size,BLOCK_R=16,GRID=grid)
