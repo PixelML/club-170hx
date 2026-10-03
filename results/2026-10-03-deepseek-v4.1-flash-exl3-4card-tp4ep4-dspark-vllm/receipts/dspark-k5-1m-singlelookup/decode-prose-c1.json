@@ -1,0 +1,168 @@
+{
+  "phase": "prose-c1",
+  "health_code": 200,
+  "health_body": "",
+  "runs": [
+    {
+      "http": 200,
+      "ttft_s": 0.26522673199360725,
+      "wall_s": 50.790105620995746,
+      "decode_s": 50.52487888900214,
+      "tok_s": 7.897099582891849,
+      "delivered_tok_s": 7.87554967860998,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, find its value without scanning the whole structure.\n\n---\n\n## 2. The Bucket Array\n\n- The hash map maintains an array of **buckets** (slots), typically of size `m` (a power of two or a prime).\n- Each bucket can hold:\n  - A single key-value pair (simple case), or\n  - A pointer to a linked list / tree of pairs (collision handling), or\n  - An \"open addressing\" slot that may be empty, occupied, or tombstoned.\n\n---\n\n## 3. The Hash Function\n\nA hash function `h(key)` produces an integer. A good hash function:\n\n1. **Is deterministic** \u2014 same key always yields the same hash.\n2. **Is fast** to compute.\n3. **Distributes keys uniformly** across buckets to minimize collisions.\n4. **Avalanches** \u2014 small changes in the key produce very different hashes.\n\n### Common techniques\n- **Integer keys:** multiply by a large constant and shift (e.g., Knuth's multiplicative method).\n- **String keys:** polynomial rolling hash, e.g. `h = h * 31 + c` for each character.\n- **Crypt",
+      "text_len": 1547,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 125,
+        "draft_tokens": 625,
+        "accepted": 274,
+        "accept_ratio": 0.4384,
+        "accepted_per_step": 2.192,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.752,
+          0.584,
+          0.424,
+          0.272,
+          0.16,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "http": 200,
+      "ttft_s": 0.6774567570028012,
+      "wall_s": 34.94788425900333,
+      "decode_s": 34.27042750200053,
+      "tok_s": 11.64269106292031,
+      "delivered_tok_s": 11.445614190419878,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey \u2500\u2500\u25ba hash function \u2500\u2500\u25ba index \u2500\u2500\u25ba bucket (slot in array) \u2500\u2500\u25ba value\n```\n\nThe array is typically of fixed size `m`, and each slot holds either:\n- A single key-value pair, or\n- A pointer to a chain/list of pairs (for collision handling), or\n- A reference to a bucket structure.\n\n---\n\n## 2. Step-by-Step Operation\n\n### Step 1: Compute the Hash Code\nGiven a key `k`, compute an integer hash `h(k)`. For example:\n- Strings: polynomial rolling hash (e.g., Java's `String.hashCode`).\n- Integers: often the integer itself, or a mixing function.\n\nA good hash function should:\n- Be **deterministic** (same key \u2192 same hash).\n- Distribute keys **uniformly** across the table.\n- Be **fast** to compute.\n\n### Step 2: Compress the Hash to an Index\nThe raw hash may be huge, so we map it into `[0, m-1]`:\n\n```\nindex = h(k) mod m\n```\n\nIf `m` is a power of two, `index = h(k) & (m - 1)` (bitwise AND) is faster.\n\n### Step 3: Store or Retrieve\n- **Insert**: place `(k, v)` at `array[index]`.\n",
+      "text_len": 1465,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 129,
+        "draft_tokens": 645,
+        "accepted": 273,
+        "accept_ratio": 0.4233,
+        "accepted_per_step": 2.116,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7907,
+          0.5659,
+          0.3488,
+          0.2326,
+          0.1783,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "http": 200,
+      "ttft_s": 0.7243002140021417,
+      "wall_s": 16.06817323499854,
+      "decode_s": 15.343873020996398,
+      "tok_s": 26.003864829565032,
+      "delivered_tok_s": 24.893931260882148,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an int",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average O(1) lookup, insertion, and deletion. Below is a thorough walkthrough of its internals.\n\n---\n\n## 1. Core Concept\n\nA hash map maps **keys** to **values** using a **hash function** that converts each key into an integer index into an underlying array (often called the **bucket array** or **table**).\n\n```\nkey  \u2500\u2500\u25ba  hash(key)  \u2500\u2500\u25ba  index  \u2500\u2500\u25ba  bucket[index]  \u2500\u2500\u25ba  value\n```\n\nThe goal: given a key, find its value without scanning the whole structure.\n\n---\n\n## 2. The Bucket Array\n\n- The hash map maintains an array of **buckets** (slots), typically of size `m` (a power of two or a prime).\n- Each bucket can hold:\n  - A single key-value pair (simple case), or\n  - A pointer to a linked list / tree of pairs (for collision handling).\n\nExample with `m = 8`:\n\n```\nindex:  0    1    2    3    4    5    6    7\n       [ ]  [ ]  [ ]  [ ]  [ ]  [ ]  [ ]  [ ]\n```\n\n---\n\n## 3. The Hash Function\n\nA hash function takes a key and returns an integer. Requirements:\n\n1. **Deterministic** \u2014 same key always yields the same hash.\n2. **Uniform** \u2014 distributes keys evenly across buckets.\n3. **Fast** \u2014 cheap to compute.\n\n### Common techniques\n\n- **Integer keys:** multiply by a large constant and shift, or use `key % m`.\n- **String keys:** polynomial rolling hash, e.g.\n  ```\n  h = 0\n ",
+      "text_len": 1455,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 118,
+        "draft_tokens": 590,
+        "accepted": 284,
+        "accept_ratio": 0.4814,
+        "accepted_per_step": 2.407,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7966,
+          0.6271,
+          0.4322,
+          0.322,
+          0.2288,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "ts": 1791041116.6368601,
+  "prompt": "hashmap-prose",
+  "thinking": false,
+  "temperature": 0,
+  "concurrency": 1,
+  "note": "decode_ms_per_draft_step is a serving-cycle ratio, not a kernel timing",
+  "tok_s_median": 11.64269106292031,
+  "tok_s_min": 7.897099582891849,
+  "tok_s_max": 26.003864829565032,
+  "ttft_median_s": 0.6774567570028012,
+  "completion_tokens_median": 400.0,
+  "accept_ratio_median": 0.4384,
+  "accepted_per_step_median": 2.192,
+  "mean_draft_tokens_per_step_median": 5.0,
+  "aggregate_tok_s_median": null,
+  "decode_ms_per_draft_step_median": 265.66222869767853,
+  "any_nan": false,
+  "health_code_after": 200,
+  "short_after": {
+    "http": 200,
+    "ttft_s": 0.7497504499988281,
+    "wall_s": 0.8672165349998977,
+    "decode_s": 0.11746608500106959,
+    "tok_s": 59.591668522333585,
+    "delivered_tok_s": 9.224916358405164,
+    "completion_tokens": 8,
+    "prompt_tokens": 32,
+    "finish_reason": "length",
+    "nan": false,
+    "text_head": "# How a Hash Map Works: A",
+    "text": "# How a Hash Map Works: A",
+    "text_len": 25,
+    "usage": {
+      "prompt_tokens": 32,
+      "total_tokens": 40,
+      "completion_tokens": 8,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  }
+}

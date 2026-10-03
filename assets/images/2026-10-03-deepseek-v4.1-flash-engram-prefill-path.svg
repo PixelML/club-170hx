@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 520" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="520" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">DeepSeek-V4.1-Flash prefill: where the time goes</text>
+  <text x="24" y="56" fill="#57606a">Every prompt token reads Engram rows. A row is 264 bytes. A cache miss reads one ZFS record.</text>
+
+  <!-- GPU side -->
+  <rect x="24" y="84" width="300" height="300" rx="10" fill="#ddf4ff" stroke="#0969da"/>
+  <text x="40" y="108" font-weight="bold" fill="#0969da">4 GPUs (CMP 170HX), TP4 + EP4</text>
+  <rect x="44" y="122" width="260" height="46" rx="6" fill="#ffffff" stroke="#0969da"/>
+  <text x="56" y="142" fill="#1f2328">1. Prompt chunk: 8,192 tokens</text>
+  <text x="56" y="160" fill="#57606a">all 40 layers, experts in VRAM</text>
+  <rect x="44" y="182" width="260" height="46" rx="6" fill="#ffffff" stroke="#0969da"/>
+  <text x="56" y="202" fill="#1f2328">2. Hash n-grams (layers 1 and 14)</text>
+  <text x="56" y="220" fill="#57606a">24 row ids per token per layer</text>
+  <rect x="44" y="300" width="260" height="66" rx="6" fill="#ffffff" stroke="#0969da"/>
+  <text x="56" y="320" fill="#1f2328">4. Dequantize rows, add to the</text>
+  <text x="56" y="338" fill="#1f2328">   residual stream, continue</text>
+  <text x="56" y="356" fill="#57606a">GPU waits until step 3 ends</text>
+
+  <!-- CPU callback -->
+  <rect x="380" y="150" width="250" height="120" rx="10" fill="#fff8c5" stroke="#9a6700"/>
+  <text x="396" y="174" font-weight="bold" fill="#9a6700">3. CPU callback in the GPU stream</text>
+  <text x="396" y="196" fill="#1f2328">copy each row from the mmap</text>
+  <text x="396" y="214" fill="#1f2328">8 OpenMP threads per GPU</text>
+  <text x="396" y="232" fill="#1f2328">~196,000 rows per chunk</text>
+  <text x="396" y="250" fill="#57606a">GPU utilization ~10% while it runs</text>
+
+  <!-- storage -->
+  <rect x="690" y="84" width="266" height="300" rx="10" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="706" y="108" font-weight="bold" fill="#1f2328">Engram tables on NVMe (ZFS)</text>
+  <text x="706" y="128" fill="#57606a">2 tables, 768 M rows, 189 GiB</text>
+  <text x="706" y="146" fill="#57606a">too big for RAM (192 GiB container,</text>
+  <text x="706" y="164" fill="#57606a">126 GB per NUMA node)</text>
+  <rect x="706" y="184" width="234" height="54" rx="6" fill="#ffebe9" stroke="#cf222e"/>
+  <text x="718" y="204" font-weight="bold" fill="#cf222e">recordsize 1M</text>
+  <text x="718" y="224" fill="#1f2328">1 MB read per row: 110–173 tok/s</text>
+  <rect x="706" y="248" width="234" height="54" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+  <text x="718" y="268" font-weight="bold" fill="#1a7f37">recordsize 16K (or 4K)</text>
+  <text x="718" y="288" fill="#1f2328">16 KB read per row: 475–791 tok/s</text>
+  <text x="706" y="328" fill="#57606a">Rows already in RAM: the GPUs</text>
+  <text x="706" y="346" fill="#57606a">prefill ~5,660 tok/s (repeated text)</text>
+
+  <!-- arrows -->
+  <path d="M174 168 L174 182" stroke="#57606a" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M304 205 L378 205" stroke="#57606a" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M630 190 L688 190" stroke="#57606a" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="634" y="182" fill="#57606a" font-size="11">page miss</text>
+  <path d="M688 236 L632 236" stroke="#57606a" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="640" y="254" fill="#57606a" font-size="11">record</text>
+  <path d="M440 270 L304 330" stroke="#57606a" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="380" y="314" fill="#57606a" font-size="11">rows to GPU</text>
+
+  <!-- next -->
+  <rect x="24" y="410" width="932" height="88" rx="10" fill="#fbefff" stroke="#8250df"/>
+  <text x="40" y="434" font-weight="bold" fill="#8250df">Next step (untested): 4-bit table pinned in RAM, read by the GPUs directly (no CPU callback)</text>
+  <text x="40" y="456" fill="#1f2328">int4 rows + fp16 scale per 32 values: 144 B per row, 103 GiB in total (cosine 0.995 against the fp8 rows).</text>
+  <text x="40" y="478" fill="#1f2328">Blocked: the container is pinned to one NUMA node (126 GB). 103 GiB pinned + the server process does not fit on one node.</text>
+</svg>
