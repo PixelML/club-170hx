@@ -1,0 +1,722 @@
+{
+  "phase": "prose-c8",
+  "health_code": 200,
+  "health_body": "",
+  "runs": [
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.12039450999873225,
+          "wall_s": 6.413808589000837,
+          "decode_s": 6.293414079002105,
+          "tok_s": 63.399610289629344,
+          "delivered_tok_s": 62.365440821849226,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value",
+          "text": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value storage with O(1) average access. The problem it solves: arrays give O(1) access by index, but what if keys aren't integers 0..n-1?\n\n2. **The hash function** - What it does, properties of a good hash function:\n   - Deterministic\n   - Uniform distribution\n   - Fast to compute\n   - Avalanche effect\n   - How integer keys are often hashed (identity or multiplicative)\n   - How strings are hashed (polynomial rolling hash, e.g., djb2, FNV-1a, Java's String.hashCode)\n   - Hash codes vs. bucket indices (hash % capacity, or the bit-masking trick when capacity is a power of 2)\n\n3. **The underlying array and buckets** - How the hash code maps to a bucket index. Modulo vs. bit masking. Why capacities are often powers of 2 (or prime in some implementations like Python's dict which uses open addressing with perturbation).\n\n4. **Basic operations:**\n   - Insert (put)\n   - Lookup (get)\n   - Delete (remove)\n   - Update\n\n5. **Collisions** - The pigeonhole principle guarantees collisions when key space > bucket count. Two main strategies:\n   \n   **Separate chaining:**\n   - Each bucket holds a linked list (or dynamic array, or tree)\n   - Insert: hash, find bucket, append (or check for existing key)\n   - Lookup: hash, find bucket, walk the chain comparing keys with equals()\n  ",
+          "text_len": 1675,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9287381200119853,
+          "wall_s": 6.190221033000853,
+          "decode_s": 5.261482912988868,
+          "tok_s": 75.83413395014558,
+          "delivered_tok_s": 64.61804802567619,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, real-world implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples perhaps, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or ID), you'd need O(n) search (linear scan) or O(log n) with sorted data + binary search. Hash maps bridge this: they use a hash function to convert a key into an array index, giving (on average) O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array of slots\n- **Index computation**: hash mod array size (usually)\n\nStep-by-step for a lookup:\n1. Take the key\n2. Compute hash(key) \u2192 integer\n3. Map integer to valid array index: typically `index = hash % capacity` (or bitwise AND if capacity is power of 2)\n4. Go to that bucket\n5. Handle whatever is there (empty \u2192 not found; entries \u2192 compare keys for equality)\n\n## ",
+          "text_len": 1753,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9286437789996853,
+          "wall_s": 6.229111120002926,
+          "decode_s": 5.300467341003241,
+          "tok_s": 75.27638118122611,
+          "delivered_tok_s": 64.21461943671541,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, real-world implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples perhaps, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or string), you'd need O(n) search (linear scan) or O(log n) (sorted + binary search). Hash maps bridge this: they use a hash function to convert a key into an array index, giving near-O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array where entries live\n- **Compression/index mapping**: hash % array_size (or bit masking for power-of-2 sizes)\n\nStep-by-step for insertion:\n1. Compute hash of key: h = hash(key)\n2. Map to index: i = h mod capacity (or h & (capacity - 1) for power of two)\n3. Store the pair at that index (handling collisions if needed)\n\nLookup:\n1. Same hash + index computation\n2. Go to index, compare keys",
+          "text_len": 1738,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9284258830011822,
+          "wall_s": 6.229785518007702,
+          "decode_s": 5.30135963500652,
+          "tok_s": 75.26371109880556,
+          "delivered_tok_s": 64.207667959638,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and res",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me plan the structure:\n\n1. **The Problem Hash Maps Solve** \u2014 motivation (why not arrays or plain lists)\n2. **Core Anatomy** \u2014 hash function, buckets/array, key-value pairs\n3. **The Hash Function** \u2014 what it does, properties needed\n4. **Basic Operations Step-by-Step** \u2014 insert, lookup, delete with worked examples\n5. **Collisions** \u2014 why they happen (pigeonhole principle), then:\n   - Separate chaining (with step-by-step walkthrough)\n   - Open addressing (linear probing, quadratic probing, double hashing) with step-by-step walkthroughs\n   - Trade-offs comparison\n6. **Load Factor and Resizing** \u2014 why resize, step-by-step resize process, cost analysis, amortized reasoning\n7. **Time Complexity** \u2014 table of average/worst cases, explanation of why average case holds, amortized analysis\n8. **Practical Considerations** \u2014 hash function quality, adversarial inputs (hash flooding), real-world implementations (Python dict, Java HashMap, etc.), maybe tombstones for deletion in open addressing\n\nLet me think through the technical details",
+          "text_len": 1878,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9282177970017074,
+          "wall_s": 6.19041475999984,
+          "decode_s": 5.262196962998132,
+          "tok_s": 75.82384369221141,
+          "delivered_tok_s": 64.61602582506286,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request. Let me think about what a comprehensive explanation should cover:\n\n1. **What is a hash map?** - The fundamental concept\n2. **Core components** - hash function, buckets, key-value pairs\n3. **How insertion works** - step by step\n4. **How lookup works** - step by step\n5. **How deletion works**\n6. **",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request. Let me think about what a comprehensive explanation should cover:\n\n1. **What is a hash map?** - The fundamental concept\n2. **Core components** - hash function, buckets, key-value pairs\n3. **How insertion works** - step by step\n4. **How lookup works** - step by step\n5. **How deletion works**\n6. **Hash functions** - what makes a good one\n7. **Collision handling** - the two main strategies:\n   - Chaining (separate chaining)\n   - Open addressing (linear probing, quadratic probing, double hashing)\n8. **Load factor and resizing** - when and how, rehashing\n9. **Time complexity analysis** - average vs worst case, amortized analysis\n10. **Space complexity**\n11. **Maybe some practical considerations** - real-world implementations (Python dicts, Java HashMap), why iteration order varies, etc.\n\nThe user asked for \"detailed step-by-step\" and \"thorough\" so this should be a long, comprehensive response. This is a case where length is explicitly requested. I should use headers, code examples perhaps, and clear structure.\n\nLet me think about the format: Markdown is appropriate here since this will likely be rendered. Headers, bullet points, maybe some pseudocode or actual code examples. Tables could be useful for time complexity comparison.\n\nLet me draft the content:\n\n## 1. The Core Idea\n\nA hash map (also called hash table, dictionary, associative array) is a data structure that stores key-value pairs and provides fast lookup. The naive alternatives:\n- Unsorted array: O(n) lookup\n- Sorted array: O(log n) lookup (binary search)\n- Balanced BST: O(log n) lookup\n\nHash maps achieve O(1) average-case lookup by computing *where* to store each item directly from its key, rather",
+          "text_len": 1784,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9281010239938041,
+          "wall_s": 6.071902242998476,
+          "decode_s": 5.143801219004672,
+          "tok_s": 77.56909394667602,
+          "delivered_tok_s": 65.87721343195881,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and res",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me plan the structure:\n\n1. **The Problem Hash Maps Solve** \u2014 motivation (why not arrays or plain lists)\n2. **Core Anatomy** \u2014 hash function, buckets/array, key-value pairs\n3. **The Hash Function** \u2014 what it does, properties needed\n4. **Basic Operations Step-by-Step** \u2014 insert, lookup, delete with worked examples\n5. **Collisions** \u2014 why they happen (pigeonhole principle), then:\n   - Separate chaining (with step-by-step walkthrough)\n   - Open addressing (linear probing, quadratic probing, double hashing) with step-by-step walkthroughs\n   - Trade-offs comparison\n6. **Load Factor and Resizing** \u2014 why, when, how, step-by-step rehashing walkthrough, cost amortization\n7. **Time Complexity Analysis** \u2014 average vs worst case, amortized analysis, why O(1) average\n8. **Practical Considerations** \u2014 hash function quality, adversarial inputs, real-world implementations (Python dict, Java HashMap, etc.)\n9. Maybe a small code sketch\n\nLet me think through the technical details carefully to be",
+          "text_len": 1832,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9279903810092947,
+          "wall_s": 6.250386134997825,
+          "decode_s": 5.3223957539885305,
+          "tok_s": 74.96624047563446,
+          "delivered_tok_s": 63.996046221893,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or ID), you'd need O(n) search (linear scan) or O(log n) with sorted data + binary search. Hash maps bridge this: they use a hash function to convert a key into an array index, giving near-O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array where entries live\n- **Compression/index mapping**: hash % array_size (or bit masking for power-of-2 sizes)\n\nStep-by-step for a lookup:\n1. Take the key\n2. Compute hash(key) \u2192 large integer\n3. Map to index: index = hash % capacity (or hash & (capacity - 1) if capacity is power of 2)\n4. Go to that bucket\n5. Handle whatever is there (empty \u2192 not found; entries",
+          "text_len": 1743,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9278527120040962,
+          "wall_s": 6.393667602009373,
+          "decode_s": 5.4658148900052765,
+          "tok_s": 72.99917908482533,
+          "delivered_tok_s": 62.56190107134907,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value",
+          "text": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value storage with O(1) average access. The problem it solves: arrays give O(1) access by index, but what if we want O(1) access by arbitrary keys?\n\n2. **The hash function** - The heart of the data structure\n   - What it does: maps arbitrary keys to integer indices\n   - Properties of a good hash function: deterministic, uniform distribution, fast to compute, avalanche effect\n   - Hash functions for different types: integers, strings, objects\n   - Examples: FNV-1a, MurmurHash, Java's hashCode, Python's hash\n   - The modulo operation to map to bucket indices\n\n3. **The underlying array and buckets**\n   - Buckets/slots\n   - Why power-of-2 array sizes (bitwise AND instead of modulo)\n   - Load factor concept\n\n4. **Collision handling** - Two main strategies:\n   \n   **Separate chaining:**\n   - Each bucket holds a linked list (or dynamic array, or tree)\n   - Insert, lookup, delete in chains\n   - Java 8+ converts chains to red-black trees when they exceed 8 entries (treeification)\n   - Pros/cons: simple, degrades gracefully, but pointer overhead and cache-unfriendly\n   \n   **Open addressing:**\n   - All elements stored in the array itself\n   - Probe sequences:\n     - Linear probing: h(k), h(k)+1, h(k)+2... \u2014 suffers from primary clustering\n     - Quadratic probing: h(k), h",
+          "text_len": 1677,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 6.415845028997865,
+      "tok_s": 75.27004614001584,
+      "ttft_s": 0.9281594104977557,
+      "decode_s": 5.3009134880048805,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 498.7651642982141,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 1128,
+        "draft_tokens": 3387,
+        "accepted": 2071,
+        "accept_ratio": 0.6115,
+        "accepted_per_step": 1.836,
+        "mean_draft_tokens_per_step": 3.003,
+        "pos": [
+          0.7926,
+          0.6179,
+          0.4238,
+          0.0009,
+          0.0009,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.12009136998676695,
+          "wall_s": 6.42171538999537,
+          "decode_s": 6.301624020008603,
+          "tok_s": 63.31701141374272,
+          "delivered_tok_s": 62.28865275206293,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value",
+          "text": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value storage with O(1) average access. The problem it solves: arrays give O(1) access by index, but what if keys aren't integers 0..n-1?\n\n2. **The hash function** - What it does, properties of a good hash function:\n   - Deterministic\n   - Uniform distribution\n   - Fast to compute\n   - Avalanche effect\n   - How integer keys are often hashed (identity or multiplicative)\n   - How strings are hashed (polynomial rolling hash, e.g., djb2, FNV-1a, Java's String.hashCode)\n   - Hash codes vs. bucket indices (hash % capacity, or the bit-masking trick when capacity is a power of 2)\n\n3. **The underlying array and buckets** - How the hash code maps to a bucket index. Modulo vs. bit masking. Why capacities are often powers of 2 (or prime in some implementations like Python's dict which uses open addressing with perturbation).\n\n4. **Basic operations:**\n   - Insert (put)\n   - Lookup (get)\n   - Delete (remove)\n   - Update\n\n5. **Collisions** - The pigeonhole principle guarantees collisions when key space > bucket count. Two main strategies:\n   \n   **Separate chaining:**\n   - Each bucket holds a linked list (or dynamic array, or tree)\n   - Insert: hash, find bucket, append (or check for existing key)\n   - Lookup: hash, find bucket, walk the chain comparing keys with equals()\n  ",
+          "text_len": 1675,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9363741910055978,
+          "wall_s": 6.198336390007171,
+          "decode_s": 5.261962199001573,
+          "tok_s": 75.8272265953769,
+          "delivered_tok_s": 64.53344491674761,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, real-world implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples perhaps, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or ID), you'd need O(n) search (linear scan) or O(log n) with sorted data + binary search. Hash maps bridge this: they use a hash function to convert a key into an array index, giving (on average) O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array of slots\n- **Index computation**: hash mod array size (usually)\n\nStep-by-step for a lookup:\n1. Take the key\n2. Compute hash(key) \u2192 integer\n3. Map integer to valid array index: typically `index = hash % capacity` (or bitwise AND if capacity is power of 2)\n4. Go to that bucket\n5. Handle whatever is there (empty \u2192 not found; entries \u2192 compare keys for equality)\n\n## ",
+          "text_len": 1753,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9363180869986536,
+          "wall_s": 6.237370661998284,
+          "decode_s": 5.3010525749996305,
+          "tok_s": 75.26807070009635,
+          "delivered_tok_s": 64.12958627535707,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, real-world implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples perhaps, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or string), you'd need O(n) search (linear scan) or O(log n) (sorted + binary search). Hash maps bridge this: they use a hash function to convert a key into an array index, giving near-O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array where entries live\n- **Compression/index mapping**: hash % array_size (or bit masking for power-of-2 sizes)\n\nStep-by-step for insertion:\n1. Compute hash of key: h = hash(key)\n2. Map to index: i = h mod capacity (or h & (capacity - 1) for power of two)\n3. Store the pair at that index (handling collisions if needed)\n\nLookup:\n1. Same hash + index computation\n2. Go to index, compare keys",
+          "text_len": 1738,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9361908550054068,
+          "wall_s": 6.238158766005654,
+          "decode_s": 5.301967911000247,
+          "tok_s": 75.25507635988811,
+          "delivered_tok_s": 64.12148440013549,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and res",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me plan the structure:\n\n1. **The Problem Hash Maps Solve** \u2014 motivation (why not arrays or plain lists)\n2. **Core Anatomy** \u2014 hash function, buckets/array, key-value pairs\n3. **The Hash Function** \u2014 what it does, properties needed\n4. **Basic Operations Step-by-Step** \u2014 insert, lookup, delete with worked examples\n5. **Collisions** \u2014 why they happen (pigeonhole principle), then:\n   - Separate chaining (with step-by-step walkthrough)\n   - Open addressing (linear probing, quadratic probing, double hashing) with step-by-step walkthroughs\n   - Trade-offs comparison\n6. **Load Factor and Resizing** \u2014 why resize, step-by-step resize process, cost analysis, amortized reasoning\n7. **Time Complexity** \u2014 table of average/worst cases, explanation of why average case holds, amortized analysis\n8. **Practical Considerations** \u2014 hash function quality, adversarial inputs (hash flooding), real-world implementations (Python dict, Java HashMap, etc.), maybe tombstones for deletion in open addressing\n\nLet me think through the technical details",
+          "text_len": 1878,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9369063589983853,
+          "wall_s": 6.198754163997364,
+          "decode_s": 5.261847804998979,
+          "tok_s": 75.8288750999094,
+          "delivered_tok_s": 64.5290955920171,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request. Let me think about what a comprehensive explanation should cover:\n\n1. **What is a hash map?** - The fundamental concept\n2. **Core components** - hash function, buckets, key-value pairs\n3. **How insertion works** - step by step\n4. **How lookup works** - step by step\n5. **How deletion works**\n6. **",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request. Let me think about what a comprehensive explanation should cover:\n\n1. **What is a hash map?** - The fundamental concept\n2. **Core components** - hash function, buckets, key-value pairs\n3. **How insertion works** - step by step\n4. **How lookup works** - step by step\n5. **How deletion works**\n6. **Hash functions** - what makes a good one\n7. **Collision handling** - the two main strategies:\n   - Chaining (separate chaining)\n   - Open addressing (linear probing, quadratic probing, double hashing)\n8. **Load factor and resizing** - when and how, rehashing\n9. **Time complexity analysis** - average vs worst case, amortized analysis\n10. **Space complexity**\n11. **Maybe some practical considerations** - real-world implementations (Python dicts, Java HashMap), why iteration order varies, etc.\n\nThe user asked for \"detailed step-by-step\" and \"thorough\" so this should be a long, comprehensive response. This is a case where length is explicitly requested. I should use headers, code examples perhaps, and clear structure.\n\nLet me think about the format: Markdown is appropriate here since this will likely be rendered. Headers, bullet points, maybe some pseudocode or actual code examples. Tables could be useful for time complexity comparison.\n\nLet me draft the content:\n\n## 1. The Core Idea\n\nA hash map (also called hash table, dictionary, associative array) is a data structure that stores key-value pairs and provides fast lookup. The naive alternatives:\n- Unsorted array: O(n) lookup\n- Sorted array: O(log n) lookup (binary search)\n- Balanced BST: O(log n) lookup\n\nHash maps achieve O(1) average-case lookup by computing *where* to store each item directly from its key, rather",
+          "text_len": 1784,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9367205140006263,
+          "wall_s": 6.080101027007913,
+          "decode_s": 5.143380513007287,
+          "tok_s": 77.57543875879959,
+          "delivered_tok_s": 65.7883805257829,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and res",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me plan the structure:\n\n1. **The Problem Hash Maps Solve** \u2014 motivation (why not arrays or plain lists)\n2. **Core Anatomy** \u2014 hash function, buckets/array, key-value pairs\n3. **The Hash Function** \u2014 what it does, properties needed\n4. **Basic Operations Step-by-Step** \u2014 insert, lookup, delete with worked examples\n5. **Collisions** \u2014 why they happen (pigeonhole principle), then:\n   - Separate chaining (with step-by-step walkthrough)\n   - Open addressing (linear probing, quadratic probing, double hashing) with step-by-step walkthroughs\n   - Trade-offs comparison\n6. **Load Factor and Resizing** \u2014 why, when, how, step-by-step rehashing walkthrough, cost amortization\n7. **Time Complexity Analysis** \u2014 average vs worst case, amortized analysis, why O(1) average\n8. **Practical Considerations** \u2014 hash function quality, adversarial inputs, real-world implementations (Python dict, Java HashMap, etc.)\n9. Maybe a small code sketch\n\nLet me think through the technical details carefully to be",
+          "text_len": 1832,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.936557578999782,
+          "wall_s": 6.258662820997415,
+          "decode_s": 5.322105241997633,
+          "tok_s": 74.97033257655701,
+          "delivered_tok_s": 63.91141549565915,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or ID), you'd need O(n) search (linear scan) or O(log n) with sorted data + binary search. Hash maps bridge this: they use a hash function to convert a key into an array index, giving near-O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array where entries live\n- **Compression/index mapping**: hash % array_size (or bit masking for power-of-2 sizes)\n\nStep-by-step for a lookup:\n1. Take the key\n2. Compute hash(key) \u2192 large integer\n3. Map to index: index = hash % capacity (or hash & (capacity - 1) if capacity is power of 2)\n4. Go to that bucket\n5. Handle whatever is there (empty \u2192 not found; entries",
+          "text_len": 1743,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9364498560025822,
+          "wall_s": 6.401991328006261,
+          "decode_s": 5.465541472003679,
+          "tok_s": 73.00283092605018,
+          "delivered_tok_s": 62.480559486257526,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value",
+          "text": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value storage with O(1) average access. The problem it solves: arrays give O(1) access by index, but what if we want O(1) access by arbitrary keys?\n\n2. **The hash function** - The heart of the data structure\n   - What it does: maps arbitrary keys to integer indices\n   - Properties of a good hash function: deterministic, uniform distribution, fast to compute, avalanche effect\n   - Hash functions for different types: integers, strings, objects\n   - Examples: FNV-1a, MurmurHash, Java's hashCode, Python's hash\n   - The modulo operation to map to bucket indices\n\n3. **The underlying array and buckets**\n   - Buckets/slots\n   - Why power-of-2 array sizes (bitwise AND instead of modulo)\n   - Load factor concept\n\n4. **Collision handling** - Two main strategies:\n   \n   **Separate chaining:**\n   - Each bucket holds a linked list (or dynamic array, or tree)\n   - Insert, lookup, delete in chains\n   - Java 8+ converts chains to red-black trees when they exceed 8 entries (treeification)\n   - Pros/cons: simple, degrades gracefully, but pointer overhead and cache-unfriendly\n   \n   **Open addressing:**\n   - All elements stored in the array itself\n   - Probe sequences:\n     - Linear probing: h(k), h(k)+1, h(k)+2... \u2014 suffers from primary clustering\n     - Quadratic probing: h(k), h",
+          "text_len": 1677,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 6.42254058799881,
+      "tok_s": 75.26157352999223,
+      "ttft_s": 0.93641202350409,
+      "decode_s": 5.301510242999939,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 498.24519692090934,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 1128,
+        "draft_tokens": 3387,
+        "accepted": 2071,
+        "accept_ratio": 0.6115,
+        "accepted_per_step": 1.836,
+        "mean_draft_tokens_per_step": 3.003,
+        "pos": [
+          0.7926,
+          0.6179,
+          0.4238,
+          0.0009,
+          0.0009,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "parts": [
+        {
+          "http": 200,
+          "ttft_s": 0.12187671499850694,
+          "wall_s": 6.418607440995402,
+          "decode_s": 6.296730725996895,
+          "tok_s": 63.366216114764946,
+          "delivered_tok_s": 62.31881349297282,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value",
+          "text": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value storage with O(1) average access. The problem it solves: arrays give O(1) access by index, but what if keys aren't integers 0..n-1?\n\n2. **The hash function** - What it does, properties of a good hash function:\n   - Deterministic\n   - Uniform distribution\n   - Fast to compute\n   - Avalanche effect\n   - How integer keys are often hashed (identity or multiplicative)\n   - How strings are hashed (polynomial rolling hash, e.g., djb2, FNV-1a, Java's String.hashCode)\n   - Hash codes vs. bucket indices (hash % capacity, or the bit-masking trick when capacity is a power of 2)\n\n3. **The underlying array and buckets** - How the hash code maps to a bucket index. Modulo vs. bit masking. Why capacities are often powers of 2 (or prime in some implementations like Python's dict which uses open addressing with perturbation).\n\n4. **Basic operations:**\n   - Insert (put)\n   - Lookup (get)\n   - Delete (remove)\n   - Update\n\n5. **Collisions** - The pigeonhole principle guarantees collisions when key space > bucket count. Two main strategies:\n   \n   **Separate chaining:**\n   - Each bucket holds a linked list (or dynamic array, or tree)\n   - Insert: hash, find bucket, append (or check for existing key)\n   - Lookup: hash, find bucket, walk the chain comparing keys with equals()\n  ",
+          "text_len": 1675,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9341033639939269,
+          "wall_s": 6.196040173002984,
+          "decode_s": 5.2619368090090575,
+          "tok_s": 75.82759247828002,
+          "delivered_tok_s": 64.55736064185899,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, real-world implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples perhaps, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or ID), you'd need O(n) search (linear scan) or O(log n) with sorted data + binary search. Hash maps bridge this: they use a hash function to convert a key into an array index, giving (on average) O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array of slots\n- **Index computation**: hash mod array size (usually)\n\nStep-by-step for a lookup:\n1. Take the key\n2. Compute hash(key) \u2192 integer\n3. Map integer to valid array index: typically `index = hash % capacity` (or bitwise AND if capacity is power of 2)\n4. Go to that bucket\n5. Handle whatever is there (empty \u2192 not found; entries \u2192 compare keys for equality)\n\n## ",
+          "text_len": 1753,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9340168880007695,
+          "wall_s": 6.234869405001518,
+          "decode_s": 5.300852517000749,
+          "tok_s": 75.2709113713951,
+          "delivered_tok_s": 64.15531328998263,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, real-world implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples perhaps, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or string), you'd need O(n) search (linear scan) or O(log n) (sorted + binary search). Hash maps bridge this: they use a hash function to convert a key into an array index, giving near-O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array where entries live\n- **Compression/index mapping**: hash % array_size (or bit masking for power-of-2 sizes)\n\nStep-by-step for insertion:\n1. Compute hash of key: h = hash(key)\n2. Map to index: i = h mod capacity (or h & (capacity - 1) for power of two)\n3. Store the pair at that index (handling collisions if needed)\n\nLookup:\n1. Same hash + index computation\n2. Go to index, compare keys",
+          "text_len": 1738,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9338924540061271,
+          "wall_s": 6.235624741995707,
+          "decode_s": 5.30173228798958,
+          "tok_s": 75.25842089459802,
+          "delivered_tok_s": 64.14754199464227,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and res",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me plan the structure:\n\n1. **The Problem Hash Maps Solve** \u2014 motivation (why not arrays or plain lists)\n2. **Core Anatomy** \u2014 hash function, buckets/array, key-value pairs\n3. **The Hash Function** \u2014 what it does, properties needed\n4. **Basic Operations Step-by-Step** \u2014 insert, lookup, delete with worked examples\n5. **Collisions** \u2014 why they happen (pigeonhole principle), then:\n   - Separate chaining (with step-by-step walkthrough)\n   - Open addressing (linear probing, quadratic probing, double hashing) with step-by-step walkthroughs\n   - Trade-offs comparison\n6. **Load Factor and Resizing** \u2014 why resize, step-by-step resize process, cost analysis, amortized reasoning\n7. **Time Complexity** \u2014 table of average/worst cases, explanation of why average case holds, amortized analysis\n8. **Practical Considerations** \u2014 hash function quality, adversarial inputs (hash flooding), real-world implementations (Python dict, Java HashMap, etc.), maybe tombstones for deletion in open addressing\n\nLet me think through the technical details",
+          "text_len": 1878,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9340161650034133,
+          "wall_s": 6.0780658410076285,
+          "decode_s": 5.144049676004215,
+          "tok_s": 77.56534736848312,
+          "delivered_tok_s": 65.81040917676002,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and res",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me plan the structure:\n\n1. **The Problem Hash Maps Solve** \u2014 motivation (why not arrays or plain lists)\n2. **Core Anatomy** \u2014 hash function, buckets/array, key-value pairs\n3. **The Hash Function** \u2014 what it does, properties needed\n4. **Basic Operations Step-by-Step** \u2014 insert, lookup, delete with worked examples\n5. **Collisions** \u2014 why they happen (pigeonhole principle), then:\n   - Separate chaining (with step-by-step walkthrough)\n   - Open addressing (linear probing, quadratic probing, double hashing) with step-by-step walkthroughs\n   - Trade-offs comparison\n6. **Load Factor and Resizing** \u2014 why, when, how, step-by-step rehashing walkthrough, cost amortization\n7. **Time Complexity Analysis** \u2014 average vs worst case, amortized analysis, why O(1) average\n8. **Practical Considerations** \u2014 hash function quality, adversarial inputs, real-world implementations (Python dict, Java HashMap, etc.)\n9. Maybe a small code sketch\n\nLet me think through the technical details carefully to be",
+          "text_len": 1832,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.933461498003453,
+          "wall_s": 6.196148621005705,
+          "decode_s": 5.262687123002252,
+          "tok_s": 75.81678155557516,
+          "delivered_tok_s": 64.55623072757662,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request. Let me think about what a comprehensive explanation should cover:\n\n1. **What is a hash map?** - The fundamental concept\n2. **Core components** - hash function, buckets, key-value pairs\n3. **How insertion works** - step by step\n4. **How lookup works** - step by step\n5. **How deletion works**\n6. **",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request. Let me think about what a comprehensive explanation should cover:\n\n1. **What is a hash map?** - The fundamental concept\n2. **Core components** - hash function, buckets, key-value pairs\n3. **How insertion works** - step by step\n4. **How lookup works** - step by step\n5. **How deletion works**\n6. **Hash functions** - what makes a good one\n7. **Collision handling** - the two main strategies:\n   - Chaining (separate chaining)\n   - Open addressing (linear probing, quadratic probing, double hashing)\n8. **Load factor and resizing** - when and how, rehashing\n9. **Time complexity analysis** - average vs worst case, amortized analysis\n10. **Space complexity**\n11. **Maybe some practical considerations** - real-world implementations (Python dicts, Java HashMap), why iteration order varies, etc.\n\nThe user asked for \"detailed step-by-step\" and \"thorough\" so this should be a long, comprehensive response. This is a case where length is explicitly requested. I should use headers, code examples perhaps, and clear structure.\n\nLet me think about the format: Markdown is appropriate here since this will likely be rendered. Headers, bullet points, maybe some pseudocode or actual code examples. Tables could be useful for time complexity comparison.\n\nLet me draft the content:\n\n## 1. The Core Idea\n\nA hash map (also called hash table, dictionary, associative array) is a data structure that stores key-value pairs and provides fast lookup. The naive alternatives:\n- Unsorted array: O(n) lookup\n- Sorted array: O(log n) lookup (binary search)\n- Balanced BST: O(log n) lookup\n\nHash maps achieve O(1) average-case lookup by computing *where* to store each item directly from its key, rather",
+          "text_len": 1784,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9335398700059159,
+          "wall_s": 6.256379060010659,
+          "decode_s": 5.322839190004743,
+          "tok_s": 74.9599951749894,
+          "delivered_tok_s": 63.93474502795208,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and",
+          "text": "The user wants a detailed, thorough explanation of hash maps. This is a technical educational request, so I should write a comprehensive explanation covering:\n\n1. What a hash map is and why it exists\n2. Core components (hash function, buckets, key-value pairs)\n3. How insertion, lookup, and deletion work\n4. Collision handling (separate chaining, open addressing with its variants)\n5. Load factor and resizing\n6. Time complexity analysis (average and worst case)\n7. Maybe some practical considerations (hash function quality, cryptographic concerns, language implementations)\n\nLet me structure this well. The user explicitly asked for \"detailed step-by-step\" and \"thorough,\" so length is appropriate here. I should use headers, code examples where helpful, and clear organization. Markdown is appropriate since this will likely be rendered.\n\nLet me think through the content carefully:\n\n## 1. The Problem Hash Maps Solve\n\nArrays give O(1) access by index, but only if you know the index. If you want to look up by arbitrary keys (like a name or ID), you'd need O(n) search (linear scan) or O(log n) with sorted data + binary search. Hash maps bridge this: they use a hash function to convert a key into an array index, giving near-O(1) access.\n\n## 2. Core Components\n\n- **Key-value pairs**: stored data\n- **Hash function**: converts key \u2192 integer\n- **Bucket array**: underlying array where entries live\n- **Compression/index mapping**: hash % array_size (or bit masking for power-of-2 sizes)\n\nStep-by-step for a lookup:\n1. Take the key\n2. Compute hash(key) \u2192 large integer\n3. Map to index: index = hash % capacity (or hash & (capacity - 1) if capacity is power of 2)\n4. Go to that bucket\n5. Handle whatever is there (empty \u2192 not found; entries",
+          "text_len": 1743,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        {
+          "http": 200,
+          "ttft_s": 0.9333911439898657,
+          "wall_s": 6.398861367997597,
+          "decode_s": 5.465470224007731,
+          "tok_s": 73.00378259263856,
+          "delivered_tok_s": 62.5111214317763,
+          "completion_tokens": 400,
+          "prompt_tokens": 39,
+          "finish_reason": "length",
+          "nan": false,
+          "text_head": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value",
+          "text": "The user wants a detailed, thorough explanation of how hash maps work, including:\n1. Collision handling\n2. Resizing\n3. Time complexity\n\nThis is a technical educational request. The person wants depth and thoroughness. Let me think about what a truly comprehensive explanation of hash maps should cover:\n\n**Core concepts to cover:**\n\n1. **What is a hash map?** - The fundamental abstraction: key-value storage with O(1) average access. The problem it solves: arrays give O(1) access by index, but what if we want O(1) access by arbitrary keys?\n\n2. **The hash function** - The heart of the data structure\n   - What it does: maps arbitrary keys to integer indices\n   - Properties of a good hash function: deterministic, uniform distribution, fast to compute, avalanche effect\n   - Hash functions for different types: integers, strings, objects\n   - Examples: FNV-1a, MurmurHash, Java's hashCode, Python's hash\n   - The modulo operation to map to bucket indices\n\n3. **The underlying array and buckets**\n   - Buckets/slots\n   - Why power-of-2 array sizes (bitwise AND instead of modulo)\n   - Load factor concept\n\n4. **Collision handling** - Two main strategies:\n   \n   **Separate chaining:**\n   - Each bucket holds a linked list (or dynamic array, or tree)\n   - Insert, lookup, delete in chains\n   - Java 8+ converts chains to red-black trees when they exceed 8 entries (treeification)\n   - Pros/cons: simple, degrades gracefully, but pointer overhead and cache-unfriendly\n   \n   **Open addressing:**\n   - All elements stored in the array itself\n   - Probe sequences:\n     - Linear probing: h(k), h(k)+1, h(k)+2... \u2014 suffers from primary clustering\n     - Quadratic probing: h(k), h",
+          "text_len": 1677,
+          "usage": {
+            "prompt_tokens": 39,
+            "total_tokens": 439,
+            "completion_tokens": 400,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      ],
+      "wall_s": 6.419479283009423,
+      "tok_s": 75.26466613299655,
+      "ttft_s": 0.9337161620060215,
+      "decode_s": 5.301292402495164,
+      "completion_tokens": 3200,
+      "aggregate_tok_s": 498.4827988259905,
+      "finish_reason": [
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length",
+        "length"
+      ],
+      "nan": false,
+      "spec": {
+        "drafts": 1128,
+        "draft_tokens": 3387,
+        "accepted": 2071,
+        "accept_ratio": 0.6115,
+        "accepted_per_step": 1.836,
+        "mean_draft_tokens_per_step": 3.003,
+        "pos": [
+          0.7926,
+          0.6179,
+          0.4238,
+          0.0009,
+          0.0009,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "ts": 1791080808.2030265,
+  "prompt": "hashmap-prose",
+  "thinking": false,
+  "temperature": 0,
+  "concurrency": 8,
+  "note": "decode_ms_per_draft_step is a serving-cycle ratio, not a kernel timing",
+  "warmup": {
+    "tok_s": 297.13407661905626,
+    "ttft_s": 0.10572640999453142,
+    "completion_tokens": 32
+  },
+  "tok_s_median": 75.26466613299655,
+  "tok_s_min": 75.26157352999223,
+  "tok_s_max": 75.27004614001584,
+  "ttft_median_s": 0.9337161620060215,
+  "completion_tokens_median": 3200.0,
+  "accept_ratio_median": 0.6115,
+  "accepted_per_step_median": 1.836,
+  "mean_draft_tokens_per_step_median": 3.003,
+  "aggregate_tok_s_median": 498.4827988259905,
+  "decode_ms_per_draft_step_median": 4.699727307176564,
+  "any_nan": false,
+  "health_code_after": 200,
+  "short_after": {
+    "http": 200,
+    "ttft_s": 0.10665537399472669,
+    "wall_s": 0.145488526992267,
+    "decode_s": 0.03883315299754031,
+    "tok_s": 180.25834782056918,
+    "delivered_tok_s": 54.98715373223358,
+    "completion_tokens": 8,
+    "prompt_tokens": 39,
+    "finish_reason": "length",
+    "nan": false,
+    "text_head": "The user wants a detailed, thorough explanation",
+    "text": "The user wants a detailed, thorough explanation",
+    "text_len": 47,
+    "usage": {
+      "prompt_tokens": 39,
+      "total_tokens": 47,
+      "completion_tokens": 8,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  }
+}

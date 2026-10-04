@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 470" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="470" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker></defs>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Why one NCCL setting changes TP4 prefill on this host</text>
+  <text x="24" y="56" fill="#57606a">Small decode messages use the custom all-reduce (P2P, flags-in-data, up to 256 KiB). Large prefill messages go to NCCL.</text>
+  <rect x="380" y="80" width="220" height="56" rx="8" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="396" y="104" font-weight="bold" fill="#1f2328">CPU root complex</text>
+  <text x="396" y="124" fill="#57606a">PCIe Gen2; host memory behind it</text>
+  <rect x="120" y="190" width="300" height="56" rx="8" fill="#fff8c5" stroke="#9a6700"/>
+  <rect x="560" y="190" width="300" height="56" rx="8" fill="#fff8c5" stroke="#9a6700"/>
+  <text x="136" y="214" font-weight="bold" fill="#9a6700">PLX switch A</text><text x="576" y="214" font-weight="bold" fill="#9a6700">PLX switch B</text>
+  <text x="136" y="234" fill="#1f2328">cards 0 and 1 (x16)</text><text x="576" y="234" fill="#1f2328">cards 2 (x16) and 3 (x8)</text>
+  <g stroke="#57606a" stroke-width="2"><line x1="270" y1="190" x2="440" y2="136"/><line x1="710" y1="190" x2="540" y2="136"/></g>
+  <g fill="#ddf4ff" stroke="#0969da">
+    <rect x="110" y="290" width="140" height="44" rx="6"/><rect x="290" y="290" width="140" height="44" rx="6"/>
+    <rect x="550" y="290" width="140" height="44" rx="6"/><rect x="730" y="290" width="140" height="44" rx="6"/>
+  </g>
+  <g fill="#0969da" font-weight="bold"><text x="150" y="317">Card 0</text><text x="330" y="317">Card 1</text><text x="590" y="317">Card 2</text><text x="770" y="317">Card 3</text></g>
+  <g stroke="#57606a" stroke-width="1.5"><line x1="180" y1="290" x2="220" y2="246"/><line x1="360" y1="290" x2="320" y2="246"/><line x1="620" y1="290" x2="660" y2="246"/><line x1="800" y1="290" x2="760" y2="246"/></g>
+  <rect x="24" y="360" width="460" height="96" rx="8" fill="#ffebe9" stroke="#cf222e"/>
+  <text x="40" y="384" font-weight="bold" fill="#cf222e">NCCL_P2P_LEVEL=SYS (recipe default after the P2P check)</text>
+  <text x="40" y="406" fill="#1f2328">NCCL sends large messages card to card, also between</text>
+  <text x="40" y="424" fill="#1f2328">switches A and B through the root complex.</text>
+  <text x="40" y="446" fill="#1f2328" font-weight="bold">TP4 prefill: 1,140–1,530 tok/s (measured)</text>
+  <rect x="500" y="360" width="456" height="96" rx="8" fill="#dafbe1" stroke="#1a7f37"/>
+  <text x="516" y="384" font-weight="bold" fill="#1a7f37">GLM5_NCCL_P2P_SYS=0 (NCCL picks its own path)</text>
+  <text x="516" y="406" fill="#1f2328">NCCL keeps P2P inside a switch and stages through</text>
+  <text x="516" y="424" fill="#1f2328">host memory between switches (inferred).</text>
+  <text x="516" y="446" fill="#1f2328" font-weight="bold">TP4 prefill: 1,789–1,916 tok/s (measured), decode same</text>
+</svg>
