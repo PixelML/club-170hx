@@ -292,8 +292,8 @@ there, and AWQ is the better-tested path on this club's own hardware today
   community-reported, cited for the compute-bound comparison point only,
   not reproduced on this club's hardware.
 - The GLM-5.3-Flash SM80 vLLM fork this club's own TP4/PP4 measurements
-  run on is `PixelML/sm80vllm` branch `glm53-sm80`; its own upstream lineage
-  is documented in [UPSTREAM-SM80-NOTES.md](UPSTREAM-SM80-NOTES.md).
+  run on is `PixelML/sm80vllm` branch `glm53-sm80`; it builds on the SM80 fork authored by allover326
+  ([@allover326](https://github.com/allover326)), documented in [UPSTREAM-SM80-NOTES.md](UPSTREAM-SM80-NOTES.md).
 
 ## See also
 

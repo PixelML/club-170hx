@@ -12,6 +12,26 @@ This project is building a practical, low-cost SM80 compute pool for:
 
 The CMP 170HX shares useful traits with A100-class hardware, including SM80 compute capability and high-capacity HBM. It is **not an A100 replacement**: it has an unsupported software path, no display output, no NVLink, limited PCIe behavior in common passthrough setups, and unusual cooling and power requirements.
 
+## Credits
+
+This club stands on other people's work. The authors:
+
+- **Amogh Munikote** ([@amoghmunikote](https://github.com/amoghmunikote)) authored [cmpunlocker](https://github.com/amoghmunikote/cmpunlocker), the unlock that gives these cards 64 GB, 74 SMs and Gen2 x16, and 170th Street.
+- **admunch888** ([@admunch888](https://github.com/admunch888)) authored the four BAR1 peer-to-peer patches in [admunch888/cmpunlocker](https://github.com/admunch888/cmpunlocker), ported from work by bayley.
+- **Cachenetics** ([@cachenetics](https://github.com/cachenetics)) authored 170tune (HBM clock control).
+- **Morrowmake** ([@Morrowmake](https://github.com/Morrowmake)) authored the CMP 170HX GLM-5.3-Flash recipes (1.6.0, v1.7.0) and the vLLM image we benchmark.
+- **allover326** ([@allover326](https://github.com/allover326)) authored the SM80 vLLM DSA/MTP fork and patches ([vllm-dsa-mtp-sm80](https://github.com/allover326/vllm-dsa-mtp-sm80)) under our sm80vllm work.
+- **promisezackr** ([@promisezackr](https://github.com/promisezackr)) authored the PP8 patch set and KV-balancing partition, building on kevin ([@344303947](https://github.com/344303947)) and bayley.
+- **lazymio** ([@wtdcode](https://github.com/wtdcode)) authored the GLM-5.3-Flash AWQ W4A16 checkpoint and its SM80 vLLM enablement.
+- **syv.ai** ([@syv-ai](https://github.com/syv-ai)) authored the Qwen3.8-27B recipe and W4A16 DFlash2 draft; **David Birks** ([@dbirks](https://github.com/dbirks)) the Qwen3.8-27B W4A16 AutoRound.
+- **Inco AI** ([@incoai](https://github.com/incoai)) authored the GLM-5.3-Flash DFlash2 drafter (CC BY-NC-ND 4.0, internal use).
+- **Naoki Kishida** ([@kishida](https://github.com/kishida)) authored the llama.cpp `jev` branch and LLKVApprox.
+- **Ithrial** ([@Ithrial](https://github.com/Ithrial)) authored the Ninfer sm_80 fork; **Turboderp** ([@turboderp-org](https://github.com/turboderp-org)) ExLlamaV3; **The Royal Lab** ([@theroyallab](https://github.com/theroyallab)) TabbyAPI; **PrismML** ([@PrismML-Eng](https://github.com/PrismML-Eng)) the PQ2_0 llama.cpp fork; **Mia's AI Lab** ([@MiaAI-Lab](https://github.com/MiaAI-Lab)) the bench protocol and EXL3 checkpoints; **Ash** ([@ashhart](https://github.com/ashhart)) TensorFold.
+- Models: GLM by zai-org, DeepSeek by deepseek-ai, Qwen by Qwen, MiMo by the Xiaomi MiMo team. Hardware research: niconiconi, Xing Kangwei, thaurock-x, @kha84, @snapo, PhillThomas (see [the unlock research](docs/RESEARCH-CMP170HX-UNLOCKS.md)).
+- Documentation style follows [club-3090](https://github.com/noonghunna/club-3090), authored by noonghunna ([@noonghunna](https://github.com/noonghunna)).
+
+Each notebook and result pins the exact commit or revision it used.
+
 ## Start here
 
 | Goal | Guide |
@@ -178,7 +198,7 @@ The unlock path is community-maintained and unsupported by NVIDIA. Back up the m
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md). Benchmark claims need raw, redacted evidence and full environment metadata. Security and privacy rules are in [AGENTS.md](AGENTS.md) and [SECURITY.md](SECURITY.md).
 
-Inspired by the community-first documentation style of [club-3090](https://github.com/noonghunna/club-3090).
+The community-first documentation style follows [club-3090](https://github.com/noonghunna/club-3090), authored by noonghunna ([@noonghunna](https://github.com/noonghunna)).
 
 ## License
 

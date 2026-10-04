@@ -80,6 +80,13 @@ find . -type f -size +10M -not -path './.git/*' -print
 
 A matching word is not automatically a secret; inspect every match. Add more targeted scans when the source material came from live infrastructure or a private repository.
 
+## Credit upstream authors
+
+- Keep the README `## Credits` section on the first screen, above "Start here". A notebook, result or doc that uses someone's work names the author (person or org + handle, linked to profile and repo) in its own receipt and adds them to the README Credits if new.
+- Write "authored by". Never "inspired by", "informed by", "ideas from" or "lineage" without a name.
+- Never remove or reword an existing credit. When the same credit is missing in a sibling repo (club-dgx-spark, cookbook, sm80vllm), fix it there in its own PR.
+- Before you report done, re-read the changed files or the PR diff and confirm every name and link is present.
+
 ## Change discipline
 
 - Preserve user changes and do not force-push.
