@@ -1,0 +1,50 @@
+diff --git a/vllm/compilation/breakable_cudagraph.py b/vllm/compilation/breakable_cudagraph.py
+index 6da3ec7..db38200 100644
+--- a/vllm/compilation/breakable_cudagraph.py
++++ b/vllm/compilation/breakable_cudagraph.py
+@@ -87,8 +87,12 @@ def eager_break_during_capture(fn: F) -> F:
+         def unified_attention_with_output(...):
+             ...
+     """
+-    if not is_breakable_cudagraph_enabled():
+-        return fn
++    # Decide at call time, not at decoration time: VllmConfig may auto-enable
++    # VLLM_USE_BREAKABLE_CUDAGRAPH after this decorator ran at import (e.g. the
++    # DeepSeek-V4 vision wrapper arch is not in the auto-enable list, but the
++    # DSpark draft config is). An import-time early return left the op
++    # unwrapped, so breakable PIECEWISE capture recorded the attention kernels
++    # with capture-time dummy metadata and replayed them for real prefills.
+ 
+     @functools.wraps(fn)
+     def wrapper(*args: Any, **kwargs: Any) -> Any:
+diff --git a/vllm/config/speculative.py b/vllm/config/speculative.py
+index 568fa58..42a772b 100644
+--- a/vllm/config/speculative.py
++++ b/vllm/config/speculative.py
+@@ -1011,6 +1011,11 @@ class SpeculativeConfig:
+                     elif (
+                         self.num_speculative_tokens > n_predict
+                         and self.num_speculative_tokens % n_predict != 0
++                        # DSpark drafts the whole block in one pass; it does
++                        # not reuse MTP modules, so the divisibility rule
++                        # does not apply (k >= dspark_block_size is checked
++                        # below).
++                        and self.method != "dspark"
+                     ):
+                         # Ensure divisibility for MTP module reuse.
+                         raise ValueError(
+diff --git a/vllm/v1/attention/ops/rocm_aiter_mla_sparse.py b/vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
+index 97612ef..760ee0c 100644
+--- a/vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
++++ b/vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
+@@ -2073,7 +2073,9 @@ def _rocm_sparse_attn_decode_ragged_triton(
+     # hardware fp8 convert exists.
+     fp8_lut = get_e4m3fn_bf16_lut(q.device)
+ 
+-    if not (_ON_GFX942 or _ON_GFX950):  # Fallback path for un-tuned architectures.
++    # CUDA SM8x also takes the split-K path: the one-pass fallback launches only
++    # num_queries * heads_blocks CTAs (7 at c1 with k=6), ~10% of the SMs.
++    if not (_ON_GFX942 or _ON_GFX950 or current_platform.is_cuda()):
+         block_k = 16 if head_dim >= 256 else 32
+         _sparse_attn_decode_ragged_kernel[(num_queries, heads_blocks)](
+             q,

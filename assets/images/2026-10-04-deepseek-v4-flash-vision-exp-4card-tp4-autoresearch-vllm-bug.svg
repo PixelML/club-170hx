@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 520" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="520" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker></defs>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Why short prompts got answers to other prompts</text>
+  <text x="24" y="56" fill="#57606a">One decorator read a switch too early. Attention then ran inside a CUDA graph that replays stale data.</text>
+  <g font-weight="bold" fill="#57606a"><text x="24" y="92">1. Import</text><text x="270" y="92">2. Config</text><text x="516" y="92">3. Graph capture</text><text x="762" y="92">4. Real request</text></g>
+  <g fill="#fff8c5" stroke="#9a6700"><rect x="24" y="104" width="220" height="150" rx="8"/><rect x="270" y="104" width="220" height="150" rx="8"/></g>
+  <g fill="#ffebe9" stroke="#cf222e"><rect x="516" y="104" width="220" height="150" rx="8"/><rect x="762" y="104" width="196" height="150" rx="8"/></g>
+  <g fill="#1f2328">
+    <text x="36" y="128">attention.py is imported.</text><text x="36" y="148">@eager_break_during_capture</text><text x="36" y="168">checks the switch:</text><text x="36" y="188" font-weight="bold">breakable graphs = off</text><text x="36" y="208">→ returns attention</text><text x="36" y="228">   unwrapped (no eager break)</text>
+    <text x="282" y="128">DSpark draft config</text><text x="282" y="148">turns the switch on:</text><text x="282" y="168" font-weight="bold">breakable graphs = on</text><text x="282" y="192">The vision model class is</text><text x="282" y="212">not in the auto-enable list,</text><text x="282" y="232">so it comes on this late.</text>
+    <text x="528" y="128">Piecewise graphs capture</text><text x="528" y="148">token counts 16, 32, ...</text><text x="528" y="172">Attention is recorded</text><text x="528" y="192">inside the graph, with</text><text x="528" y="212" font-weight="bold">dummy metadata from</text><text x="528" y="232" font-weight="bold">capture time.</text>
+    <text x="774" y="128">Prompt that runs as a</text><text x="774" y="148">captured size → replay.</text><text x="774" y="172">Attention reads KV of the</text><text x="774" y="192" font-weight="bold">previous request.</text><text x="774" y="216">Reply answers an older</text><text x="774" y="236">prompt ("TNAHPELE").</text>
+  </g>
+  <g stroke="#57606a" stroke-width="1.6" marker-end="url(#a)"><line x1="244" y1="180" x2="268" y2="180"/><line x1="490" y1="180" x2="514" y2="180"/><line x1="736" y1="180" x2="760" y2="180"/></g>
+  <rect x="24" y="282" width="934" height="96" rx="8" fill="#dafbe1" stroke="#1a7f37"/>
+  <text x="40" y="306" font-weight="bold" fill="#1a7f37">Fix (vllm/compilation/breakable_cudagraph.py): decide at call time, not at import time</text>
+  <text x="40" y="330" fill="#1f2328" font-family="Menlo, monospace" font-size="12">-    if not is_breakable_cudagraph_enabled():</text>
+  <text x="40" y="348" fill="#1f2328" font-family="Menlo, monospace" font-size="12">-        return fn</text>
+  <text x="40" y="368" fill="#1f2328">The wrapper already checks the switch when it runs. Attention now always breaks out of the graph during capture.</text>
+  <text x="24" y="410" font-weight="bold" fill="#1f2328">Evidence (measured)</text>
+  <text x="24" y="432" fill="#1f2328">• With the drafter, failing prompts had 16 or 32 tokens; 14, 18, 19, 27, 33 were correct. Without it, a 14-token prompt also failed (padded to 16: inferred).</text>
+  <text x="24" y="452" fill="#1f2328">• --enforce-eager (no graphs): 7 of 7 gates. With the fix and graphs on: 7 of 7 gates.</text>
+  <text x="24" y="472" fill="#1f2328">• Not the cause: prefix caching (hit rate 0%), the DSpark drafter (worse without it), the prefill kernel (matches decode within 0.03).</text>
+  <text x="24" y="496" fill="#57606a">Inferred: the illegal memory access at 4 users came from the same replay path. It did not recur in about 20 runs after the fix.</text>
+</svg>

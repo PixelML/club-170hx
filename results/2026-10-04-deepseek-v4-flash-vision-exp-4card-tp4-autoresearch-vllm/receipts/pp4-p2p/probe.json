@@ -1,0 +1,57 @@
+[
+ {
+  "name": "prime-bare",
+  "content": "T",
+  "on_topic": false,
+  "usage": {
+   "prompt_tokens": 16,
+   "total_tokens": 18,
+   "completion_tokens": 2,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "prime-think",
+  "content": "# Step 1: Understand the user's request\nThe user wants me to write a Python function that checks if a number is prime. The request is straightforward.\n\n# Step 2: Plan the function\nI'll write a function `is_prime(n)` that:\n- Returns `False` for numbers less than 2.\n- Checks divisibility from 2 up to the square root of n.\n- Returns `True` if no divisors are found.\n\n# Step 3: Consider edge cases\n- Negative numbers, 0, 1 \u2192 not prime.\n- 2 \u2192 prime.\n- Even numbers > 2 \u2192 not prime (can optimize by checking 2 separately, then odd numbers only).\n\n# Step 4: Write the code with comments and a simple test block.\n\n```python\nimport math\n\ndef is_prime(n: int) -> bool:\n    \"\"\"\n    Determine if a number is prime.\n    \n    Args:\n        n: An integer to check.\n    \n    Returns:\n        True if n is prime, False otherwise.\n    \"\"\"\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    # Check odd divisors up to sqrt(n)\n    limit = int(math.isqrt(n))  # integer square root\n    for i in range(3, limit + 1, 2):\n        if n % i == 0:\n",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 16,
+   "total_tokens": 316,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "prime-system",
+  "content": "Here's a Python function that checks if a number is prime:\n\n```python\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check\n        \n    Returns:\n        bool: True if the number is prime, False otherwise\n    \"\"\"\n    # Handle edge cases\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    # Check odd divisors up to sqrt(n)\n    i = 3\n    while i * i <= n:\n        if n % i == 0:\n            return False\n        i += 2\n    \n    return True\n```\n\nHere's an alternative, more concise version using a for loop:\n\n```python\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check\n        \n    Returns:\n        bool: True if the number is prime, False otherwise\n    \"\"\"\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    for i in range(3, int(n**0.5) + 1, 2):\n        if n % i == 0:\n            return False\n    \n    return True\n```\n\n## Usage examples:\n\n```python\n#",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 27,
+   "total_tokens": 327,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "is_prime-97",
+  "content": "",
+  "on_topic": false,
+  "usage": {
+   "prompt_tokens": 32,
+   "total_tokens": 33,
+   "completion_tokens": 1,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "sky",
+  "content": "The sky appears blue because sunlight is scattered by molecules in Earth's atmosphere, and this scattering (called Rayleigh scattering) is much stronger for shorter, blue wavelengths of light than for longer, red ones. As a result, the blue light is redirected in all directions and reaches our eyes from every part of the sky, while the red light mostly passes straight through.",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 14,
+   "total_tokens": 87,
+   "completion_tokens": 73,
+   "prompt_tokens_details": null
+  }
+ }
+]

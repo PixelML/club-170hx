@@ -1,0 +1,57 @@
+[
+ {
+  "name": "prime-bare",
+  "content": " ",
+  "on_topic": false,
+  "usage": {
+   "prompt_tokens": 16,
+   "total_tokens": 18,
+   "completion_tokens": 2,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "prime-think",
+  "content": "We need to write a Python function that checks if a number is prime. The user's request is: \"Write a Python function that checks if a number is prime.\" So we need to provide a function, likely with a docstring, and maybe some example usage. The user didn't specify any constraints, but we should implement a standard primality test. We can do a simple trial division up to sqrt(n). We should handle edge cases: n <= 1 is not prime, n == 2 is prime, even numbers > 2 are not prime. We'll write a function `is_prime(n)` that returns a boolean.\n\nWe should also include a brief explanation. The user might be expecting a code snippet. We'll provide the function and maybe a test.\n\nWe'll output the code in a markdown block. Also, we can mention the time complexity.\n\nLet's write the response.</think>Here's a simple and efficient Python function to check if a number is prime using trial division up to the square root of the number:\n\n```python\nimport math\n\ndef is_prime(n: int) -> bool:\n    \"\"\"\n    Returns True if n is a prime number, False otherwise.\n    \n    Args:\n        n (int): The number to check.\n    \n    Returns:\n        bool: True if n is prime, False otherwise.\n    \"\"\"\n    if n <= 1:\n        return False\n    if n == 2:\n        return True\n    if n % ",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 16,
+   "total_tokens": 316,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "prime-system",
+  "content": "Here's a Python function that checks if a number is prime:\n\n```python\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check\n        \n    Returns:\n        bool: True if the number is prime, False otherwise\n    \"\"\"\n    # Handle edge cases\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    # Check odd divisors up to sqrt(n)\n    i = 3\n    while i * i <= n:\n        if n % i == 0:\n            return False\n        i += 2\n    \n    return True\n```\n\nHere's an alternative, more concise version using a for loop:\n\n```python\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check\n        \n    Returns:\n        bool: True if the number is prime, False otherwise\n    \"\"\"\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    for i in range(3, int(n**0.5) + 1, 2):\n        if n % i == 0:\n            return False\n    \n    return True\n```\n\n**How it works:**\n\n1. **",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 27,
+   "total_tokens": 327,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "is_prime-97",
+  "content": " True, but the `is` operator in Python checks identity, not equality. For small integers (-5 to 256), Python caches objects, so `a is b` may be True even if they're separate variables. However, for larger integers or other types, `is` can return False even when values are equal. Use `==` for value comparison.",
+  "on_topic": false,
+  "usage": {
+   "prompt_tokens": 32,
+   "total_tokens": 108,
+   "completion_tokens": 76,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "sky",
+  "content": "The sky is blue because sunlight, which contains all colors, is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered far more than longer red ones. This phenomenon, called Rayleigh scattering, sends blue light in all directions, making the entire sky appear blue to our eyes.",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 14,
+   "total_tokens": 72,
+   "completion_tokens": 58,
+   "prompt_tokens_details": null
+  }
+ }
+]

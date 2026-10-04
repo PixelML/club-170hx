@@ -1,0 +1,27 @@
+commit	gates	c1_tok_s	c4_agg_tok_s	prefill_tok_s	status	description
+8a1ea6a	5/7	129.6	314.4	1288.2	keep	baseline TP4 P2P DSpark k=6 (gates 2,3 fail)
+ab61cfe	5/7	145.17	226.04	1294.2	discard	diag: --no-enable-prefix-caching + DSV4_DBG prefill-vs-decode attn compare (attn paths agree, diff<=0.03; prefix caching not the cause)
+908bd17	7/7	17.87	37.15	1290.4	discard	diag: --enforce-eager => 7/7 gates; bug is in CUDA-graph (breakable PIECEWISE) replay path
+63055f9	7/7	101.1	181.6	1340.7	keep	cudagraph_mode FULL_DECODE_ONLY: first 7/7 (c1 runs 59/101/129, noisy)
+eaf6b7f	6/7*	76.74	163.04	1291.5	keep	ROOT-CAUSE FIX: eager_break_during_capture decided at import (env auto-enabled later) -> DSV4 attention captured into breakable PIECEWISE graphs; gates1-6 pass; *gate7 spurious: dmesg ring rotation dropped old Xid lines, newest Xid ts predates run
+d221221	0/7	0	0	0	crash	DSpark k=5: crash_boot (k must be divisible by n_predict=3)
+91d3461	0/7	0	0	0	crash	DSpark k=3: crash_boot (DSpark requires k>=dspark_block_size=5)
+2dd3e01	6/7*	107.61	200.54	1346.1	keep?	DSpark k=5 (+skip n_predict divisibility for dspark); +6% c1 needs confirm; *gate7 spurious (dmesg rotation)
+6bb9c24	7/7	98.32	181.32	1333.1	discard	DSpark k=7 (acceptance 3.2-3.8, no gain)
+e18fa9a	6/7*	68.06	198.03	1343.2	discard	k=5 repeat (profiler cfg idle): c1 61/68/128 -> k=5 mean c1 87.8, not better than k=6; c1 noise ~30%
+37ff927	6/7*	106.99	165.85	1302.0	discard	diag: torch profile of C1 warmup (k=6 FDO): custom AR 1stage 186us x94/step = 42% GPU time; marlin moe 10%, marlin fp8 11%, sparse attn decode 6%, logits allgather 600us
+288b403	7/7	79.17	195.99	1308.6	keep	disable custom AR -> NCCL RING_LL AR 99us vs custom 186us; c1 rep0 hit by profiler stall (10.7), rep2 152; rerun for clean c1
+288b403	7/7	132.01	198.9	1296.5	keep	NCCL AR clean rerun: c1 77/132/162 (+25% vs custom AR)
+3092c60	7/7	82.73	186.02	1489.6	discard	drop NCCL_P2P_LEVEL=SYS: prefill +15% but c1 83/73/155 (noisy) c4 -6%; revisit
+5ab1c16	0/7	0	0	0	crash	TP2xPP2: crash_boot, DSpark+PP embed load copies full vocab into TP shard
+12843c3	5/7	58.1	0	1993.9	discard	TP2xPP2 (+DSpark PP embed TP-shard fix): prefill +54% but c1 58/99/58, c4 device-side assert crash on PP1 (Xid 43 own crash)
+89c7989	7/7	131.79	192.44	1283.1	keep	split-K sparse MLA decode on sm8x: attn kernel 56->39.5us (profile), c1/c4 within noise
+0517ab1	7/7	68.43	171.67	1316.8	discard	flat push AR (Triton, posted P2P writes): correct, but 145us/AR (PHB root complex forwards 4x msg) -> no gain
+cb4da07	7/7	122.78	194.28	1287.7	discard	hierarchical push AR (remote atomic flags): 100us median/AR, no gain vs NCCL
+d1a42cc	0/7	0	0	0	crash	hier push AR posted-flag variant: inline asm constraint bug (crash_boot)
+f13fb85	0/7	0	0	0	crash	hier push AR posted flags: bench 44us/57KB in graph; init bench used a size beyond slot -> deadlock (killed)
+0d572e5	7/7	97.52	172.25	1317.3	discard	hier push AR posted flags: in-model AR 44us median (NCCL ~100-160); step period 27.9ms (was 33.1); c1 83/98/178 noisy -> confirm run
+0d572e5	7/7	93.25	200.17	1289.4	discard	hier push AR confirm run: c1 88/93/96 (mean of 2 runs 95.4 < NCCL 132); step period 27.8ms
+89c7989	7/7	81.93	266.35	1321.0	keep	rerun NCCL+splitK attn w/ profile: c1 82/81/155 (NCCL runs 132,132,82 -> c1 noise is run-to-run); step period 29.0ms vs push-AR 27.8ms
+b218593	7/7	141.6	204.56	1322.3	discard	skinny FP8 GEMM v1 (bf16 bit-decode): correct (selfcheck err<=1e-3) but 150-290 GB/s, 8.5ms/step vs Marlin 4.0 -> step 32.6ms; c1 141.6 is noise
+c2bb958	7/7	107.19	190.76	1323.3	discard	skinny FP8 v2 (fp16 shift decode): 10-25us/call ~= Marlin 16-19us/call; step period 29.2ms vs 29.0 -> no gain, revert
