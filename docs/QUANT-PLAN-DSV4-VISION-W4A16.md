@@ -74,7 +74,7 @@ quant_stage:
           # applies to routed-expert Linear layers only, via the ignore list above
 ```
 
-Design goal, informed by the `baicai1145` size regression: do **not** blanket-upcast
+Design goal, set after the size regression in the checkpoint by baicai1145 ([`baicai1145/DeepSeek-V4-Flash-0731-W4A16`](https://huggingface.co/baicai1145/DeepSeek-V4-Flash-0731-W4A16)): do **not** blanket-upcast
 non-expert weight to BF16. Where llm-compressor's exporter allows it, re-express attention,
 shared-expert, and embedding weights that were FP8 in the source as FP8 W8A8 in the output
 rather than BF16; this alone is the difference between a ~166 GB artifact and a ~100 GB one.

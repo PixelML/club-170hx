@@ -119,7 +119,7 @@ python make_chart.py && python make_chart_load.py && python build_notebook.py  #
 
 
 The serving recipe for this checkpoint on this card — W4A16 on one 170HX, the
-syv-ai lineage, the 180 W cap being nearly free — is Kis's:
+recipe authored by syv.ai ([@syv-ai](https://github.com/syv-ai)), the 180 W cap being nearly free — is Kis's:
 [`2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm`](../../notebooks/2026-08-30-qwen3.8-27b-w4a16-dflash2-1card-vllm.ipynb).
 [kishida's `jev` branch docs](https://github.com/kishida/llama.cpp/blob/jev/docs/jev.md)
 — shape-compatible with [TypeSafe's System One API](https://docs.typesafe.ai/api)
