@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 330" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="980" height="330" fill="#ffffff"/>
+  <text x="24" y="34" font-size="18" font-weight="bold" fill="#1f2328">Where one decode step goes (TP4, DSpark k=6, 1 user, torch profiler)</text>
+  <text x="24" y="56" fill="#57606a">From the loop's profile notes (results.tsv, commits 37ff927 and 89c7989). Shares are of GPU time per step.</text>
+  <text x="24" y="92" font-weight="bold" fill="#1f2328">Before: vLLM custom all-reduce over PCIe P2P</text>
+  <rect x="24" y="102" width="395" height="34" fill="#cf222e"/><rect x="419" y="102" width="94" height="34" fill="#8250df"/><rect x="513" y="102" width="103" height="34" fill="#0969da"/><rect x="616" y="102" width="56" height="34" fill="#1a7f37"/><rect x="672" y="102" width="268" height="34" fill="#d0d7de"/>
+  <g fill="#ffffff" font-weight="bold"><text x="34" y="124">all-reduce 42% (186 µs × 94 per step)</text><text x="425" y="124">MoE 10%</text><text x="519" y="124">FP8 GEMM 11%</text><text x="620" y="124">attn 6%</text></g>
+  <text x="680" y="124" fill="#1f2328">other 31% (about 250 small kernels)</text>
+  <text x="24" y="176" font-weight="bold" fill="#1f2328">After: NCCL all-reduce + split-K sparse-MLA decode</text>
+  <text x="24" y="198" fill="#1f2328">• All-reduce: about 100 µs per call (NCCL RING_LL) instead of 186 µs.</text>
+  <text x="24" y="218" fill="#1f2328">• Attention decode kernel: 56 → 39.5 µs (split-K uses more SMs; the old path used about 10% of them).</text>
+  <text x="24" y="238" fill="#1f2328">• Step period about 29 ms for 7 tokens. MoE (Marlin MXFP4) and FP8 GEMM (Marlin) are near their memory limit per call.</text>
+  <text x="24" y="270" font-weight="bold" fill="#1f2328">Tried, not kept</text>
+  <text x="24" y="292" fill="#1f2328">• Own Triton push all-reduce: 44 µs per call, step 27.8 ms, but single-user decode not better in 2 runs.  • Skinny FP8 GEMM: equal to or slower than Marlin.</text>
+  <text x="24" y="314" fill="#57606a">Next: all-reduce through pinned host memory; local argmax instead of logits all-gather (about 1.2 ms per step); fuse small kernels.</text>
+</svg>

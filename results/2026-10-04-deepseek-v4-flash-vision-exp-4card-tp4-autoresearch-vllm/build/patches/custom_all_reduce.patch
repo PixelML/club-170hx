@@ -1,0 +1,30 @@
+--- a/vllm/distributed/device_communicators/custom_all_reduce.py
++++ b/vllm/distributed/device_communicators/custom_all_reduce.py
+@@ -4,6 +4,7 @@
+ from contextlib import contextmanager
+ from typing import cast
+ 
++import os
+ import torch
+ import torch.distributed as dist
+ from torch.distributed import ProcessGroup
+@@ -176,6 +177,9 @@
+             physical_device_ids = [t.item() for t in gather_list]
+             assert current_platform.is_cuda_alike()
+             fully_connected = current_platform.is_fully_connected(physical_device_ids)
++            # PixelML: PCIe GPUs with verified P2P (content-checked) count as fully connected.
++            if os.environ.get("VLLM_FORCE_CUSTOM_AR_PCIE", "0") == "1":
++                fully_connected = True
+         if same_node and world_size > 2 and not fully_connected:
+             logger.warning(
+                 "Custom allreduce is disabled because it's not supported on"
+@@ -228,6 +232,9 @@
+         self.rank_data = torch.empty(
+             8 * 1024 * 1024, dtype=torch.uint8, device=self.device
+         )
++        # PixelML: VLLM_CUSTOM_AR_MAX_BYTES caps the custom kernel; NCCL takes larger messages.
++        if int(os.environ.get("VLLM_CUSTOM_AR_MAX_BYTES", "0")) > 0:
++            max_size = min(max_size, int(os.environ["VLLM_CUSTOM_AR_MAX_BYTES"]))
+         self.max_size = max_size
+         self.max_all_gather_size = max_all_gather_size
+         if max_mnnvl_all_gather_size is None:

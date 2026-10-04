@@ -1,0 +1,57 @@
+[
+ {
+  "name": "prime-bare",
+  "content": " ",
+  "on_topic": false,
+  "usage": {
+   "prompt_tokens": 16,
+   "total_tokens": 18,
+   "completion_tokens": 2,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "prime-think",
+  "content": "user wants a Python function that checks if a number is prime. Let me write a simple, efficient function.\n\nI'll write a function `is_prime(n)` that:\n- Returns False for n < 2\n- Checks divisibility up to sqrt(n)\n- Handles even numbers efficiently\n\nLet me provide a clean implementation.</think>Here's a Python function that checks if a number is prime:\n\n```python\nimport math\n\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check.\n    \n    Returns:\n        bool: True if n is prime, False otherwise.\n    \"\"\"\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    # Check odd divisors up to sqrt(n)\n    limit = int(math.isqrt(n))  # integer square root\n    for i in range(3, limit + 1, 2):\n        if n % i == 0:\n            return False\n    return True\n\n\n# Example usage\nif __name__ == \"__main__\":\n    test_numbers = [0, 1, 2, 3, 4, 5, 9, 11, 13, 15, 17, 19, 21, 23, 25, 29, 97, 100]\n    for num",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 16,
+   "total_tokens": 316,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "prime-system",
+  "content": "Here's a Python function that checks if a number is prime:\n\n```python\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check\n        \n    Returns:\n        bool: True if the number is prime, False otherwise\n    \"\"\"\n    # Handle edge cases\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    # Check odd divisors up to sqrt(n)\n    i = 3\n    while i * i <= n:\n        if n % i == 0:\n            return False\n        i += 2\n    \n    return True\n```\n\nHere's an alternative, more concise version using a for loop:\n\n```python\ndef is_prime(n):\n    \"\"\"\n    Check if a number is prime.\n    \n    Args:\n        n (int): The number to check\n        \n    Returns:\n        bool: True if the number is prime, False otherwise\n    \"\"\"\n    if n < 2:\n        return False\n    if n == 2:\n        return True\n    if n % 2 == 0:\n        return False\n    \n    for i in range(3, int(n**0.5) + 1, 2):\n        if n % i == 0:\n            return False\n    \n    return True\n```\n\n## How it works:\n\n1. **",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 27,
+   "total_tokens": 327,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "is_prime-97",
+  "content": " True.  The function is `f(x) = x^3 - 3x + 1`.\n\nLet's find the critical points by taking the derivative and setting it to zero:\n\n`f'(x) = 3x^2 - 3 = 0`\n`3(x^2 - 1) = 0`\n`x = 1` or `x = -1`\n\nNow, we evaluate the function at these critical points and the endpoints of the interval `[-2, 2]`:\n\n*   `f(-2) = (-2)^3 - 3(-2) + 1 = -8 + 6 + 1 = -1`\n*   `f(-1) = (-1)^3 - 3(-1) + 1 = -1 + 3 + 1 = 3`\n*   `f(1) = (1)^3 - 3(1) + 1 = 1 - 3 + 1 = -1`\n*   `f(2) = (2)^3 - 3(2) + 1 = 8 - 6 + 1 = 3`\n\nThe maximum value is `3`, which occurs at both `x = -1` and `x = 2`. The minimum value is `-1`, which occurs at both `x = -2` and `x = 1`.\n\nTherefore, the statement is **True**.",
+  "on_topic": false,
+  "usage": {
+   "prompt_tokens": 32,
+   "total_tokens": 332,
+   "completion_tokens": 300,
+   "prompt_tokens_details": null
+  }
+ },
+ {
+  "name": "sky",
+  "content": "The sky appears blue because sunlight is scattered by molecules in Earth's atmosphere, and this scattering is much stronger for shorter, blue wavelengths of light than for longer, red ones. This effect, known as Rayleigh scattering, sends blue light in all directions, so we see a blue sky from every angle.",
+  "on_topic": true,
+  "usage": {
+   "prompt_tokens": 14,
+   "total_tokens": 75,
+   "completion_tokens": 61,
+   "prompt_tokens_details": null
+  }
+ }
+]
