@@ -1,0 +1,13 @@
+diff --git a/start.sh b/start.sh
+index 7331a1c..e4ea9be 100755
+--- a/start.sh
++++ b/start.sh
+@@ -897,7 +897,7 @@ container_args() {
+     local envfile="$1"
+     CRUN=(docker run -d --name "$CONTAINER_NAME" --label "$LABEL=$SCRIPT_DIR"
+         --user "$(id -u):$(id -g)" --workdir /cache
+-        --gpus all --shm-size "$SHM_SIZE"
++        --device nvidia.com/gpu=all --shm-size "$SHM_SIZE"
+         -p "$(publish_addr):8000"
+         --env-file "$envfile"
+         -v "$SCRIPT_DIR/serve.sh:/recipe/serve.sh:ro"
