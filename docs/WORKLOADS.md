@@ -6,7 +6,7 @@ The repository covers more than LLM inference. Each workload track starts with c
 |---|---|---|
 | LLM inference | Verified on one-, three-, and four-card workloads; real-image vision verified on four cards | More model families, concurrency, energy/token, a performance-grade SM80 vision path |
 | Image generation | Planned | Reproducible SM80 pipeline, images/minute, peak VRAM and power |
-| Video generation | Planned | Reproducible model, resolution/frames, seconds/frame, peak VRAM |
+| Video generation | Measured on one card: MiniMax H3 video + audio, ComfyUI/SGLang/diffusers, power cap sweep ([notebook](../notebooks/2026-10-06-minimax-h3-video-1card-comfyui.ipynb)) | Sustained 200 W soak, multi-card sequence parallel, lip-sync and identity scores, 768-px native resolution |
 | CUDA/QC | Initial tools included | Near-full HBM and sustained compute reports from more cards |
 | Fine-tuning/training | Untested | Memory plan, optimizer/quantization, interconnect scaling |
 | Multi-node | Untested | Network/topology and end-to-end scaling data |

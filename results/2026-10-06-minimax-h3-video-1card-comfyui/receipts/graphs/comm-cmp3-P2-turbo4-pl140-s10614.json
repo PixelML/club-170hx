@@ -1,0 +1,186 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+   "type": "minimax",
+   "device": "default"
+  }
+ },
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+  }
+ },
+ "4": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+  }
+ },
+ "28": {
+  "class_type": "MiniMaxH3TurboLoRA",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "minimax_h3_turbo_v4_step600_ema.safetensors",
+   "strength": 1.0,
+   "low_vram": false
+  }
+ },
+ "8": {
+  "class_type": "MiniMaxH3ImageToVideo",
+  "inputs": {
+   "clip": [
+    "2",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ],
+   "prompt": "A cinematic realistic morning scene of a young adult woman suddenly waking up in a hurry. She quickly checks the time on her phone and realizes she is late. Looking stressed but determined, she immediately gets out of bed, quickly fixes the bedsheets, rushes to the bathroom and brushes her teeth. She then hurries into the kitchen, prepares a quick breakfast, packs the food into her bag, grabs her belongings, puts on her shoes, and rushes out of the apartment. Fast-paced natural movements, realistic expressions, smooth cinematic camera transitions, morning sunlight, detailed modern apartment, photorealistic, dynamic pacing, cinematic commercial quality, 4K.",
+   "width": 576,
+   "height": 1024,
+   "length": 243
+  }
+ },
+ "9": {
+  "class_type": "BasicGuider",
+  "inputs": {
+   "model": [
+    "28",
+    0
+   ],
+   "conditioning": [
+    "8",
+    0
+   ]
+  }
+ },
+ "10": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 10614
+  }
+ },
+ "11": {
+  "class_type": "MiniMaxH3TurboSampler",
+  "inputs": {}
+ },
+ "12": {
+  "class_type": "BasicScheduler",
+  "inputs": {
+   "model": [
+    "28",
+    0
+   ],
+   "scheduler": "simple",
+   "steps": 4,
+   "denoise": 1.0
+  }
+ },
+ "13": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "10",
+    0
+   ],
+   "guider": [
+    "9",
+    0
+   ],
+   "sampler": [
+    "11",
+    0
+   ],
+   "sigmas": [
+    "12",
+    0
+   ],
+   "latent_image": [
+    "8",
+    1
+   ]
+  }
+ },
+ "14": {
+  "class_type": "LTXVSeparateAVLatent",
+  "inputs": {
+   "av_latent": [
+    "13",
+    0
+   ]
+  }
+ },
+ "17": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "14",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "25": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "14",
+    1
+   ],
+   "vae": [
+    "4",
+    0
+   ]
+  }
+ },
+ "26": {
+  "class_type": "SaveAudio",
+  "inputs": {
+   "audio": [
+    "25",
+    0
+   ],
+   "filename_prefix": "h3bench/comm-cmp3-P2-turbo4-pl140-s10614/audio"
+  }
+ },
+ "18": {
+  "class_type": "VHS_VideoCombine",
+  "inputs": {
+   "images": [
+    "17",
+    0
+   ],
+   "audio": [
+    "25",
+    0
+   ],
+   "frame_rate": 24,
+   "loop_count": 0,
+   "filename_prefix": "h3bench/comm-cmp3-P2-turbo4-pl140-s10614/av",
+   "format": "video/h264-mp4",
+   "pix_fmt": "yuv420p",
+   "crf": 19,
+   "save_metadata": true,
+   "trim_to_audio": false,
+   "pingpong": false,
+   "save_output": true
+  }
+ }
+}

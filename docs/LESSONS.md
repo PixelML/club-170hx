@@ -386,6 +386,16 @@ power/tok-per-Wh figures above and are disclosed as supplementary,
 same-day, same-config samples rather than part of the original ladder's own
 telemetry stream.
 
+## f.3 Video generation: MiniMax H3 (measured 2026-10-06)
+
+Source: [MiniMax H3 notebook](../notebooks/2026-10-06-minimax-h3-video-1card-comfyui.ipynb).
+
+- **Measured:** the pruned int8 ConvRot H3 DiT + int8 Qwen3-VL fit one card with everything resident (57–60 GB); ComfyUI with Larryvrh's Turbo LoRA at 4 steps makes a 5.2 s 576x1024 shot with audio in about 85 s. The sampler is 75% of that, VAE decode a fixed ~15 s.
+- **Measured:** video diffusion is compute-bound, unlike LLM decode. At 140 W the card sits at its cap with the SM clock near 850 MHz; 200 W gives 22–30% more speed at the same energy per clip. The limit is core temperature, not HBM.
+- **Measured:** step cost grows faster than the clip (15.9 s/step at 5.2 s, 44 s at 10.1 s, 86 s at 15.1 s). Generate 5–7 s shots and cut in the edit.
+- **Measured:** one ComfyUI process cannot hold both H3 checkpoints on 64 GB; it spills to host RAM until the container is OOM-killed. Pin one checkpoint per worker.
+- **Measured:** SGLang Diffusion and diffusers run H3 correctly on SM80 but slower (2x and 2.5x per step); SGLang always uses 2,048-px references, which alone costs 1.5x.
+
 ## g. Failure modes and recovery
 
 | Signal | Meaning | Recovery |

@@ -1,6 +1,6 @@
 # Video generation
 
-Status: **planned; no public CMP 170HX result yet**.
+Status: **first measured result (2026-10-06):** MiniMax H3 video + audio on one CMP 170HX — [notebook](../../notebooks/2026-10-06-minimax-h3-video-1card-comfyui.ipynb), [receipts](../../results/2026-10-06-minimax-h3-video-1card-comfyui/README.md).
 
 Video pipelines combine large weights, long-lived activations, host-memory pressure, and expensive output validation. Capacity alone does not guarantee useful throughput.
 
