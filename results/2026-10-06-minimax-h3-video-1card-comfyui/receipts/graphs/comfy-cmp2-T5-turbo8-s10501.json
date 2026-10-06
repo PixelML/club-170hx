@@ -1,0 +1,186 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+   "type": "minimax",
+   "device": "default"
+  }
+ },
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+  }
+ },
+ "4": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+  }
+ },
+ "28": {
+  "class_type": "MiniMaxH3TurboLoRA",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "minimax_h3_turbo_v4_step600_ema.safetensors",
+   "strength": 1.0,
+   "low_vram": false
+  }
+ },
+ "8": {
+  "class_type": "MiniMaxH3ImageToVideo",
+  "inputs": {
+   "clip": [
+    "2",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ],
+   "prompt": "summary:\n[text generation] A close-up insert shot for a dark royal drama: a ripe pomegranate on a black stone table is split open by an unseen force, and its red seeds spill out in slow motion. No person is visible.\n\ndetailed_description:\nThe target video uses a realistic cinematic macro style with dramatic low-key lighting. The single continuous shot lasts approximately 5.167 seconds, vertical framing.\n[Shot 1] A locked macro close-up shows one ripe, deep-red pomegranate on a polished black stone table, lit by a single warm candle from the left. Thin smoke drifts across the background, softly out of focus. After a short still moment, the pomegranate splits open along a natural crack. Glossy red seeds slowly spill onto the stone and roll a short distance; a few drops of red juice bead on the surface. The camera does not move. No hand, person, face, text or subtitle appears.\n\noverall_soundscape:\nA quiet room tone, a soft wet crack when the fruit splits, small clicking sounds as the seeds hit the stone, and a candle flame flutter. No voices, no speech, no narration.\n\nnon_diegetic_music:\nA single low, tense string drone, very quiet.",
+   "width": 576,
+   "height": 1024,
+   "length": 124
+  }
+ },
+ "9": {
+  "class_type": "BasicGuider",
+  "inputs": {
+   "model": [
+    "28",
+    0
+   ],
+   "conditioning": [
+    "8",
+    0
+   ]
+  }
+ },
+ "10": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 10501
+  }
+ },
+ "11": {
+  "class_type": "MiniMaxH3TurboSampler",
+  "inputs": {}
+ },
+ "12": {
+  "class_type": "BasicScheduler",
+  "inputs": {
+   "model": [
+    "28",
+    0
+   ],
+   "scheduler": "simple",
+   "steps": 8,
+   "denoise": 1.0
+  }
+ },
+ "13": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "10",
+    0
+   ],
+   "guider": [
+    "9",
+    0
+   ],
+   "sampler": [
+    "11",
+    0
+   ],
+   "sigmas": [
+    "12",
+    0
+   ],
+   "latent_image": [
+    "8",
+    1
+   ]
+  }
+ },
+ "14": {
+  "class_type": "LTXVSeparateAVLatent",
+  "inputs": {
+   "av_latent": [
+    "13",
+    0
+   ]
+  }
+ },
+ "17": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "14",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "25": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "14",
+    1
+   ],
+   "vae": [
+    "4",
+    0
+   ]
+  }
+ },
+ "26": {
+  "class_type": "SaveAudio",
+  "inputs": {
+   "audio": [
+    "25",
+    0
+   ],
+   "filename_prefix": "h3bench/comfy-cmp2-T5-turbo8-s10501/audio"
+  }
+ },
+ "18": {
+  "class_type": "VHS_VideoCombine",
+  "inputs": {
+   "images": [
+    "17",
+    0
+   ],
+   "audio": [
+    "25",
+    0
+   ],
+   "frame_rate": 24,
+   "loop_count": 0,
+   "filename_prefix": "h3bench/comfy-cmp2-T5-turbo8-s10501/av",
+   "format": "video/h264-mp4",
+   "pix_fmt": "yuv420p",
+   "crf": 19,
+   "save_metadata": true,
+   "trim_to_audio": false,
+   "pingpong": false,
+   "save_output": true
+  }
+ }
+}
