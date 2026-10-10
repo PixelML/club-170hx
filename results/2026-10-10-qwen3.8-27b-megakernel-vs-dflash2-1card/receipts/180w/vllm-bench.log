@@ -1,0 +1,35 @@
+[vllm-dflash2-k7] greedy/code_prime rep0: 253 tok, decode 317.61 tok/s, ttft 0.5238 s
+[vllm-dflash2-k7] greedy/code_prime rep1: 253 tok, decode 318.27 tok/s, ttft 0.2194 s
+[vllm-dflash2-k7] greedy/code_prime rep2: 253 tok, decode 316.67 tok/s, ttft 0.2032 s
+[vllm-dflash2-k7] greedy/hashmap rep0: 512 tok, decode 193.98 tok/s, ttft 0.2043 s
+[vllm-dflash2-k7] greedy/hashmap rep1: 512 tok, decode 193.92 tok/s, ttft 0.2085 s
+[vllm-dflash2-k7] greedy/hashmap rep2: 512 tok, decode 193.82 tok/s, ttft 0.2096 s
+[vllm-dflash2-k7] greedy/story_lighthouse rep0: 443 tok, decode 111.39 tok/s, ttft 0.2164 s
+[vllm-dflash2-k7] greedy/story_lighthouse rep1: 443 tok, decode 111.17 tok/s, ttft 0.2114 s
+[vllm-dflash2-k7] greedy/story_lighthouse rep2: 443 tok, decode 111.14 tok/s, ttft 0.198 s
+[vllm-dflash2-k7] greedy/flask_fastapi rep0: 512 tok, decode 165.97 tok/s, ttft 0.2027 s
+[vllm-dflash2-k7] greedy/flask_fastapi rep1: 512 tok, decode 165.81 tok/s, ttft 0.2032 s
+[vllm-dflash2-k7] greedy/flask_fastapi rep2: 512 tok, decode 165.69 tok/s, ttft 0.2022 s
+[vllm-dflash2-k7] greedy/story_robot rep0: 512 tok, decode 120.37 tok/s, ttft 0.2421 s
+[vllm-dflash2-k7] greedy/story_robot rep1: 512 tok, decode 120.32 tok/s, ttft 0.2424 s
+[vllm-dflash2-k7] greedy/story_robot rep2: 512 tok, decode 120.14 tok/s, ttft 0.213 s
+[vllm-dflash2-k7] think/intervals rep0: 1024 tok, decode 183.97 tok/s, ttft 0.5418 s
+[vllm-dflash2-k7] think/intervals rep1: 990 tok, decode 215.93 tok/s, ttft 0.1974 s
+[vllm-dflash2-k7] think/bash_largest rep0: 1024 tok, decode 144.82 tok/s, ttft 0.2148 s
+[vllm-dflash2-k7] think/bash_largest rep1: 1024 tok, decode 149.88 tok/s, ttft 0.2104 s
+[vllm-dflash2-k7] think/c_ringbuf rep0: 1024 tok, decode 132.12 tok/s, ttft 0.2089 s
+[vllm-dflash2-k7] think/c_ringbuf rep1: 1024 tok, decode 129.41 tok/s, ttft 0.2029 s
+[vllm-dflash2-k7] think/mutex_sem rep0: 1024 tok, decode 156.79 tok/s, ttft 0.2062 s
+[vllm-dflash2-k7] think/mutex_sem rep1: 1024 tok, decode 137.62 tok/s, ttft 0.211 s
+[vllm-dflash2-k7] prefill/chars8000 rep0: 58 tok, decode 106.08 tok/s, ttft 1.6475 s
+[vllm-dflash2-k7] prefill/chars8000 rep1: 58 tok, decode 106.42 tok/s, ttft 1.6535 s
+[vllm-dflash2-k7] prefill/chars8000 rep2: 58 tok, decode 115.76 tok/s, ttft 1.6535 s
+Traceback (most recent call last):
+  File "/work/chat_bench.py", line 132, in <module>
+    main()
+  File "/work/chat_bench.py", line 125, in main
+    r = stream_chat(a.url, dict(base, messages=[{"role": "user", "content": msg}], max_tokens=128,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/chat_bench.py", line 60, in stream_chat
+    raise RuntimeError("stream ended without usage or without a first token")
+RuntimeError: stream ended without usage or without a first token
