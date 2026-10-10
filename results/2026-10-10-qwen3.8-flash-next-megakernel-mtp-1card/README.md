@@ -1,0 +1,3 @@
+# WIP: Qwen3.8-Flash-Next megakernel v2 (MTP drafter) receipts
+
+Work in progress; notebook not written yet. Engine authored on the design of the open-jet megakernel by L-Forster ([@L-Forster](https://github.com/L-Forster), [open-jet @ 93c2b9a](https://github.com/L-Forster/open-jet/tree/93c2b9abee50ea2ea41981c406cfd201989e4d58/megakernel)); forward pass from the llama.cpp `qwen4exp` graph by ggml-org; MTP head and GGUF quants by Unsloth ([unsloth/Qwen3.8-Flash-Next-GGUF @ 766911a6](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/766911a6b7369840a91dbcd95f9f997acaab6cd6)); model by Qwen.
