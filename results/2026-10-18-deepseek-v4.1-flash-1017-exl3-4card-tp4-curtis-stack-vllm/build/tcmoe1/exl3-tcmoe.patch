@@ -1,0 +1,249 @@
+--- ../build1017/exl3.py	2026-10-17 08:07:27
++++ exl3.py	2026-10-17 21:07:27
+@@ -562,10 +562,48 @@
+     return mask, kept_counts
+ 
+ 
+-def _narrow_tp(tensor: torch.Tensor, dim: int, tp_rank: int, tp_size: int) -> torch.Tensor:
++def _moe_tp_align() -> int:
++    """Column alignment for routed-expert TP shards (VLLM_EXL3_MOE_TP_ALIGN, 0 = off). Port of vcruz305/vllm-exl3 #36."""
++    try:
++        return int(os.environ.get("VLLM_EXL3_MOE_TP_ALIGN", "0"))
++    except ValueError:
++        return 0
++
++
++def aligned_tp_split(size: int, tp_rank: int, tp_size: int, align: int) -> tuple[int, int]:
++    """(offset, length) of rank's shard when ``size`` is split in ``align`` blocks (2304/tp4 -> 640/640/512/512)."""
++    if size % align:
++        raise ValueError(f"EXL3 aligned TP shard: size {size} is not a multiple of {align}")
++    base, rem = divmod(size // align, tp_size)
++    counts = [base + (1 if r < rem else 0) for r in range(tp_size)]
++    return sum(counts[:tp_rank]) * align, counts[tp_rank] * align
++
++
++def moe_tp_rotation(layer: Any, tp_size: int) -> int:
++    """Per-layer chunk rotation (VLLM_EXL3_MOE_TP_ROTATE=1): rank r of layer L takes chunk (r + L) % tp. Port of #40."""
++    if os.environ.get("VLLM_EXL3_MOE_TP_ROTATE", "0") != "1" or tp_size <= 1:
++        return 0
++    import re as _re
++    name = str(getattr(layer, "layer_name", None) or getattr(layer, "prefix", None) or "")
++    m = _re.search(r"layers\.(\d+)", name)
++    return int(m.group(1)) % tp_size if m else 0
++
++
++def _narrow_tp(
++    tensor: torch.Tensor, dim: int, tp_rank: int, tp_size: int, unit: int = 1, aligned: bool = False
++) -> torch.Tensor:
+     if tp_size <= 1:
+         return tensor
+     size = int(tensor.shape[dim])
++    align = _moe_tp_align() if aligned else 0
++    if align > 0:
++        if (size * unit) % align:
++            raise RuntimeError(
++                f"EXL3 aligned MoE TP: dim {dim} spans {size * unit} columns, not a multiple of "
++                f"VLLM_EXL3_MOE_TP_ALIGN={align}; unset it or use expert parallel"
++            )
++        off, length = aligned_tp_split(size * unit, tp_rank, tp_size, align)
++        return tensor.narrow(dim, off // unit, length // unit).contiguous()
+     if size % tp_size:
+         raise ValueError(
+             f"EXL3 TP shard: dim {dim} size {size} is not divisible by tp={tp_size}"
+@@ -613,21 +651,25 @@
+     return get_tensor_model_parallel_rank(), get_tensor_model_parallel_world_size()
+ 
+ 
+-def shard_exl3_col(loaded: torch.Tensor, suffix: str, tp_rank: int, tp_size: int) -> torch.Tensor:
++def shard_exl3_col(
++    loaded: torch.Tensor, suffix: str, tp_rank: int, tp_size: int, aligned: bool = False
++) -> torch.Tensor:
+     """Gate/up: trellis dim 1 and svh dim 0 are column-parallel."""
+     if suffix == "trellis":
+-        return _narrow_tp(loaded, 1, tp_rank, tp_size)
++        return _narrow_tp(loaded, 1, tp_rank, tp_size, 16, aligned)
+     if suffix == "svh":
+-        return _narrow_tp(loaded, 0, tp_rank, tp_size)
++        return _narrow_tp(loaded, 0, tp_rank, tp_size, 1, aligned)
+     return loaded.contiguous()
+ 
+ 
+-def shard_exl3_row(loaded: torch.Tensor, suffix: str, tp_rank: int, tp_size: int) -> torch.Tensor:
++def shard_exl3_row(
++    loaded: torch.Tensor, suffix: str, tp_rank: int, tp_size: int, aligned: bool = False
++) -> torch.Tensor:
+     """Down: trellis dim 0 and suh dim 0 are row-parallel."""
+     if suffix == "trellis":
+-        return _narrow_tp(loaded, 0, tp_rank, tp_size)
++        return _narrow_tp(loaded, 0, tp_rank, tp_size, 16, aligned)
+     if suffix == "suh":
+-        return _narrow_tp(loaded, 0, tp_rank, tp_size)
++        return _narrow_tp(loaded, 0, tp_rank, tp_size, 1, aligned)
+     return loaded.contiguous()
+ 
+ 
+@@ -692,6 +734,41 @@
+         out_dtype=torch.float16 if torch is not None else None,
+     )
+     return inner.forward(x.contiguous().half(), {}, out_dtype=out_dtype)
++
++
++_COOP = os.environ.get("VLLM_EXL3_COOP", "0") == "1"
++_COOP_EXT = None
++_TC_HOOK = None
++_TC_HOOK_TRIED = False
++
++
++def _coop_ext():
++    """exllamav3 >= 1.5 exl3_moe_coop, built at d3739fd3 as a side module so the image's stock exllamav3_ext (0xSero) stays."""
++    global _COOP_EXT
++    if _COOP_EXT is None:
++        try:
++            import exllamav3_coop_ext as _m
++            _COOP_EXT = _m if hasattr(_m, "exl3_moe_coop") else False
++        except Exception as exc:  # pragma: no cover
++            logger.warning("VLLM_EXL3_COOP=1 but exllamav3_coop_ext failed to import: %s", exc)
++            _COOP_EXT = False
++    return _COOP_EXT or None
++
++
++def _tc_hook():
++    """Curtis White's exl3_tc_hook (DeepSeekv41-Flash-EXL3-TC-MoE @cd83ade1), loaded from DSV41_TC_HOOK when set."""
++    global _TC_HOOK, _TC_HOOK_TRIED
++    if not _TC_HOOK_TRIED:
++        _TC_HOOK_TRIED = True
++        path = os.environ.get("DSV41_TC_HOOK", "")
++        if path and (os.environ.get("VLLM_EXL3_TC_MOE_V2") == "1" or os.environ.get("VLLM_EXL3_TC_MOE_PREFILL") == "1"):
++            import importlib.util as _ilu
++            spec = _ilu.spec_from_file_location("exl3_tc_hook", path)
++            mod = _ilu.module_from_spec(spec)
++            spec.loader.exec_module(mod)
++            _TC_HOOK = mod
++            logger.info("EXL3 TC MoE hook loaded from %s", path)
++    return _TC_HOOK
+ 
+ 
+ def fused_moe_enabled() -> bool:
+@@ -930,6 +1007,9 @@
+     layer._exl3_fused_temps = temps
+     layer._exl3_fused_concurrency = concurrency
+     layer._exl3_k = int(layer._exl3_bits)
++    _h = _tc_hook()
++    if _h is not None:
++        _h.try_build(layer, inners)
+ 
+ 
+ def _native_moe_dimensions_supported(
+@@ -1368,8 +1448,65 @@
+     if not ptrs or temps is None:
+         raise RuntimeError("EXL3 fused pointer tables were not built after weight load")
+ 
++    # Curtis White's tensor-core MoE row dispatch: 43-64 rows moe_out_v2, 65..PREFILL_ROWS moe_out_prefill; None = coop/stock.
++    _h = _TC_HOOK if _TC_HOOK_TRIED else _tc_hook()
++    if _h is not None and getattr(layer, "_exl3_tc", None) is not None:
++        _tc_out = _h.try_apply(x2d, ids, weights, layer, expert_map, limit)
++        if _tc_out is not None:
++            layer._exl3_last_apply = "tc"
++            return _tc_out
++
+     local = map_topk_to_local(ids, n_exp, expert_map)
+     topk = int(ids.shape[-1])
++
++    # exl3_moe_coop decode route (vcruz305/vllm-exl3 #27 by @kaka86mm + range fix 01740c6): tokens*topk <= 256 (<= 42 rows
++    # at top-6). Fat routes are impossible here (rows <= 42 < FAT threshold), host-expert plans are not used with coop.
++    _cx = _coop_ext() if _COOP else None
++    if (
++        _cx is not None
++        and tokens * topk <= 256
++        and tokens <= FAT_EXPERT_THRESHOLD
++        and getattr(layer, "_exl3_cold_mask", None) is None
++    ):
++        flags = getattr(layer, "_exl3_codebook_flags", (True, False, True, False, True, False))
++        mcg, mul1 = bool(flags[0]), bool(flags[1])
++        inter_dim = int(temps[2].shape[-1])
++        if (
++            all(bool(flags[i]) == mcg and bool(flags[i + 1]) == mul1 for i in range(0, 6, 2))
++            and hidden % 128 == 0
++            and inter_dim % 128 == 0
++        ):
++            k = int(getattr(layer, "_exl3_k", 4))
++            slots = tokens * topk
++            smax = 4 * slots
++            dev = x2d.device
++            sel_c = local.reshape(tokens, topk).to(torch.int64).contiguous()
++            rw_c = weights.reshape(tokens, topk).to(torch.float16).contiguous()
++            xh_c = x2d.contiguous().half()
++            had_g = torch.empty((slots, hidden), dtype=torch.float16, device=dev)
++            had_u = torch.empty_like(had_g)
++            gu_g = torch.empty((smax, 1, inter_dim), dtype=torch.float16, device=dev)
++            gu_u = torch.empty_like(gu_g)
++            act_out = torch.empty_like(gu_g)
++            d_out = torch.empty((smax, 1, hidden), dtype=torch.float32, device=dev)
++            ctr = torch.zeros(
++                smax * (inter_dim // 128) + tokens * (hidden // 128) + 2 * smax + 3, dtype=torch.int32, device=dev
++            )
++            out_c = torch.zeros(tokens, hidden, dtype=torch.float32, device=dev)
++            _cx.exl3_moe_coop(
++                xh_c, sel_c, rw_c, 0, int(n_exp), hidden,
++                ptrs["gate_trellis"], ptrs["gate_suh"], ptrs["gate_svh"],
++                ptrs["up_trellis"], ptrs["up_suh"], ptrs["up_svh"],
++                ptrs["down_trellis"], ptrs["down_suh"], ptrs["down_svh"],
++                None, None, None,
++                k, k, k, mcg, mul1, MOE_ACT_SILU,
++                float(limit) if (limit is not None and limit > 0) else 0.0,
++                True,
++                had_g, had_u, gu_g, gu_u, act_out, d_out, ctr, out_c,
++                None, None,
++            )
++            layer._exl3_last_apply = "coop"
++            return out_c
+     lean = _EXL3_LEAN_PREP and 0 < tokens <= FAT_EXPERT_THRESHOLD and tokens * topk <= _LEAN_MAX_ROWS
+     ones_c = _lean_const("ones", x2d.device) if lean else None
+     tok_c = _lean_const("tok", x2d.device, topk) if lean else None
+@@ -2417,6 +2554,21 @@
+         **extra_weight_attrs,
+     ) -> None:
+         del params_dtype
++        # Hadamard-aligned uneven TP (VLLM_EXL3_MOE_TP_ALIGN, port of vcruz305/vllm-exl3 #36/#40): vLLM hands every rank
++        # the equal chunk (2304/4 = 576, cuts a 128 Hadamard block); replace it with this rank's aligned width.
++        align = _moe_tp_align()
++        if align > 0 and not getattr(layer, "use_ep", False):
++            tp_rank, tp_size = _resolve_tp_geometry(layer)
++            full = intermediate_size_per_partition * tp_size
++            if tp_size > 1 and full % align == 0:
++                layer._exl3_tp_rotation = moe_tp_rotation(layer, tp_size)
++                tp_rank = (tp_rank + layer._exl3_tp_rotation) % tp_size
++                offset, local = aligned_tp_split(full, tp_rank, tp_size, align)
++                logger.info(
++                    "EXL3 aligned MoE TP: %s rank-chunk %d/%d intermediate %d -> %d (offset %d)",
++                    getattr(layer, "layer_name", "?"), tp_rank, tp_size, intermediate_size_per_partition, local, offset,
++                )
++                intermediate_size_per_partition = local
+         if hidden_size % 16 or intermediate_size_per_partition % 16:
+             raise ValueError(
+                 "EXL3 trellis tiles are 16-wide; "
+@@ -2548,6 +2700,8 @@
+             expert_id = local_id
+ 
+         tp_rank, tp_size = _resolve_tp_geometry(owner, layer)
++        if tp_size > 1 and getattr(owner, "_exl3_tp_rotation", 0):
++            tp_rank = (tp_rank + owner._exl3_tp_rotation) % tp_size   # same rotation as create_weights (#40)
+         suffix = _suffix_from_mapped_name(weight_name)
+         loaded = loaded_weight.detach().contiguous()
+         if suffix in ("mcg", "mul1"):
+@@ -2567,13 +2721,13 @@
+             return True if return_success else None   # filled from the cold pack in process_weights_after_loading
+         if shard_id in ("w1", "w3"):
+             shard_idx = 0 if shard_id == "w1" else 1
+-            sharded = shard_exl3_col(loaded, suffix, tp_rank, tp_size)
++            sharded = shard_exl3_col(loaded, suffix, tp_rank, tp_size, aligned=True)
+             if _h13 is not None and suffix == "trellis":
+                 dest = _h13.row(expert_id)[shard_idx]
+             else:
+                 dest = param.data[expert_id, shard_idx]
+         elif shard_id == "w2":
+-            sharded = shard_exl3_row(loaded, suffix, tp_rank, tp_size)
++            sharded = shard_exl3_row(loaded, suffix, tp_rank, tp_size, aligned=True)
+             if _h13 is not None and suffix == "trellis":
+                 dest = owner._exl3_host2.row(expert_id)
+             else:

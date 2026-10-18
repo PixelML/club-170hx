@@ -1,0 +1,64 @@
+(APIServer pid=1) INFO 10-18 03:06:30 [api_utils.py:286] non-default args: {'model_tag': '/models/view', 'enable_auto_tool_choice': True, 'tool_call_parser': 'deepseek_v41', 'host': '0.0.0.0', 'port': 8040, 'model': '/models/view', 'tokenizer_mode': 'deepseek_v41', 'trust_remote_code': True, 'max_model_len': 65536, 'quantization': 'exl3', 'max_logprobs': -1, 'served_model_name': ['deepseek-v4.1-flash'], 'reasoning_parser': 'deepseek_v41', 'tensor_parallel_size': 4, 'enable_expert_parallel': True, 'disable_custom_all_reduce': True, 'kv_cache_dtype': 'fp8', 'enable_prefix_caching': False, 'language_model_only': True, 'max_num_batched_tokens': 8192, 'max_num_seqs': 8, 'cudagraph_capture_sizes': [1, 2, 4, 6, 8, 12, 16, 24, 32, 48], 'speculative_config': {'method': 'dspark', 'num_speculative_tokens': 5}, 'compilation_config': {'mode': None, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'ir_enable_torch_wrap': None, 'splitting_ops': None, 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': None, 'compile_ranges_endpoints': None, 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_DECODE_ONLY: (2, 0)>, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': None, 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': None, 'pass_config': {}, 'max_cudagraph_capture_size': None, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': None, 'static_all_moe_layers': []}}
+(EngineCore pid=136) INFO 10-18 03:06:44 [core.py:123] Initializing a V1 LLM engine (v0.13.0) with config: model='/models/view', speculative_config=SpeculativeConfig(method='dspark', model='/models/view', num_spec_tokens=5), tokenizer='/models/view', skip_tokenizer_init=False, tokenizer_mode=deepseek_v41, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=65536, download_dir=None, load_format=auto, tensor_parallel_size=4, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=exl3, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=fp8, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='deepseek_v41', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=deepseek-v4.1-flash, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all', '+quant_fp8', '+quant_fp8'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::qwen4_exp_ple_short_conv', 'vllm::qwen4_exp_qsa_with_output', 'vllm::linear_attention', 'vllm::qwen_gdn_attention_core', 'vllm::qwen_gdn_attention_core_fused_norm_packed', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::sparse_attn_indexer', 'vllm::sparse_attn_indexer_kpool', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::hpc_rope_norm_forward', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_DECODE_ONLY: (2, 0)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 6, 8, 12, 16, 24, 32, 48], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 48, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, moe_backend='auto', linear_backend='auto')
+a6695ec787ad:167:167 [3] NCCL INFO Using network Socket
+a6695ec787ad:166:166 [2] NCCL INFO Using network Socket
+a6695ec787ad:165:165 [1] NCCL INFO Using network Socket
+a6695ec787ad:164:164 [0] NCCL INFO Using network Socket
+a6695ec787ad:165:165 [1] NCCL INFO NVLS multicast support is not available on dev 1
+a6695ec787ad:166:166 [2] NCCL INFO NVLS multicast support is not available on dev 2
+a6695ec787ad:164:164 [0] NCCL INFO NVLS multicast support is not available on dev 0
+a6695ec787ad:167:167 [3] NCCL INFO NVLS multicast support is not available on dev 3
+a6695ec787ad:167:167 [3] NCCL INFO comm 0x26ab55f0 rank 3 nRanks 4 nNodes 1 localRanks 4 localRank 3 MNNVL 0
+a6695ec787ad:165:165 [1] NCCL INFO comm 0x50679c40 rank 1 nRanks 4 nNodes 1 localRanks 4 localRank 1 MNNVL 0
+a6695ec787ad:166:166 [2] NCCL INFO comm 0x279d6e90 rank 2 nRanks 4 nNodes 1 localRanks 4 localRank 2 MNNVL 0
+a6695ec787ad:164:164 [0] NCCL INFO comm 0x4d8c0280 rank 0 nRanks 4 nNodes 1 localRanks 4 localRank 0 MNNVL 0
+a6695ec787ad:164:164 [0] NCCL INFO Channel 00/02 : 0 1 2 3
+a6695ec787ad:164:164 [0] NCCL INFO Channel 01/02 : 0 1 2 3
+a6695ec787ad:167:167 [3] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:166:166 [2] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:165:165 [1] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:164:164 [0] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:167:167 [3] NCCL INFO Channel 00 : 3[3] -> 0[0] via SHM/direct
+a6695ec787ad:166:166 [2] NCCL INFO Channel 00 : 2[2] -> 3[3] via SHM/direct
+a6695ec787ad:164:164 [0] NCCL INFO Channel 00 : 0[0] -> 1[1] via SHM/direct
+a6695ec787ad:165:165 [1] NCCL INFO Channel 00 : 1[1] -> 2[2] via SHM/direct
+a6695ec787ad:164:164 [0] NCCL INFO Channel 01 : 0[0] -> 1[1] via SHM/direct
+a6695ec787ad:167:167 [3] NCCL INFO Channel 01 : 3[3] -> 0[0] via SHM/direct
+a6695ec787ad:165:165 [1] NCCL INFO Channel 01 : 1[1] -> 2[2] via SHM/direct
+a6695ec787ad:166:166 [2] NCCL INFO Channel 01 : 2[2] -> 3[3] via SHM/direct
+a6695ec787ad:167:167 [3] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+a6695ec787ad:166:166 [2] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+a6695ec787ad:165:165 [1] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+a6695ec787ad:164:164 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+(Worker pid=164) INFO 10-18 03:07:04 [cuda_communicator.py:334] Using ['PYNCCL'] all-reduce backends (in dispatch order) for group 'tp:0' out of potential backends: ['FLASHINFER_PCIE_IPC', 'FLASHINFER', 'NCCL_SYMM_MEM', 'QUICK_REDUCE', 'AITER_CUSTOM', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].
+a6695ec787ad:164:164 [0] NCCL INFO Using network Socket
+a6695ec787ad:165:165 [1] NCCL INFO Using network Socket
+a6695ec787ad:166:166 [2] NCCL INFO Using network Socket
+a6695ec787ad:167:167 [3] NCCL INFO Using network Socket
+a6695ec787ad:166:166 [2] NCCL INFO NVLS multicast support is not available on dev 2
+a6695ec787ad:165:165 [1] NCCL INFO NVLS multicast support is not available on dev 1
+a6695ec787ad:167:167 [3] NCCL INFO NVLS multicast support is not available on dev 3
+a6695ec787ad:164:164 [0] NCCL INFO NVLS multicast support is not available on dev 0
+a6695ec787ad:166:166 [2] NCCL INFO comm 0x2d1d4c50 rank 2 nRanks 4 nNodes 1 localRanks 4 localRank 2 MNNVL 0
+a6695ec787ad:167:167 [3] NCCL INFO comm 0x2c6c1dd0 rank 3 nRanks 4 nNodes 1 localRanks 4 localRank 3 MNNVL 0
+a6695ec787ad:164:164 [0] NCCL INFO comm 0x53548fb0 rank 0 nRanks 4 nNodes 1 localRanks 4 localRank 0 MNNVL 0
+a6695ec787ad:165:165 [1] NCCL INFO comm 0x56034e80 rank 1 nRanks 4 nNodes 1 localRanks 4 localRank 1 MNNVL 0
+a6695ec787ad:164:164 [0] NCCL INFO Channel 00/02 : 0 1 2 3
+a6695ec787ad:167:167 [3] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:164:164 [0] NCCL INFO Channel 01/02 : 0 1 2 3
+a6695ec787ad:166:166 [2] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:165:165 [1] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:164:164 [0] NCCL INFO P2P Chunksize set to 131072
+a6695ec787ad:164:164 [0] NCCL INFO Channel 00 : 0[0] -> 1[1] via SHM/direct
+a6695ec787ad:167:167 [3] NCCL INFO Channel 00 : 3[3] -> 0[0] via SHM/direct
+a6695ec787ad:166:166 [2] NCCL INFO Channel 00 : 2[2] -> 3[3] via SHM/direct
+a6695ec787ad:165:165 [1] NCCL INFO Channel 00 : 1[1] -> 2[2] via SHM/direct
+a6695ec787ad:164:164 [0] NCCL INFO Channel 01 : 0[0] -> 1[1] via SHM/direct
+a6695ec787ad:166:166 [2] NCCL INFO Channel 01 : 2[2] -> 3[3] via SHM/direct
+a6695ec787ad:167:167 [3] NCCL INFO Channel 01 : 3[3] -> 0[0] via SHM/direct
+a6695ec787ad:165:165 [1] NCCL INFO Channel 01 : 1[1] -> 2[2] via SHM/direct
+a6695ec787ad:165:165 [1] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+a6695ec787ad:166:166 [2] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+a6695ec787ad:164:164 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+a6695ec787ad:167:167 [3] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+(Worker pid=164) INFO 10-18 03:07:04 [cuda_communicator.py:334] Using ['PYNCCL'] all-reduce backends (in dispatch order) for group 'ep:0' out of potential backends: ['FLASHINFER_PCIE_IPC', 'FLASHINFER', 'NCCL_SYMM_MEM', 'QUICK_REDUCE', 'AITER_CUSTOM', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].

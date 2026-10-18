@@ -1,0 +1,12 @@
+--- a/vllm/models/deepseek_v4_1/nvidia/dspark.py
++++ b/vllm/models/deepseek_v4_1/nvidia/dspark.py
+@@ -523,6 +523,9 @@
+                     name = name.replace(
+                         ".ffn.gate.bias", ".ffn.gate.e_score_correction_bias"
+                     )
++                # Pixel ML 1017 patch: gate.bias_vl only biases image tokens; skip (exact for text).
++                if name not in params_dict and name.endswith(".bias_vl"):
++                    continue
+                 param = params_dict[name]
+                 weight_loader = getattr(param, "weight_loader", default_weight_loader)
+                 weight_loader(param, loaded_weight)

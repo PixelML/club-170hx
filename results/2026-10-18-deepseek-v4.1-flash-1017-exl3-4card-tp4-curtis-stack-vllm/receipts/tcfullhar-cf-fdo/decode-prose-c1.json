@@ -1,0 +1,267 @@
+{
+  "phase": "prose-c1",
+  "health_code": 200,
+  "health_body": "",
+  "runs": [
+    {
+      "http": 200,
+      "ttft_s": 0.24627317699196283,
+      "wall_s": 4.343125629995484,
+      "decode_s": 4.096852453003521,
+      "tok_s": 97.39184034013272,
+      "delivered_tok_s": 92.09956931418904,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries in an **array of \"buckets\"** (slots). Each key is transformed by a **hash function** into an integer, which is then mapped to a bucket index. The value is stored at that index.\n\nThe fundamental idea:\n- **Hash function** `h(key) \u2192 integer`\n- **Index mapping** `index = h(key) mod capacity` (or a bitmask if capacity is a power of two)\n- **Storage** `buckets[index]` holds the entry (or a chain of entries if collisions occur)\n\nBecause the hash function distributes keys roughly uniformly across buckets, most operations touch only one bucket \u2014 hence O(1) average time.\n\n---\n\n## 2. Step-by-Step Operation Flow\n\n### Step 1: Compute the hash\n\nWhen you call `put(key, value)` or `get(key)`:\n\n1. The key is passed to the hash function.\n2. The hash function produces a large integer (e.g., 32- or 64-bit). Good hash functions:\n   - Are **deterministic** (same key \u2192 same hash every time).\n   - Are **fast** to compute.\n   - **Distribute** outputs uniformly to minimize collisions.\n   - Handle arbitrary key types (strings, objects, integers) \u2014 often by mixing bytes, using prime multipliers, or applying avalanche steps (e.g., MurmurHash, xxHash, SipHash).\n\nExample (simplified): for a string key, sum character codes multiplied by a prime, then mix bits.\n\n",
+      "text_len": 1651,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 131,
+        "draft_tokens": 655,
+        "accepted": 270,
+        "accept_ratio": 0.4122,
+        "accepted_per_step": 2.061,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7252,
+          0.5725,
+          0.3817,
+          0.2366,
+          0.145,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "http": 200,
+      "ttft_s": 0.25910061500326265,
+      "wall_s": 4.363685996999266,
+      "decode_s": 4.104585381996003,
+      "tok_s": 97.20835671981364,
+      "delivered_tok_s": 91.66562403322884,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries in an **array of \"buckets\"** (slots). Each key is transformed by a **hash function** into an integer, which is then mapped to a bucket index. The value is stored at that index.\n\nThe fundamental idea:\n- **Hash function** `h(key) \u2192 integer`\n- **Index mapping** `index = h(key) mod capacity` (or a bitmask if capacity is a power of two)\n- **Storage** `buckets[index]` holds the entry (or a chain of entries if collisions occur)\n\nBecause the hash function distributes keys roughly uniformly across buckets, most operations touch only one bucket \u2014 hence O(1) average time.\n\n---\n\n## 2. Step-by-Step Operation Flow\n\n### Step 1: Compute the hash\n\nWhen you call `put(key, value)` or `get(key)`:\n\n1. The key is passed to the hash function.\n2. The hash function produces a large integer (e.g., 32- or 64-bit). Good hash functions:\n   - Are **deterministic** (same key \u2192 same hash every time).\n   - Are **fast** to compute.\n   - **Distribute** outputs uniformly to minimize collisions.\n   - Handle arbitrary key types (strings, objects, integers) \u2014 often by mixing bytes, using prime multipliers, or applying avalanche steps (e.g., MurmurHash, xxHash, SipHash).\n\nExample (simplified): for a string key, sum character codes multiplied by a prime, then mix bits.\n\n",
+      "text_len": 1651,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 131,
+        "draft_tokens": 655,
+        "accepted": 270,
+        "accept_ratio": 0.4122,
+        "accepted_per_step": 2.061,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7252,
+          0.5725,
+          0.3817,
+          0.2366,
+          0.145,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "http": 200,
+      "ttft_s": 0.24366341301356442,
+      "wall_s": 4.350572839000961,
+      "decode_s": 4.106909425987396,
+      "tok_s": 97.15334783748516,
+      "delivered_tok_s": 91.94191542184444,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries in an **array of \"buckets\"** (slots). Each key is transformed by a **hash function** into an integer, which is then mapped to a bucket index. The value is stored at that index.\n\nThe fundamental idea:\n- **Hash function** `h(key) \u2192 integer`\n- **Index mapping** `index = h(key) mod capacity` (or a bitmask if capacity is a power of two)\n- **Storage** `buckets[index]` holds the entry (or a chain of entries if collisions occur)\n\nBecause the hash function distributes keys roughly uniformly across buckets, most operations touch only one bucket \u2014 hence O(1) average time.\n\n---\n\n## 2. Step-by-Step Operation Flow\n\n### Step 1: Compute the hash\n\nWhen you call `put(key, value)` or `get(key)`:\n\n1. The key is passed to the hash function.\n2. The hash function produces a large integer (e.g., 32- or 64-bit). Good hash functions:\n   - Are **deterministic** (same key \u2192 same hash every time).\n   - Are **fast** to compute.\n   - **Distribute** outputs uniformly to minimize collisions.\n   - Handle arbitrary key types (strings, objects, integers) \u2014 often by mixing bytes, using prime multipliers, or applying avalanche steps (e.g., MurmurHash, xxHash, SipHash).\n\nExample (simplified): for a string key, sum character codes multiplied by a prime, then mix bits.\n\n",
+      "text_len": 1651,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 131,
+        "draft_tokens": 655,
+        "accepted": 270,
+        "accept_ratio": 0.4122,
+        "accepted_per_step": 2.061,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7252,
+          0.5725,
+          0.3817,
+          0.2366,
+          0.145,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "http": 200,
+      "ttft_s": 0.26910047300043516,
+      "wall_s": 4.384692345003714,
+      "decode_s": 4.115591872003279,
+      "tok_s": 96.94838856939072,
+      "delivered_tok_s": 91.22646893476883,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries in an **array of \"buckets\"** (slots). Each key is transformed by a **hash function** into an integer, which is then mapped to a bucket index. The value is stored at that index.\n\nThe fundamental idea:\n- **Hash function** `h(key) \u2192 integer`\n- **Index mapping** `index = h(key) mod capacity` (or a bitmask if capacity is a power of two)\n- **Storage** `buckets[index]` holds the entry (or a chain of entries if collisions occur)\n\nBecause the hash function distributes keys roughly uniformly across buckets, most operations touch only one bucket \u2014 hence O(1) average time.\n\n---\n\n## 2. Step-by-Step Operation Flow\n\n### Step 1: Compute the hash\n\nWhen you call `put(key, value)` or `get(key)`:\n\n1. The key is passed to the hash function.\n2. The hash function produces a large integer (e.g., 32- or 64-bit). Good hash functions:\n   - Are **deterministic** (same key \u2192 same hash every time).\n   - Are **fast** to compute.\n   - **Distribute** outputs uniformly to minimize collisions.\n   - Handle arbitrary key types (strings, objects, integers) \u2014 often by mixing bytes, using prime multipliers, or applying avalanche steps (e.g., MurmurHash, xxHash, SipHash).\n\nExample (simplified): for a string key, sum character codes multiplied by a prime, then mix bits.\n\n",
+      "text_len": 1651,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 131,
+        "draft_tokens": 655,
+        "accepted": 270,
+        "accept_ratio": 0.4122,
+        "accepted_per_step": 2.061,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7252,
+          0.5725,
+          0.3817,
+          0.2366,
+          0.145,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "http": 200,
+      "ttft_s": 0.24844810499052983,
+      "wall_s": 4.367571368988138,
+      "decode_s": 4.119123263997608,
+      "tok_s": 96.86527312435186,
+      "delivered_tok_s": 91.58407870337113,
+      "completion_tokens": 400,
+      "prompt_tokens": 32,
+      "finish_reason": "length",
+      "nan": false,
+      "text_head": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries",
+      "text": "# How a Hash Map Works: A Detailed Explanation\n\nA hash map (also called hash table, dictionary, or associative array) is a data structure that stores key-value pairs and provides average-case **O(1)** lookup, insertion, and deletion. Below is a thorough walkthrough of its internals, including collision handling, resizing, and complexity analysis.\n\n---\n\n## 1. Core Concept\n\nA hash map stores entries in an **array of \"buckets\"** (slots). Each key is transformed by a **hash function** into an integer, which is then mapped to a bucket index. The value is stored at that index.\n\nThe fundamental idea:\n- **Hash function** `h(key) \u2192 integer`\n- **Index mapping** `index = h(key) mod capacity` (or a bitmask if capacity is a power of two)\n- **Storage** `buckets[index]` holds the entry (or a chain of entries if collisions occur)\n\nBecause the hash function distributes keys roughly uniformly across buckets, most operations touch only one bucket \u2014 hence O(1) average time.\n\n---\n\n## 2. Step-by-Step Operation Flow\n\n### Step 1: Compute the hash\n\nWhen you call `put(key, value)` or `get(key)`:\n\n1. The key is passed to the hash function.\n2. The hash function produces a large integer (e.g., 32- or 64-bit). Good hash functions:\n   - Are **deterministic** (same key \u2192 same hash every time).\n   - Are **fast** to compute.\n   - **Distribute** outputs uniformly to minimize collisions.\n   - Handle arbitrary key types (strings, objects, integers) \u2014 often by mixing bytes, using prime multipliers, or applying avalanche steps (e.g., MurmurHash, xxHash, SipHash).\n\nExample (simplified): for a string key, sum character codes multiplied by a prime, then mix bits.\n\n",
+      "text_len": 1651,
+      "usage": {
+        "prompt_tokens": 32,
+        "total_tokens": 432,
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "spec": {
+        "drafts": 131,
+        "draft_tokens": 655,
+        "accepted": 270,
+        "accept_ratio": 0.4122,
+        "accepted_per_step": 2.061,
+        "mean_draft_tokens_per_step": 5.0,
+        "pos": [
+          0.7252,
+          0.5725,
+          0.3817,
+          0.2366,
+          0.145,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "ts": 1792322661.306053,
+  "prompt": "hashmap-prose",
+  "thinking": false,
+  "temperature": 0,
+  "concurrency": 1,
+  "note": "decode_ms_per_draft_step is a serving-cycle ratio, not a kernel timing",
+  "tok_s_median": 97.15334783748516,
+  "tok_s_min": 96.86527312435186,
+  "tok_s_max": 97.39184034013272,
+  "ttft_median_s": 0.24844810499052983,
+  "completion_tokens_median": 400.0,
+  "accept_ratio_median": 0.4122,
+  "accepted_per_step_median": 2.061,
+  "mean_draft_tokens_per_step_median": 5.0,
+  "aggregate_tok_s_median": null,
+  "decode_ms_per_draft_step_median": 31.350453633491576,
+  "any_nan": false,
+  "coherence": {
+    "paris": {
+      "ok": true,
+      "text": "Paris",
+      "http": 200
+    },
+    "cmp": {
+      "ok": true,
+      "text": "Yes. 9.9 is greater than 9.11 because, as decimals, 9.90 exceeds 9.11.",
+      "http": 200
+    },
+    "sky": {
+      "ok": true,
+      "text": "The sky-blue color stretched across the horizon like a calm, endless ocean of light.",
+      "http": 200
+    },
+    "nan": false
+  },
+  "coherent": true,
+  "health_code_after": 200,
+  "short_after": {
+    "http": 200,
+    "ttft_s": 0.26606129700667225,
+    "wall_s": 0.3683023010089528,
+    "decode_s": 0.10224100400228053,
+    "tok_s": 68.46568134096044,
+    "delivered_tok_s": 21.7212870462233,
+    "completion_tokens": 8,
+    "prompt_tokens": 32,
+    "finish_reason": "length",
+    "nan": false,
+    "text_head": "# How a Hash Map Works: A",
+    "text": "# How a Hash Map Works: A",
+    "text_len": 25,
+    "usage": {
+      "prompt_tokens": 32,
+      "total_tokens": 40,
+      "completion_tokens": 8,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  }
+}
