@@ -18,7 +18,7 @@ Notebook: [`notebooks/2026-10-18-deepseek-v4.1-flash-1017-exl3-4card-tp4-curtis-
 - `build/tcmoe1/`: Dockerfile of the Curtis-stack image, our `exl3.py` (coop route, aligned MoE TP, TC hook calls), coop side-module build, `fetch_sources.sh` + `SOURCES.gitblob` (git blob hash of every upstream file that went into the measured image).
 - `build/serve/`: launch/run/bench/matrix scripts for both images, 1017 loader patches, host all-reduce files. `build/bench/`: bench tools.
 
-Images: see the notebook pins table (both pinned by full 64-hex digest in `ghcr.io/pixelml/club-170hx`).
+Images: not on a registry. Rebuild both from `build/v3p1/` and `build/tcmoe1/`; the notebook pins table lists the measured local image IDs.
 
 ## Credits (authored by)
 
