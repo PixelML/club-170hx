@@ -1,0 +1,13 @@
+--- a/vllm/models/deepseek_v4_1/nvidia/model.py
++++ b/vllm/models/deepseek_v4_1/nvidia/model.py
+@@ -811,6 +811,10 @@
+                         suffixed = f"{head}.base_layer.{leaf}"
+                         if suffixed in params_dict:
+                             name = suffixed
++                    # Pixel ML 1017 patch: gate.bias_vl (1017) only biases image tokens;
++                    # --language-model-only never builds it, so skip it (exact for text).
++                    if name not in params_dict and name.endswith(".bias_vl"):
++                        continue
+                     param = params_dict[name]
+                     weight_loader = getattr(
+                         param, "weight_loader", default_weight_loader

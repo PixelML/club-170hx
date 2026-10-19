@@ -1,0 +1,14 @@
+launch-curtis: EP=0 CHUNK=8192 MAX_LEN=65536 CGMODE=FULL_AND_PIECEWISE CG_SIZES=1 2 3 4 6 8 12 18 24 30 36 42 48 ASYNC=1 PREFIX=1 COOP=1 ALIGN=128 ROT=1 TCV2=0 TCPRE=0 HAR=0 K=5 MAX_SEQS=8 GPU_UTIL=0.95 INT4=1 NCCL_P2P_DISABLE=1
+(Worker_TP0 pid=164) INFO 10-18 10:39:15 [default_loader.py:435] Loading weights took 237.29 seconds
+(Worker_TP0 pid=164) INFO 10-18 10:40:49 [default_loader.py:435] Loading weights took 84.10 seconds
+(Worker_TP0 pid=164) INFO 10-18 10:42:11 [gpu_worker.py:660] Available KV cache memory: 1.03 GiB
+(Worker_TP1 pid=165) ERROR 10-18 10:43:33 [multiproc_executor.py:1081]     raise RuntimeError(
+(Worker_TP1 pid=165) ERROR 10-18 10:43:33 [multiproc_executor.py:1081] RuntimeError: DeepseekV41LLMForCausalLM: piecewise CUDA graphs (cudagraph_mode=FULL_AND_PIECEWISE) unavailable, model is not torch-compiled and breakable CUDA graph is off. Set VLLM_USE_BREAKABLE_CUDAGRAPH=1 or cudagraph_mode=NONE/FULL.
+(Worker_TP1 pid=165) ERROR 10-18 10:43:33 [multiproc_executor.py:1081]     raise RuntimeError(
+(Worker_TP1 pid=165) ERROR 10-18 10:43:33 [multiproc_executor.py:1081] RuntimeError: DeepseekV41LLMForCausalLM: piecewise CUDA graphs (cudagraph_mode=FULL_AND_PIECEWISE) unavailable, model is not torch-compiled and breakable CUDA graph is off. Set VLLM_USE_BREAKABLE_CUDAGRAPH=1 or cudagraph_mode=NONE/FULL.
+(EngineCore pid=136) ERROR 10-18 10:43:33 [core.py:1382]     raise RuntimeError(
+(EngineCore pid=136) ERROR 10-18 10:43:33 [core.py:1382] RuntimeError: Worker failed with error 'DeepseekV41LLMForCausalLM: piecewise CUDA graphs (cudagraph_mode=FULL_AND_PIECEWISE) unavailable, model is not torch-compiled and breakable CUDA graph is off. Set VLLM_USE_BREAKABLE_CUDAGRAPH=1 or cudagraph_mode=NONE/FULL.', please check the stack trace above for the root cause
+(EngineCore pid=136)     raise RuntimeError(
+(EngineCore pid=136) RuntimeError: Worker failed with error 'DeepseekV41LLMForCausalLM: piecewise CUDA graphs (cudagraph_mode=FULL_AND_PIECEWISE) unavailable, model is not torch-compiled and breakable CUDA graph is off. Set VLLM_USE_BREAKABLE_CUDAGRAPH=1 or cudagraph_mode=NONE/FULL.', please check the stack trace above for the root cause
+(APIServer pid=51)     raise RuntimeError(
+(APIServer pid=51) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}

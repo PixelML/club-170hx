@@ -1,0 +1,41 @@
+--- build2/exl3.py	2026-10-03 10:03:52
++++ build1017/exl3.py	2026-10-17 08:07:27
+@@ -2050,6 +2050,14 @@
+         # layer index>; those layers delegate to non_routed_quantization.
+         inst.mtp_experts = str(config.get("mtp_experts", "exl3"))
+         inst.mtp_experts_start_layer = config.get("mtp_experts_start_layer")
++        # FP8-as-stored packs (sfxnz quantize_experts_exl3.py form): expose the
++        # source block size so the DSV4.1 weights mapper picks the MXFP8
++        # ``weight_scale`` names that the deepseek_v4_fp8 delegate registers.
++        # __init__ only keeps unknown keys in raw_config, so set it here.
++        _nrq = config.get("non_routed_quantization") or {}
++        _wbs = config.get("weight_block_size") or _nrq.get("weight_block_size")
++        if _wbs is not None:
++            inst.weight_block_size = [int(v) for v in _wbs]
+         return inst
+ 
+     @classmethod
+@@ -2141,6 +2149,23 @@
+             return None
+         return None
+ 
++    def __getattr__(self, name: str):
++        # Opt-in (EXL3_DELEGATE_ATTRS=1): model code that reads FP8 attributes
++        # off vllm_config.quant_config (e.g. is_scale_e8m0, expert_dtype) gets
++        # them from the declared non_routed_quantization delegate. Only called
++        # when normal lookup fails; private names never forward (pickle, hasattr).
++        if name.startswith("_") or os.environ.get("EXL3_DELEGATE_ATTRS") != "1":
++            raise AttributeError(name)
++        d = self.__dict__
++        if d.get("non_routed_dtype_policy") == "bf16_as_stored" or not isinstance(
++            d.get("non_routed_quantization"), dict
++        ):
++            raise AttributeError(name)
++        delegate = self._non_routed_delegate()
++        if delegate is None:
++            raise AttributeError(name)
++        return getattr(delegate, name)
++
+     def _non_routed_delegate(self):
+         # Packs that keep non-routed weights in the official source format
+         # (e.g. DeepSeek block-FP8) declare it under

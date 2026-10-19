@@ -1,0 +1,39 @@
+--- cuda_communicator.v3p1.py	2026-10-17 21:14:05
++++ cuda_communicator.py	2026-10-17 21:14:31
+@@ -195,6 +195,26 @@
+             # an MI300 series.
+             self.qr_comm = QuickAllReduce(group=self.cpu_group, device=self.device)
+ 
++        # Pixel ML (Oct 18 2026): Morrowmake's host-staged all-reduce (vllm-cmp170hx @18305948, Apache-2.0), as cherry-picked by
++        # Curtis White for DSV4.1 TP4. Opt-in VLLM_HOST_ALLREDUCE=1, TP group only, tried first in all_reduce.
++        self.dsv41_hostshm = None
++        if (
++            os.environ.get("VLLM_HOST_ALLREDUCE", "0") == "1"
++            and unique_name.split(":")[0] == "tp"
++            and self.world_size > 1
++            and current_platform.is_cuda()
++        ):
++            from dsv41_host_shm_all_reduce import HostShmAllreduce
++
++            self.dsv41_hostshm = HostShmAllreduce(
++                group=self.cpu_group, device=self.device,
++                max_size=int(os.environ.get("VLLM_HOST_ALLREDUCE_MAX_SIZE", str(512 * 1024))),
++            )
++            if self.dsv41_hostshm.disabled:
++                self.dsv41_hostshm = None
++            logger.info("dsv41 host-shm all-reduce for group %s: %s", unique_name,
++                        "ON" if self.dsv41_hostshm is not None else "off (disabled)")
++
+         if self.world_size > 1:
+             self._log_all_reduce_backend_selection()
+ 
+@@ -341,6 +361,9 @@
+         )
+ 
+     def all_reduce(self, input_):
++        _h = getattr(self, "dsv41_hostshm", None)
++        if _h is not None and _h.should_host_ar(input_):
++            return _h.host_all_reduce(input_)
+         fi_ar_comm = self.fi_ar_comm
+         use_fi_ar = (
+             fi_ar_comm is not None
