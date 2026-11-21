@@ -1,0 +1,446 @@
+========= COMPUTE-SANITIZER
+/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/openai/api_server.py:24: DeprecationWarning: `vllm.entrypoints.openai.api_server` is deprecated and we will removethis file in v0.37.0. Use the corresponding function from`vllm.entrypoints.launchers` instead.
+  warnings.warn(
+/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/openai/api_server.py:51: DeprecationWarning: The `python -m vllm.entrypoints.openai.api_server` command is deprecated and we will remove this file in v0.37.0. Please use `vllm serve` instead.
+  warnings.warn(
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:38] 
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:38]        █     █     █▄   ▄█
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:38]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.1.dev25855+g7cb5dae22
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:38]   █▄█▀ █     █     █     █  model   /models/inkling2-mini/Inkling-2-Mini
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:38]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:38] 
+(APIServer pid=13) INFO 11-21 04:57:10 [startup.py:96] non-default args: {'port': 18001, 'model': '/models/inkling2-mini/Inkling-2-Mini', 'max_model_len': 8192, 'enforce_eager': True, 'reasoning_parser': 'inkling', 'limit_mm_per_prompt': {'image': 0}}
+(APIServer pid=13) WARNING 11-21 04:57:10 [arg_utils.py:2012] The global random seed is set to 0. Since VLLM_ENABLE_V1_MULTIPROCESSING is set to False, this may affect the random state of the Python process that launched vLLM.
+(APIServer pid=13) INFO 11-21 04:57:10 [model.py:768] Resolved architecture: Inkling2LoopForConditionalGeneration
+(APIServer pid=13) INFO 11-21 04:57:10 [model.py:818] Defaulting to tokenizer_mode='inkling' for Inkling2LoopForConditionalGeneration
+(APIServer pid=13) INFO 11-21 04:57:10 [model.py:2318] Using max model len 8192
+(APIServer pid=13) INFO 11-21 04:57:12 [model.py:1013] All limits of multimodal modalities supported by the model are set to 0, running in text-only mode.
+(APIServer pid=13) INFO 11-21 04:57:12 [model.py:1070] Disabled mm_prefix attention mode because multimodal inputs are configuration-disabled. Attention backends without mm_prefix support may now be selected.
+(APIServer pid=13) WARNING 11-21 04:57:13 [vllm.py:1881] Enforce eager set, disabling torch.compile, CUDAGraphs, and JIT kernel warmup. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none and --kernel_config.enable_jit_warmup=False
+(APIServer pid=13) INFO 11-21 04:57:13 [vllm.py:928] Auto-enabling VLLM_USE_BREAKABLE_CUDAGRAPH=1. Set VLLM_USE_BREAKABLE_CUDAGRAPH=0 to opt out.
+(APIServer pid=13) INFO 11-21 04:57:13 [kernel.py:568] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'], rotary_embedding=['vllm_c', 'native'], rotary_embedding_query_only=['vllm_c', 'native'])
+(APIServer pid=13) INFO 11-21 04:57:13 [vllm.py:2107] Cudagraph is disabled under eager mode
+(APIServer pid=13) INFO 11-21 04:57:13 [compilation.py:429] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=13) INFO 11-21 04:57:17 [numa_utils.py:575] Automatic NUMA binding unavailable on this host; starting unbound. Enable debug logging for the skip reason.
+(EngineCore pid=130) INFO 11-21 04:57:28 [core.py:153] Initializing a V1 LLM engine (v0.1.dev25855+g7cb5dae22) with config: model='/models/inkling2-mini/Inkling-2-Mini', speculative_config=None, tokenizer='/models/inkling2-mini/Inkling-2-Mini', skip_tokenizer_init=False, tokenizer_mode=inkling, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=8192, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=inkling2, quantization_config=None, enforce_eager=True, aux_output_config=AuxOutputConfig(enable_return_routed_experts=False, max_bytes=None), kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='inkling', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, custom_histogram_buckets=None, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=/models/inkling2-mini/Inkling-2-Mini, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_token_budget': 5120, 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'cudagraph_decoder_replay': True, 'decoder_replay_cudagraph_capture_sizes': [], 'decoder_replay_trim_threshold': 768, 'compile_sizes': [], 'compile_ranges_endpoints': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'use_breakable_cudagraph': True, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': [], 'prefill_cudagraph_capture_token_sizes': None, 'max_prefill_cudagraph_capture_tokens': None, 'decode_cudagraph_capture_request_sizes': None, 'max_decode_cudagraph_capture_requests': None, 'max_decode_cudagraph_capture_tokens': None, 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'], rotary_embedding=['vllm_c', 'native'], rotary_embedding_query_only=['vllm_c', 'native']), enable_flashinfer_autotune=True, enable_flashinfer_mm_encoder_autotune=False, enable_rocm_segmented_attn_autotune=False, enable_rocm_aiter_gemm_warmup=False, enable_cutedsl_warmup=True, enable_jit_warmup=False, monokernel=False, moe_backend='auto', step5_attention_backend='native', sparse_indexer_topk_backend='auto', flashinfer_sparse_mla_kernel='auto', linear_backend='auto', linear_backend_per_quant=None, rdna_hybrid_w4a16_prefill_dequant='disable', b12x_moe_uncompressed_scales=False)
+(EngineCore pid=130) INFO 11-21 04:57:30 [parallel_state.py:1981] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_dist_3678a6c5ebf64431b6bba705899bdd6c backend=nccl
+(EngineCore pid=130) INFO 11-21 04:57:30 [parallel_state.py:2461] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank 0, EPLB rank N/A
+(EngineCore pid=130) INFO 11-21 04:57:32 [cuda.py:240] NVIDIA Confidential Computing not detected via NVML
+(EngineCore pid=130) INFO 11-21 04:57:33 [model_runner.py:415] Loading model from scratch...
+(EngineCore pid=130) INFO 11-21 04:57:33 [base_loader.py:100] Initializing model took 0.383899 seconds
+(EngineCore pid=130) INFO 11-21 04:57:33 [weight_utils.py:1121] Filesystem type for checkpoints: ZFS. Checkpoint size: 18.19 GiB. Available RAM: 163.28 GiB.
+(EngineCore pid=130) INFO 11-21 04:57:33 [weight_utils.py:1144] Auto-prefetch is disabled because the filesystem (ZFS) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:04<00:00,  4.19s/it]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:04<00:00,  4.19s/it]
+
+(EngineCore pid=130) INFO 11-21 04:57:38 [default_loader.py:570] Loading weights took 4.70 seconds
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+========= Program hit CUDA_ERROR_INVALID_VALUE (error 1) due to "invalid argument" on CUDA API call to cuGetProcAddress_v2.
+========= 
+(EngineCore pid=130) INFO 11-21 04:57:46 [utils.py:418] Backends selected for Inkling2LoopForConditionalGeneration (/models/inkling2-mini/Inkling-2-Mini):
+(EngineCore pid=130) INFO 11-21 04:57:46 [utils.py:418]   layer     | count | backend                  | modules
+(EngineCore pid=130) INFO 11-21 04:57:46 [utils.py:418]   attention |    24 | INKLING_SCONV_SWA        | model.layers.[0-23].conv_state
+(EngineCore pid=130) INFO 11-21 04:57:46 [utils.py:418]   attention |    48 | FLASH_ATTN               | model.layers.[0-23].attn, model.layers.[6-17].attn.pass_caches.[0-1]
+(EngineCore pid=130) INFO 11-21 04:57:46 [utils.py:418]   linear    |    50 | unquantized [w=bfloat16] | model.embed_tokens, model.layers.[0-23].attn.{qkvr,wo_ud}, lm_head
+(EngineCore pid=130) INFO 11-21 04:57:46 [model_runner.py:455] Model loading took 17.64 GiB memory and 13.288837 seconds
+(EngineCore pid=130) INFO 11-21 04:57:47 [topk_topp_sampler.py:119] Using FlashInfer for top-p & top-k sampling.
+(EngineCore pid=130) INFO 11-21 04:57:47 [torch_utils.py:302] Reducing Torch threads from 36 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=130) INFO 11-21 04:57:47 [utils.py:428] Using LBNHC KV cache layout.
+========= Program hit CUDA_ERROR_NO_BINARY_FOR_GPU (error 209) due to "no kernel image is available for execution on the device" on CUDA API call to cuLibraryGetKernel.
+========= 
+========= Program hit cudaErrorNoKernelImageForDevice (error 209) due to "no kernel image is available for execution on the device" on CUDA API call to cudaLaunchKernel.
+========= 
+========= Program hit CUDA_ERROR_NO_BINARY_FOR_GPU (error 209) due to "no kernel image is available for execution on the device" on CUDA API call to cuLibraryGetKernel.
+========= 
+========= Program hit cudaErrorNoKernelImageForDevice (error 209) due to "no kernel image is available for execution on the device" on CUDA API call to cudaLaunchKernel.
+========= 
+========= Program hit cudaErrorNoKernelImageForDevice (error 209) due to "no kernel image is available for execution on the device" on CUDA API call to cudaGetLastError.
+========= 
+Process EngineCore:
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771] EngineCore failed to start.
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771] Traceback (most recent call last):
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 1742, in run_engine_core
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 1406, in __init__
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     super().__init__(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ~~~~~~~~~~~~~~~~^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         vllm_config,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ...<3 lines>...
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         internal_dp_balancing,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 178, in __init__
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 327, in _initialize_kv_caches
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     available_gpu_memory = self.model_executor.determine_available_memory()
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/executor/abstract.py", line 195, in determine_available_memory
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return self.collective_rpc("determine_available_memory")
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]            ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/executor/uniproc_executor.py", line 103, in collective_rpc
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     result = run_method(self.driver_worker, method, args, kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/serial_utils.py", line 508, in run_method
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu_worker.py", line 784, in determine_available_memory
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     self.model_runner.profile_run(randomize_inputs=self.randomize_dummy_inputs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 1110, in profile_run
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     hidden_states, sample_hidden_states = self._dummy_run(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]                                           ~~~~~~~~~~~~~~~^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         self.max_num_tokens,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ...<2 lines>...
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         randomize_inputs=randomize_inputs,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/eplb_utils.py", line 59, in wrapper
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     result = fn(self, *args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 990, in _dummy_run
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     self.execute_model(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ~~~~~~~~~~~~~~~~~~^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         dummy_scheduler_output,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ...<6 lines>...
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         randomize_inputs=randomize_inputs,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return func(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 2210, in execute_model
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     model_output = self.model(**model_inputs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return self._call_impl(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return forward_call(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/model.py", line 750, in forward
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return self.model(positions, inputs_embeds)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]            ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return self._call_impl(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return forward_call(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/loop.py", line 381, in forward
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     num_blocks, inputs = self._run_layer(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]                          ~~~~~~~~~~~~~~~^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         i,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ...<9 lines>...
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         plan,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         ^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/loop.py", line 310, in _run_layer
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     layer.mlp(mlp_in[0], pass_idx=pass_idx),
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return self._call_impl(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return forward_call(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/moe.py", line 395, in forward
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return experts(x, selected, None, None, reduce, push)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return self._call_impl(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     return forward_call(*args, **kwargs)
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/moe.py", line 295, in forward
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     down = self.humming(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         x,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     ...<5 lines>...
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         self.up_cap,
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/ops/moe_sm90.py", line 309, in __call__
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     gate_up = self._gemm(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         "w13", x, rows, alignments[block_m["w13"]], topk, valid_rows
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]   File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/ops/moe_sm90.py", line 265, in _gemm
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     out = torch.empty(
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]         (rows, config.shape_n), dtype=torch.bfloat16, device=inputs.device
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771]     )
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771] torch.AcceleratorError: CUDA error: no kernel image is available for execution on the device
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771] Search for `cudaErrorNoKernelImageForDevice' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+(EngineCore pid=130) ERROR 11-21 04:57:53 [core.py:1771] 
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/multiprocessing/process.py", line 320, in _bootstrap
+    self.run()
+    ~~~~~~~~^^
+  File "/usr/lib/python3.14/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 1775, in run_engine_core
+    raise e
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 1742, in run_engine_core
+    engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 1406, in __init__
+    super().__init__(
+    ~~~~~~~~~~~~~~~~^
+        vllm_config,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        internal_dp_balancing,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 178, in __init__
+    kv_cache_config = self._initialize_kv_caches(vllm_config)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core.py", line 327, in _initialize_kv_caches
+    available_gpu_memory = self.model_executor.determine_available_memory()
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/executor/abstract.py", line 195, in determine_available_memory
+    return self.collective_rpc("determine_available_memory")
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/executor/uniproc_executor.py", line 103, in collective_rpc
+    result = run_method(self.driver_worker, method, args, kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/serial_utils.py", line 508, in run_method
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu_worker.py", line 784, in determine_available_memory
+    self.model_runner.profile_run(randomize_inputs=self.randomize_dummy_inputs)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 1110, in profile_run
+    hidden_states, sample_hidden_states = self._dummy_run(
+                                          ~~~~~~~~~~~~~~~^
+        self.max_num_tokens,
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        randomize_inputs=randomize_inputs,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/eplb_utils.py", line 59, in wrapper
+    result = fn(self, *args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 990, in _dummy_run
+    self.execute_model(
+    ~~~~~~~~~~~~~~~~~~^
+        dummy_scheduler_output,
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        randomize_inputs=randomize_inputs,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 2210, in execute_model
+    model_output = self.model(**model_inputs)
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/model.py", line 750, in forward
+    return self.model(positions, inputs_embeds)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/loop.py", line 381, in forward
+    num_blocks, inputs = self._run_layer(
+                         ~~~~~~~~~~~~~~~^
+        i,
+        ^^
+    ...<9 lines>...
+        plan,
+        ^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/loop.py", line 310, in _run_layer
+    layer.mlp(mlp_in[0], pass_idx=pass_idx),
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/moe.py", line 395, in forward
+    return experts(x, selected, None, None, reduce, push)
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/torch/nn/modules/module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/moe.py", line 295, in forward
+    down = self.humming(
+        x,
+    ...<5 lines>...
+        self.up_cap,
+    )
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/ops/moe_sm90.py", line 309, in __call__
+    gate_up = self._gemm(
+        "w13", x, rows, alignments[block_m["w13"]], topk, valid_rows
+    )
+  File "/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2/nvidia/ops/moe_sm90.py", line 265, in _gemm
+    out = torch.empty(
+        (rows, config.shape_n), dtype=torch.bfloat16, device=inputs.device
+    )
+torch.AcceleratorError: CUDA error: no kernel image is available for execution on the device
+Search for `cudaErrorNoKernelImageForDevice' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+(APIServer pid=13) INFO 11-21 04:57:56 [utils.py:659] [shutdown] Process manager: send sigterm to process EngineCore
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/openai/api_server.py", line 59, in <module>
+    main()
+    ~~~~^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 226, in main
+    uvloop.run(run_server(args))
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/uvloop/__init__.py", line 96, in run
+    return __asyncio.run(
+           ~~~~~~~~~~~~~^
+        wrapper(),
+        ^^^^^^^^^^
+    ...<2 lines>...
+        **run_kwargs
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "uvloop/loop.pyx", line 1515, in uvloop.loop.Loop.run_until_complete
+  File "/usr/local/lib/python3.14/dist-packages/uvloop/__init__.py", line 48, in wrapper
+    return await main
+           ^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 176, in run_server
+    await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 190, in run_server_worker
+    async with build_async_engine_client(
+               ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        args,
+        ^^^^^
+        client_config=client_config,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as engine_client:
+    ^
+  File "/usr/lib/python3.14/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 60, in build_async_engine_client
+    async with build_async_engine_client_from_engine_args(
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        engine_args,
+        ^^^^^^^^^^^^
+        usage_context=usage_context,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        client_config=client_config,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as engine:
+    ^
+  File "/usr/lib/python3.14/contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 94, in build_async_engine_client_from_engine_args
+    async_llm = AsyncLLM.from_vllm_config(
+        vllm_config=vllm_config,
+    ...<6 lines>...
+        client_index=client_index,
+    )
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/async_llm.py", line 265, in from_vllm_config
+    return cls(
+        vllm_config=vllm_config,
+    ...<9 lines>...
+        client_index=client_index,
+    )
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/async_llm.py", line 194, in __init__
+    self.engine_core = EngineCoreClient.make_async_mp_client(
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        vllm_config=vllm_config,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        renderer=renderer,
+        ^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core_client.py", line 183, in make_async_mp_client
+    return AsyncMPClient(
+        *client_args,
+        renderer=renderer,
+    )
+  File "/usr/local/lib/python3.14/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core_client.py", line 1198, in __init__
+    super().__init__(
+    ~~~~~~~~~~~~~~~~^
+        asyncio_mode=True,
+        ^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        renderer=renderer,
+        ^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/core_client.py", line 731, in __init__
+    with launch_core_engines(
+         ~~~~~~~~~~~~~~~~~~~^
+        vllm_config, executor_class, log_stats, addresses
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as engine_launch:
+    ^
+  File "/usr/lib/python3.14/contextlib.py", line 148, in __exit__
+    next(self.gen)
+    ~~~~^^^^^^^^^^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/utils.py", line 1409, in launch_core_engines
+    wait_for_engine_startup(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        handshake_socket,
+        ^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        launch,
+        ^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.14/dist-packages/vllm/v1/engine/utils.py", line 1493, in wait_for_engine_startup
+    raise RuntimeError(
+    ...<8 lines>...
+    )
+RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+========= Target application returned an error
+========= ERROR SUMMARY: 14 errors
