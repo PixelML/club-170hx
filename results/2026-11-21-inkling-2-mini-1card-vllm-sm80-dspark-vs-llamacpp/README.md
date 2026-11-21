@@ -19,7 +19,9 @@ Notebook: [`notebooks/2026-11-21-inkling-2-mini-1card-vllm-sm80-dspark-vs-llamac
 | vLLM + DSpark k=7, greedy draft (1,603 GB/s) | 154.5 | 175.1 | 87.6 | 480.5 | — |
 | **vLLM + DSpark k=7, probabilistic draft (1,597 GB/s)** | **166.9** | **189.1** | **94.0** | **510.9** | 4,700 |
 
-DSpark acceptance: 1.68 accepted tokens per draft (probabilistic) vs 1.44 (greedy). k is fixed at 7 by the checkpoint.
+DSpark acceptance: 1.68 accepted tokens per draft (probabilistic) vs 1.44 (greedy), pooled over both temperatures. k is fixed at 7 by the checkpoint.
+
+**Caution:** the two DSpark rows ran on different cards. The probabilistic card has a 170tune SM offset (+200 at 1,410 MHz) and runs about 5% higher SM clock at the 140 W cap. On one card (no offset) the two methods are about equal at temperature 0, and probabilistic is 6–17% faster at temperature 1 (`receipts/vllm-dspark7-vm504-card86.jsonl`).
 
 ## Files
 

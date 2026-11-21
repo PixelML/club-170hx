@@ -53,7 +53,7 @@ cells.append(md("""## 1. TL;DR
 
 **Verdict (measured): Inkling-2-Mini runs on one CMP 170HX, and vLLM with DSpark is the fast path: 2.2x to 4.4x llama.cpp at one user.** The vLLM image for this model is built for Blackwell and Hopper only. Six small Python patches (no rebuild) make it run on SM80. GSM8K (first 100 test questions): 99/100 on the patched vLLM, 98/100 on llama.cpp.
 
-- **Use DSpark with probabilistic draft sampling.** It beats greedy draft sampling on every prompt type (acceptance 1.68 vs 1.44 tokens per draft). DSpark is fixed at k=7 by the checkpoint; k=3 and k=5 refuse to start.
+- **Use DSpark with probabilistic draft sampling at temperature > 0.** On the same card at temperature 1 it beats greedy draft sampling by 6–17% (section 2, same-card check). At temperature 0 the two are about equal: the gap in the main table (166.9 vs 154.5 code) is the card, not the draft method (see the caution in section 2). DSpark is fixed at k=7 by the checkpoint; k=3 and k=5 refuse to start.
 - **Speculation is the lever, not memory clock.** Without DSpark, vLLM decodes at 78.8–79.7 tok/s on a 1,600 GB/s card and 76.3 tok/s on a 1,313 GB/s card (−4% for −18% bandwidth). The 48 layer visits per token (12 core layers × 3 passes) make one-user decode latency-bound.
 - **llama.cpp b12600 works with no patch** (official ggml-org IQ4_NL GGUF), but decodes at 42.7 tok/s and prefills at 315–627 tok/s, 4.9x (5.9k tokens) to 11.4x (23.8k tokens) slower than vLLM. Use it only where vLLM is not an option.
 - Prose gains the least from DSpark (94 vs 79 tok/s): acceptance depends on the text."""))
@@ -86,7 +86,16 @@ for e, name in arms:
         r = [T[(e, "c1", c, temp)] for c in ("code", "struct", "prose")]
         rows.append((name, temp, *[f"{x['median']} ({x['min']}–{x['max']})" for x in r], r[0]["ttft"]))
 render_table(["Engine", "Temperature", "Code (tok/s)", "Structured (tok/s)", "Prose (tok/s)", "TTFT code (s)"], rows)"""))
-cells.append(md("Single user, median (min–max) of 3 runs per cell. Spread at temperature 1 comes from sampling: acceptance changes run to run."))
+cells.append(md("Single user, median (min–max) of 3 runs per cell. Spread at temperature 1 comes from sampling: acceptance changes run to run.\n\n**CAUTION (found after the first publish): the two DSpark rows ran on different cards.** Probabilistic ran on a card with a 170tune SM offset (+200 at 1,410 MHz); greedy ran on a card without one. Both sit on the 140 W cap during DSpark decode; telemetry shows mean SM 1,254 vs 1,196 MHz. The same-card check below separates the two effects."))
+cells.append(code("""import json, statistics as st
+vm = [json.loads(l) for l in open(RESULTS_DIR / "receipts" / "vllm-dspark7-vm504-card86.jsonl")]
+rows = []
+for temp in (0.0, 1.0):
+    pr = {c: st.median(r["decode_tok_s"] for r in vm if r["case"] == c and r["temperature"] == temp) for c in ("code", "struct", "prose")}
+    gr = {c: T[("vllm-sm80p-dspark7-greedydraft", "c1", c, temp)]["median"] for c in pr}
+    rows.append((temp, *[f"{pr[c]:.1f} vs {gr[c]}" for c in ("code", "struct", "prose")]))
+render_table(["Temperature", "Code: probabilistic vs greedy (tok/s)", "Structured", "Prose"], rows)"""))
+cells.append(md("Same card (no SM offset) for both draft methods. Probabilistic: served later from a VM on that card (65,536 context, 2 runs at T=0, 3 at T=1, `receipts/vllm-dspark7-vm504-card86.jsonl`); greedy: the host-mode run. **Measured:** about equal at temperature 0, probabilistic +6% to +17% at temperature 1."))
 cells.append(code("""levels = ["c1", "c2", "c4", "c8", "c16"]
 rows = [(name, *[T[(e, "conc", c, 1.0)]["median"] if (e, "conc", c, 1.0) in T else "—" for c in levels]) for e, name in arms]
 render_table(["Engine (aggregate output tok/s, temperature 1)", "c=1", "c=2", "c=4", "c=8", "c=16"], rows)"""))
@@ -200,7 +209,7 @@ What the patch does not cover (**untested**): image input (wall 2 is avoided, no
 <details><summary><b>Negative results and checks</b></summary>
 
 1. **DSpark k is fixed (measured).** `num_speculative_tokens` 3 and 5 refuse at startup: `Inkling2 DSpark requires num_speculative_tokens = 7 (the checkpoint's block size - 1)`.
-2. **Greedy draft sampling is slower (measured)**: 154.5 / 175.1 / 87.6 tok/s at c=1, temperature 0 vs 166.9 / 189.1 / 94.0 probabilistic; c=16 480.5 vs 510.9.
+2. **Greedy vs probabilistic draft sampling (measured, corrected):** on the same card they are about equal at temperature 0 (code 154.2 vs 154.5, prose 87.7 vs 87.6; structured is noisy, 133.3 and 175.2 in two runs vs 175.1) and probabilistic is 6–17% faster at temperature 1. The first-published gap at temperature 0 (166.9 vs 154.5) came from the card's SM offset.
 3. **llama.cpp PR #32695 cannot load the official GGUF (measured).** The PR build (danielhanchen/llama.cpp @ 6196d9802e0757a5218f16f91d9a6830793ba800) reports `unknown model architecture: 'inkling2_loop'`. The merged support in b12600 (PR #32694) loads it.
 4. **llama.cpp prefill does not scale with `-ub 2048` (measured):** 627 tok/s at 5.9k tokens with defaults and 4 slots, 547 at 5.9k, 413 at 23.8k, 315 at 47.5k with 1 slot and `-ub 2048 -b 2048`. Decode is unchanged (42.6–42.8 tok/s).
 5. **SGLang (inferred, not run):** its Inkling-2-Mini recipes use the FA4 attention backend, which needs SM90 or newer.
