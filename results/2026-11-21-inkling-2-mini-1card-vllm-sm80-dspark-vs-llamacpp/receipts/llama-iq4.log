@@ -1,0 +1,48 @@
+[llama-b12600-iq4nl] c1/code T0.0 r0: 768 tok 42.73 tok/s ttft 0.289s
+[llama-b12600-iq4nl] c1/code T0.0 r1: 768 tok 42.66 tok/s ttft 0.2785s
+[llama-b12600-iq4nl] c1/code T0.0 r2: 768 tok 42.6 tok/s ttft 0.1683s
+[llama-b12600-iq4nl] c1/prose T0.0 r0: 768 tok 42.69 tok/s ttft 0.2787s
+[llama-b12600-iq4nl] c1/prose T0.0 r1: 768 tok 42.73 tok/s ttft 0.2678s
+[llama-b12600-iq4nl] c1/prose T0.0 r2: 768 tok 42.76 tok/s ttft 0.1594s
+[llama-b12600-iq4nl] c1/struct T0.0 r0: 768 tok 42.77 tok/s ttft 0.2945s
+[llama-b12600-iq4nl] c1/struct T0.0 r1: 768 tok 42.76 tok/s ttft 0.2752s
+[llama-b12600-iq4nl] c1/struct T0.0 r2: 768 tok 42.78 tok/s ttft 0.1594s
+[llama-b12600-iq4nl] c1/code T1.0 r0: 768 tok 42.78 tok/s ttft 0.2736s
+[llama-b12600-iq4nl] c1/code T1.0 r1: 768 tok 42.82 tok/s ttft 0.2741s
+[llama-b12600-iq4nl] c1/code T1.0 r2: 768 tok 42.78 tok/s ttft 0.2898s
+[llama-b12600-iq4nl] c1/prose T1.0 r0: 768 tok 42.75 tok/s ttft 0.3715s
+[llama-b12600-iq4nl] c1/prose T1.0 r1: 768 tok 42.71 tok/s ttft 0.307s
+[llama-b12600-iq4nl] c1/prose T1.0 r2: 768 tok 42.66 tok/s ttft 0.2781s
+[llama-b12600-iq4nl] c1/struct T1.0 r0: 768 tok 42.63 tok/s ttft 0.4174s
+[llama-b12600-iq4nl] c1/struct T1.0 r1: 768 tok 42.61 tok/s ttft 0.2831s
+[llama-b12600-iq4nl] c1/struct T1.0 r2: 768 tok 42.74 tok/s ttft 0.2818s
+[llama-b12600-iq4nl] conc/c1 T1.0 r0: 768 tok 41.85 tok/s ttft 0.389s
+[llama-b12600-iq4nl] conc/c2 T1.0 r0: 1536 tok 74.39 tok/s ttft 0.554s
+[llama-b12600-iq4nl] conc/c4 T1.0 r0: 3072 tok 99.83 tok/s ttft 1.009s
+[llama-b12600-iq4nl] prefill/tok4000 T0.0 r0: 64 tok 41.69 tok/s ttft 9.4933s
+[llama-b12600-iq4nl] prefill/tok4000 T0.0 r1: 64 tok 41.8 tok/s ttft 9.2407s
+Traceback (most recent call last):
+  File "/work/bench.py", line 129, in <module>
+    main()
+    ~~~~^^
+  File "/work/bench.py", line 123, in main
+    r = stream_chat(a.url, body(p, 64, 0.0))
+  File "/work/bench.py", line 32, in stream_chat
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/urllib/request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/urllib/request.py", line 495, in open
+    response = meth(req, response)
+  File "/usr/lib/python3.13/urllib/request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/usr/lib/python3.13/urllib/request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.13/urllib/request.py", line 466, in _call_chain
+    result = func(*args)
+  File "/usr/lib/python3.13/urllib/request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 400: Bad Request

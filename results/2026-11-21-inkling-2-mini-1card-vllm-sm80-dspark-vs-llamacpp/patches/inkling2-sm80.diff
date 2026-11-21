@@ -1,0 +1,539 @@
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/dspark.py /work/patches/inkling2/nvidia/dspark.py
+--- /work/patches/inkling2.orig/nvidia/dspark.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/dspark.py	2026-11-21 06:05:56.480684768 +0000
+@@ -9,6 +9,7 @@
+ from typing import cast
+ 
+ import torch
++from vllm.platforms import current_platform
+ from torch import nn
+ 
+ from vllm.config import VllmConfig, get_current_vllm_config
+@@ -188,6 +189,20 @@
+     def _write_kv(
+         self, k: torch.Tensor, v: torch.Tensor, slot_mapping: torch.Tensor
+     ) -> None:
++        if not current_platform.has_device_capability(90):  # sm80 patch: torch KV write
++            kv = self.attn.kv_cache
++            if kv.numel() == 0:
++                return
++            hd = self.head_dim
++            key_cache, value_cache = kv.transpose(1, 2).split(hd, dim=-1)  # (B, N, H, D) views
++            n = slot_mapping.shape[0]
++            bs = key_cache.shape[1]
++            slots = slot_mapping.to(torch.int64).clamp(min=0)  # padded (-1) -> null block 0
++            blk, off = slots // bs, slots % bs
++            heads = key_cache.shape[2]
++            key_cache[blk, off] = k.reshape(-1, heads, hd)[:n].to(key_cache.dtype)
++            value_cache[blk, off] = v.reshape(-1, heads, hd)[:n].to(value_cache.dtype)
++            return
+         impl = cast(FlashAttentionImpl, self.attn.impl)
+         impl.do_kv_cache_update(self.attn, k, v, self.attn.kv_cache, slot_mapping)
+ 
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/activation.py /work/patches/inkling2/nvidia/ops/activation.py
+--- /work/patches/inkling2.orig/nvidia/ops/activation.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/activation.py	2026-11-21 06:05:56.424684247 +0000
+@@ -144,7 +144,7 @@
+     # scales are read before waiting for the gate/up GEMM, which launches this
+     # kernel only after its own wait for the routing kernel.
+     if LAUNCH_DEPENDENTS:
+-        tl.extra.cuda.gdc_launch_dependents()
++        pass  # sm80: no PDL
+     num_rows = tl.load(NumRows)
+     r = tl.program_id(0)
+     row, gamma, w_amax = _row_inputs(
+@@ -153,7 +153,7 @@
+     denominator = 0.0
+     if NVFP4:
+         denominator = 1536.0 * tl.load(WDenominator)
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     start = tl.program_id(1) * (HEAD + TAIL)
+     while r < num_rows:
+         head = _situ(X, row, start, gamma, N, HEAD, GATE_CAP, UP_CAP)
+@@ -273,6 +273,6 @@
+         num_warps=num_warps,
+         maxnreg=maxnreg,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     return values, scales, row_scales
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/attention.py /work/patches/inkling2/nvidia/ops/attention.py
+--- /work/patches/inkling2.orig/nvidia/ops/attention.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/attention.py	2026-11-21 06:05:56.431684313 +0000
+@@ -285,7 +285,7 @@
+     D: tl.constexpr,
+     BLOCK: tl.constexpr,
+ ):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     row = tl.program_id(0).to(tl.int64)
+     col = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+     mask = col < H * D
+@@ -333,7 +333,7 @@
+         width // num_heads,
+         512,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+ 
+ 
+@@ -466,7 +466,7 @@
+         # gate and sink are ready.
+         gate = tl.load(Gate + row * stride_gate + head * D + offs_d).to(tl.float32)
+         sink = tl.load(Sink + row * stride_sink + head).to(tl.float32)
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     y_ptrs = Y + row * H * D + head * D + offs_d
+     if row >= num_actual_tokens:
+         tl.store(y_ptrs, tl.zeros([BLOCK_D], tl.float32))
+@@ -1295,7 +1295,7 @@
+         BLOCK_D=block_d,
+         GATED=not draft,
+         num_warps=num_warps,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+ 
+ 
+@@ -1377,5 +1377,5 @@
+         DRAFT=draft,
+         WINDOW=window,
+         num_warps=4,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/attn_res.py /work/patches/inkling2/nvidia/ops/attn_res.py
+--- /work/patches/inkling2.orig/nvidia/ops/attn_res.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/attn_res.py	2026-11-21 06:05:56.435684350 +0000
+@@ -74,7 +74,7 @@
+     BLOCK_N: tl.constexpr,
+     BLOCK_D: tl.constexpr,
+ ):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     # One program per (token, query).
+     t = tl.program_id(1).to(tl.int64)
+     q_off = tl.program_id(0) * D
+@@ -188,7 +188,7 @@
+     BLOCK_A: tl.constexpr,
+     BLOCK_B: tl.constexpr,
+ ):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     # Small batches: one program per (token, query) holds the row in registers
+     # as a power-of-2 head [0, BLOCK_A) and a masked tail [BLOCK_A, D), so the
+     # sources are read twice instead of three times.
+@@ -291,7 +291,7 @@
+         APPLY_NORM=apply_norm,
+         BLOCK_N=triton.next_power_of_2(num_stack + 1),
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     # The queries of a token run back to back and share its sources in L2.
+     grid = (num_q, num_tokens)
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/conv_mix.py /work/patches/inkling2/nvidia/ops/conv_mix.py
+--- /work/patches/inkling2.orig/nvidia/ops/conv_mix.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/conv_mix.py	2026-11-21 06:05:56.439684387 +0000
+@@ -89,7 +89,7 @@
+     )
+     if sp is None:
+         assert halo == 0 and positions.shape[0] == num_tokens and x.dim() == 2
+-        if current_platform.is_device_capability_family(120):
++        if current_platform.is_device_capability_family(120) or not current_platform.has_device_capability(90):  # sm80 patch
+             # Native conv/mix kernels require Hopper or SM10x. Keep the
+             # loop executor's cache writes and residual rounding on SM12x.
+             short_conv(
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/linear.py /work/patches/inkling2/nvidia/ops/linear.py
+--- /work/patches/inkling2.orig/nvidia/ops/linear.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/linear.py	2026-11-21 06:05:56.441684406 +0000
+@@ -131,7 +131,7 @@
+ ):
+     if SPLIT and tl.program_id(1) == 0:
+         _prefetch_k_group_tile(W, N, K, BN, tl.program_id(0), tl.program_id(2))
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     _k_group_tile(
+         X,
+         W,
+@@ -150,7 +150,7 @@
+ 
+ @triton.jit
+ def _k_group_sum_kernel(Partials, Y, MN, GROUPS: tl.constexpr, BLOCK: tl.constexpr):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+     mask = offs < MN
+     total = tl.load(Partials + offs, mask)
+@@ -178,9 +178,9 @@
+     GROUP_TILES: tl.constexpr = 1024 // BK
+     rows = tl.program_id(1) * BM
+     cols = tl.program_id(0) * BN
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     if LAUNCH_DEPENDENTS:
+-        tl.extra.cuda.gdc_launch_dependents()
++        pass  # sm80: no PDL
+     total = tl.zeros((BM, BN), tl.float32)
+     partial = tl.zeros((BM, BN), tl.float32)
+     for tile in tl.range(TILES, warp_specialize=True):
+@@ -214,7 +214,7 @@
+     tokens, hidden = x.shape
+     n = weight.shape[0]
+     sm120 = current_platform.is_device_capability_family(120)
+-    if tokens >= TMA_MIN_TOKENS and not sm120:
++    if tokens >= TMA_MIN_TOKENS and not sm120 and current_platform.has_device_capability(90):  # sm80 patch
+         from triton.tools.tensor_descriptor import TensorDescriptor
+ 
+         out = torch.empty((1, tokens, n), dtype=out_dtype, device=x.device)
+@@ -233,7 +233,7 @@
+             num_warps=4 if block_n == 64 else 8,
+             num_stages=4 if block_n == 64 else 3,
+             enable_fp_fusion=False,
+-            launch_pdl=True,
++            launch_pdl=False,
+         )
+         return out
+     block_m = 16 if tokens <= 128 else 64
+@@ -267,7 +267,7 @@
+         num_warps=num_warps,
+         num_stages=num_stages,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     return out
+ 
+@@ -285,6 +285,6 @@
+         return partials[0]
+     out = torch.empty(partials.shape[1:], dtype=out_dtype, device=x.device)
+     _k_group_sum_kernel[(triton.cdiv(out.numel(), 1024),)](
+-        partials, out, out.numel(), partials.shape[0], 1024, launch_pdl=True
++        partials, out, out.numel(), partials.shape[0], 1024, launch_pdl=False
+     )
+     return out
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/moe.py /work/patches/inkling2/nvidia/ops/moe.py
+--- /work/patches/inkling2.orig/nvidia/ops/moe.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/moe.py	2026-11-21 06:05:56.437684368 +0000
+@@ -623,7 +623,7 @@
+     bias = _load_bias(Bias, E, E_POW2)
+     lo = tl.load(ExpertBounds)
+     hi = tl.load(ExpertBounds + 1)
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     if pid < ROUTERS:
+         _k_group_tile(
+             X,
+@@ -747,8 +747,8 @@
+     bias = _load_bias(Bias, E, E_POW2)
+     lo = tl.load(ExpertBounds)
+     hi = tl.load(ExpertBounds + 1)
+-    tl.extra.cuda.gdc_wait()
+-    tl.extra.cuda.gdc_launch_dependents()
++    pass  # sm80: no PDL
++    pass  # sm80: no PDL
+     token = tl.full((1,), tl.program_id(0), tl.int64)
+     padding = None
+     if Padding is not None:
+@@ -796,9 +796,9 @@
+     token = tl.program_id(0).to(tl.int64)
+     # The tokens are complete before the routing kernel starts.
+     quantized = _quantize_x(X, token, H, NVFP4, HEAD, TAIL)
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     if LAUNCH_DEPENDENTS:
+-        tl.extra.cuda.gdc_launch_dependents()
++        pass  # sm80: no PDL
+     dst, local = _place_rows(
+         Starts, Ids, Ranks, Weights, Src2Dst, Gammas, Rows, token, TOPK, LOCAL_POW2
+     )
+@@ -843,7 +843,7 @@
+     x = X + token * H
+     # The tokens are complete before the routing kernel starts.
+     amax = _row_amax(x, H)
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     dst, local = _place_rows(
+         Starts, Ids, Ranks, Weights, Src2Dst, Gammas, Rows, token, TOPK, LOCAL_POW2
+     )
+@@ -971,7 +971,7 @@
+             num_stages=4,
+             enable_fp_fusion=False,
+             launch_cooperative_grid=True,
+-            launch_pdl=True,
++            launch_pdl=False,
+         )
+         return outputs, quantized
+ 
+@@ -1002,7 +1002,7 @@
+         TILE=plan.tile,
+         MAX_CTAS=plan.max_ctas,
+         num_warps=4 if tokens <= 128 else 1,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     if nvfp4 and tokens >= NVFP4_SCATTER_MIN_TOKENS:
+         _scatter_nvfp4_kernel[(tokens,)](
+@@ -1023,7 +1023,7 @@
+             TILE=plan.tile,
+             num_warps=1,
+             enable_fp_fusion=False,
+-            launch_pdl=True,
++            launch_pdl=False,
+         )
+         return outputs, quantized
+     _scatter_kernel[(tokens,)](
+@@ -1049,7 +1049,7 @@
+         LAUNCH_DEPENDENTS=tokens <= LAUNCH_DEPENDENTS_MAX_TOKENS,
+         num_warps=2,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     return outputs, quantized
+ 
+@@ -1069,9 +1069,9 @@
+     PUSH: tl.constexpr,
+     HALO_ROWS: tl.constexpr,
+ ):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     if LAUNCH_DEPENDENTS:
+-        tl.extra.cuda.gdc_launch_dependents()
++        pass  # sm80: no PDL
+     token = tl.program_id(0).to(tl.int64)
+     cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+     acc = tl.zeros((BLOCK,), tl.float32)
+@@ -1142,5 +1142,5 @@
+         sp is not None,
+         HALO_ROWS,
+         num_warps=2,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/moe_humming.py /work/patches/inkling2/nvidia/ops/moe_humming.py
+--- /work/patches/inkling2.orig/nvidia/ops/moe_humming.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/moe_humming.py	2026-11-21 06:05:56.444684434 +0000
+@@ -4,7 +4,7 @@
+ 
+ import torch
+ 
+-from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
++from vllm.models.inkling2.sm80_moe_align import (  # sm80 patch
+     moe_align_block_size,
+ )
+ from vllm.triton_utils import tl, triton
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/moe_sm120.py /work/patches/inkling2/nvidia/ops/moe_sm120.py
+--- /work/patches/inkling2.orig/nvidia/ops/moe_sm120.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/moe_sm120.py	2026-11-21 06:05:56.433684331 +0000
+@@ -108,7 +108,7 @@
+     BK: tl.constexpr,
+ ):
+     T_BLOCKS: tl.constexpr = tl.cdiv(TILE, BT)
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     pid_t = tl.program_id(1)
+     tile = pid_t // T_BLOCKS
+     if tile >= tl.load(Tiles + 2 * MAX_CTAS):
+@@ -198,7 +198,7 @@
+             BK=128,
+             num_warps=num_warps,
+             num_stages=3,
+-            launch_pdl=True,
++            launch_pdl=False,
+         )
+         return out
+     assert weight.dtype == torch.uint8
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/moe_sm90.py /work/patches/inkling2/nvidia/ops/moe_sm90.py
+--- /work/patches/inkling2.orig/nvidia/ops/moe_sm90.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/moe_sm90.py	2026-11-21 06:05:56.444684434 +0000
+@@ -14,7 +14,7 @@
+ import torch
+ 
+ import vllm.envs as envs
+-from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
++from vllm.models.inkling2.sm80_moe_align import (  # sm80 patch
+     moe_align_block_size,
+ )
+ from vllm.triton_utils import tl, triton
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/mxfp8.py /work/patches/inkling2/nvidia/ops/mxfp8.py
+--- /work/patches/inkling2.orig/nvidia/ops/mxfp8.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/mxfp8.py	2026-11-21 06:05:56.422684229 +0000
+@@ -51,7 +51,7 @@
+ 
+ @triton.jit
+ def _mxfp8_quantize_kernel(X, Y, S, M, N: tl.constexpr, BLOCK: tl.constexpr):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     for r in range(tl.program_id(0), M, tl.num_programs(0)):
+         row = tl.cast(r, tl.int64)
+         cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+@@ -80,6 +80,6 @@
+         N=n,
+         BLOCK=block,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     return values, scales
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/nvfp4.py /work/patches/inkling2/nvidia/ops/nvfp4.py
+--- /work/patches/inkling2.orig/nvidia/ops/nvfp4.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/nvfp4.py	2026-11-21 06:05:56.426684266 +0000
+@@ -251,7 +251,7 @@
+ def _nvfp4_quantize_kernel(
+     X, Values, Scales, Amax, M, K: tl.constexpr, BLOCK: tl.constexpr
+ ):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     for row in range(tl.program_id(0), M, tl.num_programs(0)):
+         _quantize_row(X, Values, Scales, Amax, row, K, BLOCK)
+ 
+@@ -282,6 +282,6 @@
+         BLOCK=block,
+         num_warps=num_warps,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     return values, scales, amax
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/nvidia/ops/sconv.py /work/patches/inkling2/nvidia/ops/sconv.py
+--- /work/patches/inkling2.orig/nvidia/ops/sconv.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/nvidia/ops/sconv.py	2026-11-21 06:05:56.428684285 +0000
+@@ -248,7 +248,7 @@
+         cached1 = _cached_tap(*taps, 2)
+         cached2 = _cached_tap(*taps, 1)
+         cached3 = _cached_tap(*taps, 0)
+-        tl.extra.cuda.gdc_wait()
++        pass  # sm80: no PDL
+ 
+     dtype = cache_ptr.dtype.element_ty
+     cur = tl.load(x_ptr + toff[:, None] * stride_x + coff[None, :], mask=tc_mask)
+@@ -335,7 +335,7 @@
+     first = tl.program_id(0) * BT
+     tile_reads_cache = True
+     if SKIP_IDLE_CACHE:
+-        tl.extra.cuda.gdc_wait()
++        pass  # sm80: no PDL
+         # Request starts are non-decreasing: no token of the tile is among the
+         # first W - 1 of its request unless the last token's request starts
+         # after first - (W - 1).
+@@ -458,7 +458,7 @@
+         SKIP_IDLE_CACHE=prefill,
+         num_warps=4,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     return out
+ 
+@@ -554,9 +554,9 @@
+     QR_TOKENS: tl.constexpr,
+     FUSE_QR: tl.constexpr,
+ ):
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+     # The decode attention kernel prefetches cached keys meanwhile.
+-    tl.extra.cuda.gdc_launch_dependents()
++    pass  # sm80: no PDL
+     # Programs (tile, head, 0 | 1) run the K | V conv of one KV head; programs
+     # (tile, head, 2) clip q of QR_TOKENS of the tile's tokens and programs
+     # (tile, head, 3 + c) their r and column block c of the relative logits.
+@@ -700,7 +700,7 @@
+         BLOCK_HQ,
+         BLOCK_E,
+     )
+-    tl.extra.cuda.gdc_wait()
++    pass  # sm80: no PDL
+ 
+ 
+ @triton.jit
+@@ -980,7 +980,7 @@
+         FUSE_QR=not qr_tokens,
+         num_warps=4,
+         enable_fp_fusion=False,
+-        launch_pdl=True,
++        launch_pdl=False,
+     )
+     if qr_tokens:
+         _qr_rel_kernel[(triton.cdiv(num_tokens, qr_tokens), qr_blocks)](
+@@ -1012,5 +1012,5 @@
+             QR_TOKENS=qr_tokens,
+             num_warps=4,
+             enable_fp_fusion=False,
+-            launch_pdl=True,
++            launch_pdl=False,
+         )
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/quant_config.py /work/patches/inkling2/quant_config.py
+--- /work/patches/inkling2.orig/quant_config.py	2026-11-20 20:52:15.000000000 +0000
++++ /work/patches/inkling2/quant_config.py	2026-11-21 06:05:56.414684154 +0000
+@@ -43,7 +43,7 @@
+ 
+     @classmethod
+     def get_min_capability(cls) -> int:
+-        return 90
++        return 80  # PixelML sm80 patch
+ 
+     @staticmethod
+     def get_config_filenames() -> list[str]:
+diff -ru -N -x __pycache__ /work/patches/inkling2.orig/sm80_moe_align.py /work/patches/inkling2/sm80_moe_align.py
+--- /work/patches/inkling2.orig/sm80_moe_align.py	1970-01-01 00:00:00.000000000 +0000
++++ /work/patches/inkling2/sm80_moe_align.py	2026-11-21 06:05:56.442684415 +0000
+@@ -0,0 +1,55 @@
++# SPDX-License-Identifier: Apache-2.0
++"""PixelML sm80 patch: pure-torch moe_align_block_size for GPUs where the image's compiled
++`_moe_C.moe_align_block_size` has no kernel image (CMP 170HX, sm_80; image built for sm_100).
++
++Same outputs as vllm.model_executor.layers.fused_moe.moe_align_block_size for the call Inkling2's
++Hopper expert path makes (ignore_invalid_experts=True, no expert_map): token rows sorted by expert
++(stable), each expert's segment padded to a multiple of block_size, padding = topk_ids.numel().
++No host sync and fixed output shapes, so it is CUDA-graph capturable.
++"""
++import torch
++from vllm.triton_utils import triton
++from vllm.utils.math_utils import round_up
++
++
++def moe_align_block_size(topk_ids, block_size, num_experts, expert_map=None, pad_sorted_ids=False,
++                         ignore_invalid_experts=False, return_scatter_idx=False):
++    if expert_map is not None or return_scatter_idx:
++        raise NotImplementedError("sm80 moe_align_block_size: expert_map / scatter_idx not supported")
++    dev = topk_ids.device
++    n = topk_ids.numel()
++    max_pad = n + num_experts * (block_size - 1)
++    if pad_sorted_ids:
++        max_pad = round_up(max_pad, block_size)
++    if n < num_experts:
++        max_pad = min(n * block_size, max_pad)
++    n_blocks = triton.cdiv(max_pad, block_size)
++
++    flat = topk_ids.reshape(-1).to(torch.int64)
++    valid = (flat >= 0) & (flat < num_experts)
++    if not ignore_invalid_experts:
++        valid = torch.ones_like(valid)  # every id counts (caller guarantees range)
++    key = flat.masked_fill(~valid, num_experts)  # invalid -> bucket E
++    counts = torch.zeros(num_experts + 1, dtype=torch.int64, device=dev)
++    counts.scatter_add_(0, key, torch.ones_like(key))  # bincount without a host sync
++    counts = counts[:num_experts]
++    padded = (counts + block_size - 1) // block_size * block_size
++    pad_end = torch.cumsum(padded, 0)
++    pad_start = pad_end - padded
++    cnt_start = torch.cumsum(counts, 0) - counts
++
++    order = torch.sort(key, stable=True).indices
++    skey = key[order]
++    is_valid = skey < num_experts
++    e = skey.clamp(max=num_experts - 1)
++    pos = torch.arange(n, device=dev, dtype=torch.int64) - cnt_start[e]
++    dest = (pad_start[e] + pos).masked_fill(~is_valid, max_pad)  # invalid -> dump slot
++    buf = torch.full((max_pad + 1,), n, dtype=torch.int32, device=dev)
++    buf.scatter_(0, dest, order.to(torch.int32))
++    sorted_ids = buf[:max_pad].contiguous()
++
++    starts = torch.arange(n_blocks, device=dev, dtype=torch.int64) * block_size
++    expert_ids = torch.searchsorted(pad_end, starts, right=True).clamp(max=num_experts - 1)
++    total = pad_end[-1:]
++    expert_ids = expert_ids.masked_fill(starts >= total, 0).to(torch.int32)
++    return sorted_ids, expert_ids, total.to(torch.int32).reshape(1)

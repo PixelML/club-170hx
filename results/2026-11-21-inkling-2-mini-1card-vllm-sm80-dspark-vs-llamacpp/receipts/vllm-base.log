@@ -1,0 +1,51 @@
+[vllm-sm80p-base] c1/code T0.0 r0: 768 tok 76.09 tok/s ttft 3.6229s
+[vllm-sm80p-base] c1/code T0.0 r1: 768 tok 76.3 tok/s ttft 0.0765s
+[vllm-sm80p-base] c1/code T0.0 r2: 768 tok 76.28 tok/s ttft 0.0746s
+[vllm-sm80p-base] c1/prose T0.0 r0: 768 tok 76.18 tok/s ttft 3.7351s
+[vllm-sm80p-base] c1/prose T0.0 r1: 768 tok 76.3 tok/s ttft 0.0724s
+[vllm-sm80p-base] c1/prose T0.0 r2: 768 tok 76.27 tok/s ttft 0.0728s
+[vllm-sm80p-base] c1/struct T0.0 r0: 768 tok 76.26 tok/s ttft 0.0875s
+[vllm-sm80p-base] c1/struct T0.0 r1: 768 tok 76.27 tok/s ttft 0.2775s
+[vllm-sm80p-base] c1/struct T0.0 r2: 768 tok 76.28 tok/s ttft 0.0722s
+[vllm-sm80p-base] c1/code T1.0 r0: 768 tok 76.29 tok/s ttft 0.0762s
+[vllm-sm80p-base] c1/code T1.0 r1: 768 tok 76.24 tok/s ttft 0.0745s
+[vllm-sm80p-base] c1/code T1.0 r2: 768 tok 76.13 tok/s ttft 0.0753s
+[vllm-sm80p-base] c1/prose T1.0 r0: 768 tok 76.02 tok/s ttft 0.0759s
+[vllm-sm80p-base] c1/prose T1.0 r1: 768 tok 75.91 tok/s ttft 0.0758s
+[vllm-sm80p-base] c1/prose T1.0 r2: 768 tok 75.83 tok/s ttft 0.0733s
+[vllm-sm80p-base] c1/struct T1.0 r0: 768 tok 75.72 tok/s ttft 0.0711s
+[vllm-sm80p-base] c1/struct T1.0 r1: 768 tok 75.72 tok/s ttft 0.0664s
+[vllm-sm80p-base] c1/struct T1.0 r2: 768 tok 75.65 tok/s ttft 0.0676s
+[vllm-sm80p-base] conc/c1 T1.0 r0: 768 tok 75.1 tok/s ttft 0.076s
+[vllm-sm80p-base] conc/c4 T1.0 r0: 3072 tok 200.32 tok/s ttft 0.25s
+[vllm-sm80p-base] conc/c8 T1.0 r0: 6144 tok 319.89 tok/s ttft 0.175s
+[vllm-sm80p-base] conc/c16 T1.0 r0: 12288 tok 380.7 tok/s ttft 8.002s
+[vllm-sm80p-base] prefill/tok4000 T0.0 r0: 64 tok 76.12 tok/s ttft 4.8272s
+[vllm-sm80p-base] prefill/tok4000 T0.0 r1: 64 tok 75.89 tok/s ttft 1.1626s
+[vllm-sm80p-base] prefill/tok16000 T0.0 r0: 64 tok 73.03 tok/s ttft 4.9971s
+[vllm-sm80p-base] prefill/tok16000 T0.0 r1: 64 tok 72.68 tok/s ttft 4.9615s
+Traceback (most recent call last):
+  File "/work/bench.py", line 129, in <module>
+    main()
+    ~~~~^^
+  File "/work/bench.py", line 123, in main
+    r = stream_chat(a.url, body(p, 64, 0.0))
+  File "/work/bench.py", line 32, in stream_chat
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/urllib/request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/urllib/request.py", line 495, in open
+    response = meth(req, response)
+  File "/usr/lib/python3.13/urllib/request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/usr/lib/python3.13/urllib/request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.13/urllib/request.py", line 466, in _call_chain
+    result = func(*args)
+  File "/usr/lib/python3.13/urllib/request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 400: Bad Request
