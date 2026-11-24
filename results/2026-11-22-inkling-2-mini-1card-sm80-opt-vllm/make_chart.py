@@ -20,8 +20,8 @@ n_rounds = len(sb)
 fig, (ax1, ax2, ax3) = plt.subplots(
     1,
     3,
-    figsize=(15.8, 5.5),
-    gridspec_kw={"width_ratios": [1.08, 1.38, 1.04]},
+    figsize=(17.2, 5.5),
+    gridspec_kw={"width_ratios": [1.14, 1.34, 1.12]},
 )
 
 # Panel 1: 6-prompt single-user decode progression (T=0.6)
@@ -50,7 +50,7 @@ for i, (m, pk) in enumerate(zip(c1_meds, c1_peaks)):
         fontsize=6.9 if n_rounds >= 6 else 7.5,
         fontweight="bold" if i == n_rounds - 1 else "normal",
     )
-ax1.set_xticks(xs1, [r["label"] for r in sb], fontsize=6.5 if n_rounds >= 6 else 7.0)
+ax1.set_xticks(xs1, [r["label"] for r in sb], fontsize=5.9 if n_rounds >= 6 else 7.0)
 ax1.set_ylabel("decode tok/s, 1 user, 6-prompt median (T=0.6)")
 ax1.set_title("Hill-climb c=1 decode (262K ctx)")
 ax1.set_ylim(0, 272)
@@ -112,7 +112,7 @@ for i, (m, pk) in enumerate(zip(c16_meds, c16_peaks)):
         fontsize=6.9 if n_rounds >= 6 else 7.5,
         fontweight="bold" if i == n_rounds - 1 else "normal",
     )
-ax3.set_xticks(xs1, [r["label"] for r in sb], fontsize=6.5 if n_rounds >= 6 else 7.0)
+ax3.set_xticks(xs1, [r["label"] for r in sb], fontsize=5.9 if n_rounds >= 6 else 7.0)
 ax3.set_ylabel("aggregate output tok/s, 16 concurrent users")
 ax3.set_title("Unified server c=16 throughput")
 ax3.set_ylim(0, 825)
