@@ -1,14 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Looped Inkling2 checkpoints (`loop_config`)."""
+"""Looped Inkling2 checkpoints (`loop_config`).
 
-import os
+The core layers `[core_start, core_end)` run `num_passes` times: a prelude,
+then each pass from the AttnRes state after the prelude, then the coda from
+the last pass's state. Each pass of a core layer has its own KV and
+conv-state caches. In passes after the first, every core sublayer input
+(attention q/k/v and MLP) is blended with a message: a normalized-value
+AttnRes read of the previous pass's blocks, merged by a gated low-rank
+controller. Each sublayer's short conv runs fused with the next AttnRes mix
+(and small batches at TP > 1 with its all-reduce); without sequence parallel.
+"""
+
 from collections.abc import Sequence
 
 import torch
 from torch import nn
 
 from vllm.distributed import tensor_model_parallel_all_reduce
+from vllm.triton_utils import tl as _tl
+from vllm.triton_utils import tldevice as _tldevice
+from vllm.triton_utils import triton as _triton
 
 from ..configs import Inkling2ModelConfig
 from ..quant_config import Inkling2QuantConfig
@@ -23,13 +35,129 @@ from .ops.linear import linear_k_groups
 from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
 from .ops.ll_gemm_sm120 import sm12x_bf16_ll_gemm, use_sm12x_bf16_ll_gemm
 from .ops.loop import blend_rms_norm, pair_rms_norm
+from .ops.norm import rsqrt as _rsqrt
 from .sconv import conv_metadata
 
 LOOP_STREAMS = ("attn", "k", "v", "mlp")
-_SM80_BLEND_MODE = os.environ.get("VLLM_SM80_LOOP_BLEND_V6", "0")
+
+
+@_triton.jit
+def _bank_attn_res_1pass_kernel(
+    Bank,
+    Queries,
+    Out,
+    stride_b0,
+    T,
+    eps,
+    D: _tl.constexpr,
+    Q_PER_CTA: _tl.constexpr,
+    BLOCK_A: _tl.constexpr,
+    BLOCK_B: _tl.constexpr,
+):
+    q_base = _tl.program_id(0) * Q_PER_CTA
+    t = _tl.program_id(1).to(_tl.int64)
+    row_off = t * D
+    da = _tl.arange(0, BLOCK_A)
+    db = BLOCK_A + _tl.arange(0, BLOCK_B)
+    mask_a = da < D
+    mask_b = db < D
+
+    xa0 = _tl.load(Bank + row_off + da, mask_a, other=0).to(_tl.float32)
+    xb0 = _tl.load(Bank + row_off + db, mask_b, other=0).to(_tl.float32)
+    xa1 = _tl.load(Bank + stride_b0 + row_off + da, mask_a, other=0).to(_tl.float32)
+    xb1 = _tl.load(Bank + stride_b0 + row_off + db, mask_b, other=0).to(_tl.float32)
+
+    rstd0 = _rsqrt(_tl.fma(_tl.sum(xa0 * xa0) + _tl.sum(xb0 * xb0), 1.0 / D, eps))
+    rstd1 = _rsqrt(_tl.fma(_tl.sum(xa1 * xa1) + _tl.sum(xb1 * xb1), 1.0 / D, eps))
+
+    for qi in _tl.static_range(Q_PER_CTA):
+        q_off = (q_base + qi) * D
+        qa = _tl.load(Queries + q_off + da, mask_a, other=0)
+        qb = _tl.load(Queries + q_off + db, mask_b, other=0)
+        l0 = (_tl.sum(qa * xa0) + _tl.sum(qb * xb0)) * rstd0
+        l1 = (_tl.sum(qa * xa1) + _tl.sum(qb * xb1)) * rstd1
+        mx = _tl.maximum(l0, l1)
+        e0 = _tldevice.exp(l0 - mx)
+        e1 = _tldevice.exp(l1 - mx)
+        inv_sum = _tl.div_rn(1.0, e0 + e1)
+        p0 = e0 * rstd0
+        p1 = e1 * rstd1
+        acc_a = (
+            _tl.fma(p1, xa1, _tl.fma(p0, xa0, _tl.zeros((BLOCK_A,), _tl.float32)))
+            * inv_sum
+        )
+        acc_b = (
+            _tl.fma(p1, xb1, _tl.fma(p0, xb0, _tl.zeros((BLOCK_B,), _tl.float32)))
+            * inv_sum
+        )
+        out_ptr = Out + (q_base + qi).to(_tl.int64) * T * D + row_off
+        _tl.store(out_ptr + da, acc_a, mask_a)
+        _tl.store(out_ptr + db, acc_b, mask_b)
+
+
+def sm80_bank_attn_res(bank: torch.Tensor, queries: torch.Tensor) -> torch.Tensor:
+    """Single-pass 0-ULP SM80 bank AttnRes (N_SRC=2, Q=4, D=2304, fp32 out)."""
+    t = bank.shape[1]
+    if (
+        is_sm80()
+        and 1 <= t <= 64
+        and bank.shape == (2, t, 2304)
+        and queries.shape == (4, 2304)
+        and bank.dtype == torch.bfloat16
+        and queries.dtype == torch.float32
+        and bank.stride(1) == 2304
+        and bank.stride(2) == 1
+        and queries.is_contiguous()
+    ):
+        out = torch.empty((4, t, 2304), dtype=torch.float32, device=bank.device)
+        qpc = 2 if t > 16 else 1
+        _bank_attn_res_1pass_kernel[(4 // qpc, t)](
+            bank,
+            queries,
+            out,
+            bank.stride(0),
+            t,
+            1e-6,
+            D=2304,
+            Q_PER_CTA=qpc,
+            BLOCK_A=2048,
+            BLOCK_B=256,
+            num_warps=8,
+            enable_fp_fusion=False,
+        )
+        return out
+    return attn_res(bank[:1], bank[1], None, queries, None, 0.0, True)
+
+
+def sm80_fast_blend(
+    ctrl_down: torch.Tensor,
+    ctrl_up: torch.Tensor,
+    dest: torch.Tensor,
+    message: torch.Tensor,
+    norm_weight: torch.Tensor,
+    norm_eps: float,
+) -> torch.Tensor | None:
+    """2-launch SM80 Tensor-Core fused loop controller:
+    (pair_rms_norm + down) + (up + unfused tanh blend + RMSNorm)."""
+    if not is_sm80():
+        return None
+    from ..sm80_ops_v2 import fast_blend_r6_2304
+
+    return fast_blend_r6_2304(
+        ctrl_down, ctrl_up, dest, message, norm_weight, norm_eps
+    )
 
 
 class Inkling2MessageController(nn.Module):
+    """Blends a loop message into a core sublayer input: from the rank-`r`
+    projection `h` of the RMS-normalized `[dest, message]`,
+    `(1 - tanh(forget(h))) * dest + tanh(gain(h)) * message` in fp32.
+
+    The weights are views of the layer's stream-stacked weights
+    (`Inkling2LoopDecoderLayer`), which run every stream at once; `forward`
+    is the per-stream reference.
+    """
+
     def __init__(
         self, down: torch.Tensor, gain: torch.Tensor, forget: torch.Tensor
     ) -> None:
@@ -39,6 +167,7 @@ class Inkling2MessageController(nn.Module):
         self.forget_weight = nn.Parameter(forget, requires_grad=False)
 
     def forward(self, dest: torch.Tensor, message: torch.Tensor) -> torch.Tensor:
+        """fp32 `(T, D)` `dest` and `message` -> fp32 `(T, D)`."""
         pair = torch.stack((dest, message), dim=1)
         pair = pair * torch.rsqrt(pair.square().mean(-1, keepdim=True) + 1e-6)
         normalized = pair.to(torch.bfloat16).flatten(1)
@@ -49,6 +178,9 @@ class Inkling2MessageController(nn.Module):
 
 
 class Inkling2LoopDecoderLayer(Inkling2DecoderLayer):
+    """A loop core layer: per-pass caches and a message controller per
+    stream (`LOOP_STREAMS`), whose weights are stacked over the streams."""
+
     def __init__(
         self,
         config: Inkling2ModelConfig,
@@ -62,6 +194,7 @@ class Inkling2LoopDecoderLayer(Inkling2DecoderLayer):
         assert config.loop_config is not None
         rank, width = config.loop_config["gate_rank"], config.hidden_size
         streams = len(LOOP_STREAMS)
+        # down (S, r, 2D) and [gain; forget] (S, 2D, r), bf16.
         self.register_buffer(
             "controller_down",
             torch.empty(streams, rank, 2 * width, dtype=torch.bfloat16),
@@ -72,7 +205,6 @@ class Inkling2LoopDecoderLayer(Inkling2DecoderLayer):
             torch.empty(streams, 2 * width, rank, dtype=torch.bfloat16),
             persistent=False,
         )
-        self.controller_gf_t: torch.Tensor | None = None
         self.controllers = nn.ModuleDict(
             {
                 stream: Inkling2MessageController(
@@ -85,20 +217,11 @@ class Inkling2LoopDecoderLayer(Inkling2DecoderLayer):
         )
 
     def process_weights_after_loading(self) -> None:
+        # The controllers' weights must still alias the stacked ones.
         for i, controller in enumerate(self.controllers.values()):
             down, gain_forget = self.controller_down, self.controller_gain_forget
             assert controller.down_weight.data_ptr() == down[i].data_ptr()
             assert controller.gain_weight.data_ptr() == gain_forget[i].data_ptr()
-        if (
-            is_sm80()
-            and _SM80_BLEND_MODE != "0"
-            and self.controller_gain_forget.shape == (4, 4608, 64)
-        ):
-            self.controller_gf_t = (
-                self.controller_gain_forget.view(4, 2, 2304, 64)
-                .transpose(2, 3)
-                .contiguous()
-            )
 
     def blend(
         self,
@@ -108,44 +231,16 @@ class Inkling2LoopDecoderLayer(Inkling2DecoderLayer):
         norm_weight: torch.Tensor,
         norm_eps: float,
     ) -> torch.Tensor:
-        pair = pair_rms_norm(dest, message)
+        """The `streams` controllers on fp32 `(S, T, D)` `dest` (may
+        broadcast over streams) and `message`, each output RMS-normalized
+        with its row of `norm_weight` `(S, D)`: bf16 `(S, T, D)`."""
         down = self.controller_down[streams]
         up = self.controller_gain_forget[streams]
-        if (
-            is_sm80()
-            and self.controller_gf_t is not None
-            and _SM80_BLEND_MODE != "0"
-            and message.shape[2] == 2304
-            and message.shape[1] > 0
-        ):
-            from ..sm80_ops_v2 import (
-                fused_up_blend_9tile_2304,
-                fused_up_blend_rms_2304,
-                has_sm80_loop_blend_v6,
-                sm80_loop_down_64,
-            )
-
-            s, t, _ = message.shape
-            gf_t = self.controller_gf_t[streams]
-            if (
-                has_sm80_loop_blend_v6()
-                and ((t == 1 and _SM80_BLEND_MODE == "auto") or (t <= 8 and _SM80_BLEND_MODE == "down_up9"))
-                and s * t <= 24
-            ):
-                hidden = sm80_loop_down_64(pair, down)
-                return fused_up_blend_9tile_2304(
-                    dest, message, hidden, gf_t, norm_weight, norm_eps
-                )
-            if has_sm80_loop_blend_v6() and t <= 8 and _SM80_BLEND_MODE == "down_up1":
-                hidden = sm80_loop_down_64(pair, down)
-                return fused_up_blend_rms_2304(
-                    dest, message, hidden, gf_t, norm_weight, norm_eps
-                )
-            if _SM80_BLEND_MODE == "ll_up1" and use_sm80_bf16_ll_gemm(pair, down) and s * t <= 256:
-                hidden = sm80_bf16_ll_gemm(pair, down)
-                return fused_up_blend_rms_2304(
-                    dest, message, hidden, gf_t, norm_weight, norm_eps
-                )
+        if is_sm80():
+            out = sm80_fast_blend(down, up, dest, message, norm_weight, norm_eps)
+            if out is not None:
+                return out
+        pair = pair_rms_norm(dest, message)
         if use_sm12x_bf16_ll_gemm(pair, down):
             hidden = sm12x_bf16_ll_gemm(pair, down)
             gain_forget = sm12x_bf16_ll_gemm(hidden, up, out_dtype=torch.float32)
@@ -167,10 +262,12 @@ class Inkling2LoopModel(Inkling2Model):
         quant_config: Inkling2QuantConfig | None,
         prefix: str,
     ) -> None:
+        # Serving options set through --hf-overrides skip the constructor.
         config.check_loop_options()
         super().__init__(config, quant_config, prefix)
         self.loop_core = config.loop_core_layers
         self.hidden_size = config.hidden_size
+        # Message pseudo-queries (raw), two per core layer: attn/mlp and k/v.
         shape = (2 * len(self.loop_core), config.hidden_size)
         self.middle_cycle_cross_pass_queries = nn.Parameter(
             torch.zeros(shape, dtype=torch.float32), requires_grad=False
@@ -178,6 +275,7 @@ class Inkling2LoopModel(Inkling2Model):
         self.middle_cycle_cross_pass_kv_queries = nn.Parameter(
             torch.zeros(shape, dtype=torch.float32), requires_grad=False
         )
+        # Per core layer, the `LOOP_STREAMS` queries scaled by D**-0.5.
         self.register_buffer(
             "message_queries",
             torch.zeros(
@@ -194,6 +292,7 @@ class Inkling2LoopModel(Inkling2Model):
         kv_queries = self.middle_cycle_cross_pass_kv_queries.view(
             -1, 2, self.hidden_size
         )
+        # (attn, k, v, mlp) = (queries[0], kv[0], kv[1], queries[1]).
         stacked = torch.stack(
             (queries[:, 0], kv_queries[:, 0], kv_queries[:, 1], queries[:, 1]), 1
         )
@@ -211,6 +310,8 @@ class Inkling2LoopModel(Inkling2Model):
         return super()._make_layer(config, layer_id, quant_config, prefix)
 
     def _max_loop_blocks(self) -> int:
+        """Completed AttnRes blocks a loop forward holds at most: each pass
+        restarts from the prelude's, and the coda continues the last pass."""
         num_blocks = max_blocks = 0
         core = self.loop_core
         for i in [*range(core.start), *core, *range(core.stop, len(self.layers))]:
@@ -232,6 +333,11 @@ class Inkling2LoopModel(Inkling2Model):
         tau: torch.Tensor | None,
         plan: list[tuple[bool, bool]],
     ) -> tuple[int, torch.Tensor]:
+        """Run decoder layer `i` in loop pass `pass_idx` on its `inputs`
+        (the attention inputs; for a visit with messages from `bank`, the
+        fp32 mixes they blend into). Returns the number of completed AttnRes
+        blocks after it and the mixes of its output with `next_query` through
+        `next_norm` (fp32 without it), the next visit's inputs."""
         layer = self.layers[i]
         partial = stack[num_blocks]
         owner = layer.conv_states[pass_idx]
@@ -241,15 +347,20 @@ class Inkling2LoopModel(Inkling2Model):
         attn_inputs: Sequence[torch.Tensor]
         if bank is not None:
             assert isinstance(layer, Inkling2LoopDecoderLayer) and inputs is not None
-            messages = attn_res(
-                bank[:1],
-                bank[1],
-                None,
-                self.message_queries[i - self.loop_core.start],
-                None,
-                0.0,
-                True,
-            )
+            # All four streams' messages: a mix of the bank's two blocks.
+            q_msg = self.message_queries[i - self.loop_core.start]
+            if is_sm80():
+                messages = sm80_bank_attn_res(bank, q_msg)
+            else:
+                messages = attn_res(
+                    bank[:1],
+                    bank[1],
+                    None,
+                    q_msg,
+                    None,
+                    0.0,
+                    True,
+                )
             norm = layer.attn_norm
             dests, norm_weight = inputs, norm.weight
             if layer.is_local:
@@ -267,6 +378,7 @@ class Inkling2LoopModel(Inkling2Model):
             attn_inputs = inputs
         attn_partial = layer.attention(positions, attn_inputs, tau, pass_idx=pass_idx)
 
+        # The MLP input mixes the blocks with (partial +) attn_out.
         first = i % self.block_size == 0
         attn_out = torch.empty_like(partial)
         mix_args = (
@@ -296,6 +408,7 @@ class Inkling2LoopModel(Inkling2Model):
                 slice(3, 4), mlp_in, messages[3:], norm.weight, norm.eps
             )
 
+        # The MLP short conv also applies the residual update.
         residual = None if first else partial
         if residual is None:
             num_blocks += 1
@@ -319,18 +432,39 @@ class Inkling2LoopModel(Inkling2Model):
                 owner=owner,
             )
         else:
-            outputs = layer.mlp_sconv.conv_mix(
-                layer.mlp(mlp_in[0], pass_idx=pass_idx),
-                *mix_args,
-                addend=attn_out,
-                residual=residual,
-                owner=owner,
-            )
+            if (
+                is_sm80()
+                and hasattr(layer.mlp, "experts")
+                and layer.mlp.experts.ep_size == 1
+            ):
+                mlp_down, mlp_src2dst = layer.mlp(
+                    mlp_in[0], reduce=False, pass_idx=pass_idx
+                )
+                outputs = layer.mlp_sconv.conv_mix(
+                    mlp_down,
+                    *mix_args,
+                    addend=attn_out,
+                    residual=residual,
+                    owner=owner,
+                    src2dst=mlp_src2dst,
+                )
+            else:
+                # The MoE output is all-reduced (in bf16) inside layer.mlp.
+                outputs = layer.mlp_sconv.conv_mix(
+                    layer.mlp(mlp_in[0], pass_idx=pass_idx),
+                    *mix_args,
+                    addend=attn_out,
+                    residual=residual,
+                    owner=owner,
+                )
         return num_blocks, outputs
 
     def forward(
         self, positions: torch.Tensor, inputs_embeds: torch.Tensor
     ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+        """Prelude, `num_passes` core passes, then the coda. Each sublayer's
+        short conv runs fused with the next AttnRes mix (and small batches
+        with its all-reduce)."""
         num_tokens, hidden = inputs_embeds.shape
         core = self.loop_core
         num_passes = self.config.num_loop_passes
@@ -346,6 +480,7 @@ class Inkling2LoopModel(Inkling2Model):
             and conv_metadata(self.layers[0].conv_state) is not None
         ):
             plan = workspace.plan(num_tokens)
+        # (layer, pass) visits; the prelude and coda run as pass 0.
         visits = [(i, 0) for i in range(core.start)]
         visits += [(i, p) for p in range(num_passes) for i in core]
         visits += [(i, 0) for i in range(core.stop, len(self.layers))]
@@ -359,6 +494,9 @@ class Inkling2LoopModel(Inkling2Model):
                 prelude_blocks = num_blocks
                 prelude_partial = stack[num_blocks].clone()
             elif i == core.start:
+                # Every pass restarts from the prelude's state, with the
+                # previous pass's blocks (after the prelude's) and partial as
+                # the messages' bank.
                 assert prelude_blocks is not None and prelude_partial is not None
                 bank = stack[prelude_blocks + 1 : num_blocks + 1].clone()
                 num_blocks = prelude_blocks
@@ -382,6 +520,7 @@ class Inkling2LoopModel(Inkling2Model):
             else:
                 next_i, next_pass = visits[visit + 1]
                 next_query = self.attn_res.attn_queries[next_i - 1]
+                # Messages blend into fp32 mixes; a pass restart discards it.
                 next_norm = None if next_pass else self.layers[next_i].attn_norm
             num_blocks, inputs = self._run_layer(
                 i,
@@ -404,4 +543,5 @@ class Inkling2LoopModel(Inkling2Model):
 
 
 class Inkling2LoopForConditionalGeneration(Inkling2ForConditionalGeneration):
-    """The `inkling2_loop` checkpoints' architecture name."""
+    """The `inkling2_loop` checkpoints' architecture name; the model is
+    `Inkling2ForConditionalGeneration` with an `Inkling2LoopModel`."""

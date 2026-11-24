@@ -1,0 +1,7 @@
+commit	c1_metric	c16_metric	vram_gb	status	description
+4d1bc4f	7.5034	8.3154	0.55	keep	base: Round-5 SM80 baseline (A100 64MiB L2-scrubbed cold HBM; router 0.983/1.081, ccm 0.934/1.081, loop 1.180/1.536, lin 3.555/3.539, dspark 0.852/1.078)
+17454ab	8.0783	9.7910	0.55	discard	exp A1+A2+A4 combined: parity_ok=1, router_c1 improved (0.934) but router_c16 (1.966), ccm (1.573/1.671), loop (1.204/1.548) regressed + spills in new kernels
+8bf55cf	7.3892	8.3855	0.553	keep	exp A1: 72-CTA K9 4-warp MMA sm80_route_and_align (1<=T<=16, 0 spills, parity_ok=1, router 0.8356/1.0813 vs base 0.9830/1.0813)
+a652981	7.4476	8.2084	0.561	keep	exp A3: sm80_fast_blend (k18/k9 vec2 down_64 + BN=32 double-buffered up_blend_x + rms_norm_x, 0 spills, parity_ok=1, loop_ctrl 1.1059/1.3517 vs base 1.1796/1.5360)
+7376f4b	7.3011	8.1715	0.561	keep	exp A4: single-pass parallel-CTA sm80_bank_attn_res (Q_PER_CTA=1@T<=16 / 2@T>16, 2 barriers, 32-40 regs, 0 spills, parity_ok=1, loop_ctrl 1.0813/1.3517 vs base 1.1796/1.5360)
+6d68b02	7.2863	8.1495	0.562	keep	exp A2 (--reps 30 final): 0-ULP 0-spill combine_conv_mix_2304 (18-tile parallel combine + cp.async zero-div conv_mix_288, parity_ok=1, ccm 0.8847/1.0322 vs 0.9339/1.0813; Lane-A total 2.7771/3.4652 vs 3.0965/3.6986)

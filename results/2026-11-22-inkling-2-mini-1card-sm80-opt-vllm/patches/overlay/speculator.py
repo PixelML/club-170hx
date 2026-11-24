@@ -14,10 +14,13 @@ import torch
 import torch.nn as nn
 
 from vllm.config import VllmConfig
-from vllm.triton_utils import tl, triton
-from vllm.utils.torch_utils import async_tensor_h2d
+from vllm.triton_utils import tl, tldevice, triton
+from vllm.utils.torch_utils import async_tensor_h2d, current_stream
 from vllm.v1.worker.gpu.sample.gumbel import (
     _gumbel_combine_kernel,
+    _log1p_neg_stable,
+    _murmur3_fmix32,
+    _murmur3_mix,
     gumbel_block_argmax,
 )
 from vllm.v1.worker.gpu.spec_decode.dspark.speculator import DSparkSpeculator
@@ -294,6 +297,287 @@ def pruned_gumbel_sample_and_cache(
         PADDED_NUM_BLOCKS=triton.next_power_of_2(num_blocks),
     )
     return sampled
+
+
+_MARKOV_BATCH_WS: dict[tuple[int, int], tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+_RETIRED_MARKOV_WS: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
+
+
+def _get_markov_batch_ws(
+    stream_id: int, device: torch.device, num_reqs: int, num_blocks: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    key = (stream_id, device.index or 0)
+    ws = _MARKOV_BATCH_WS.get(key)
+    if (
+        ws is None
+        or ws[0].shape[0] < num_reqs
+        or ws[0].shape[1] < num_blocks
+    ):
+        if ws is not None:
+            _RETIRED_MARKOV_WS.append(ws)
+        cap_b = max(num_reqs, 64)
+        cap_n = max(num_blocks, 512)
+        ws = (
+            torch.empty((cap_b, cap_n), dtype=torch.int64, device=device),
+            torch.empty((cap_b, cap_n), dtype=torch.float32, device=device),
+            torch.empty((cap_b,), dtype=torch.int64, device=device),
+        )
+        _MARKOV_BATCH_WS[key] = ws
+    return ws[0][:num_reqs, :num_blocks], ws[1][:num_reqs, :num_blocks], ws[2][:num_reqs]
+
+
+@triton.jit
+def _markov_fold_softcap_gumbel_batch_kernel(
+    LATENT,
+    FOLD_W,
+    FOLD_B,
+    BASE,
+    KEEP_IDS,
+    IDX_MAP,
+    TEMP,
+    SEEDS,
+    POS,
+    ROW_MAP,
+    CACHE,
+    LOCAL_ARGMAX,
+    LOCAL_MAX,
+    lat_stride,
+    fw_stride,
+    base_stride,
+    idx_stride,
+    pos_stride,
+    cache_s0,
+    cache_s1,
+    l_stride,
+    step_col,
+    B,
+    K_vocab,
+    softcap,
+    RANK: tl.constexpr,
+    MP: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    HAS_CACHE: tl.constexpr,
+    HAS_ROW_MAP: tl.constexpr,
+):
+    pid_n = tl.program_id(0)
+    rows = tl.arange(0, MP)
+    cols = pid_n * BN + tl.arange(0, BN)
+    row_mask = rows < B
+    col_mask = cols < K_vocab
+
+    acc = tl.zeros((MP, BN), dtype=tl.float32)
+    for k0 in tl.static_range(0, RANK, BK):
+        ks = k0 + tl.arange(0, BK)
+        lat_tile = tl.load(
+            LATENT + rows[:, None] * lat_stride + ks[None, :],
+            mask=row_mask[:, None],
+            other=0.0,
+        )
+        w_tile = tl.load(
+            FOLD_W + cols[None, :].to(tl.int64) * fw_stride + ks[:, None],
+            mask=col_mask[None, :],
+            other=0.0,
+        )
+        acc = tl.dot(lat_tile, w_tile, acc)
+
+    fb = tl.load(FOLD_B + cols, mask=col_mask, other=0.0).to(tl.float32)
+    bias = (acc + fb[None, :]).to(tl.bfloat16).to(tl.float32)
+    base = tl.load(
+        BASE + rows[:, None] * base_stride + cols[None, :],
+        mask=row_mask[:, None] & col_mask[None, :],
+        other=0.0,
+    ).to(tl.float32)
+    x = (base + bias).to(tl.bfloat16)
+    lg = (softcap * tldevice.tanh(x.to(tl.float32) / softcap)).to(tl.bfloat16)
+
+    target_keys = tl.load(KEEP_IDS + cols, mask=col_mask, other=0)
+    req_idx = tl.load(IDX_MAP + rows * idx_stride, mask=row_mask, other=-1).to(tl.int64)
+    is_valid_req = row_mask & (req_idx >= 0)
+    temp = tl.load(TEMP + req_idx, mask=is_valid_req, other=0.0).to(tl.float32)
+
+    if HAS_CACHE:
+        if HAS_ROW_MAP:
+            cache_row = tl.load(
+                ROW_MAP + req_idx, mask=is_valid_req, other=-1
+            ).to(tl.int64)
+        else:
+            cache_row = req_idx
+        tl.store(
+            CACHE
+            + cache_row[:, None] * cache_s0
+            + tl.cast(step_col, tl.int64) * cache_s1
+            + target_keys[None, :],
+            lg,
+            mask=(cache_row[:, None] >= 0) & col_mask[None, :],
+        )
+
+    raw_seed = tl.load(SEEDS + req_idx, mask=is_valid_req, other=0).to(tl.int64)
+    seed = raw_seed ^ (tl.cast(step_col, tl.int64) << 32) if HAS_CACHE else raw_seed
+    pos = (
+        tl.load(POS + rows * pos_stride, mask=row_mask, other=0).to(tl.int64)
+        - 1
+        + (1 << 30)
+    )
+
+    h = (seed ^ seed).to(tl.uint32)
+    h = _murmur3_mix(h, (seed & 0xFFFFFFFF).to(tl.uint32))
+    h = _murmur3_mix(h, ((seed >> 32) & 0xFFFFFFFF).to(tl.uint32))
+    h = _murmur3_mix(h, (pos & 0xFFFFFFFF).to(tl.uint32))
+    h2 = _murmur3_mix(h[:, None], target_keys[None, :].to(tl.uint32))
+    random32 = _murmur3_fmix32(h2 ^ 16)
+    hi16 = (random32 >> 16).to(tl.int32)
+    lo16 = (random32 & 0xFFFF).to(tl.int32)
+    u = (
+        hi16.to(tl.float32) * 1.52587890625e-05
+        + (lo16.to(tl.float32) + 0.5) * 2.3283064365386963e-10
+    )
+    gumbel_noise = -tl.log(-_log1p_neg_stable(u))
+
+    score = lg.to(tl.float32)
+    is_nz = temp != 0.0
+    safe_temp = tl.where(is_nz, temp, 1.0)
+    score = tl.where(is_nz[:, None], score / safe_temp[:, None] + gumbel_noise, score)
+    score = tl.where(row_mask[:, None] & col_mask[None, :], score, float("-inf"))
+
+    block_max, block_local_idx = tl.max(score, axis=1, return_indices=True)
+    token_id = tl.load(
+        KEEP_IDS + pid_n * BN + block_local_idx,
+        mask=row_mask & ((pid_n * BN + block_local_idx) < K_vocab),
+        other=0,
+    )
+    tl.store(LOCAL_ARGMAX + rows * l_stride + pid_n, token_id, mask=row_mask)
+    tl.store(LOCAL_MAX + rows * l_stride + pid_n, block_max, mask=row_mask)
+
+
+@triton.jit
+def _markov_gumbel_combine_kernel(
+    local_argmax_ptr,
+    local_argmax_stride,
+    local_max_ptr,
+    local_max_stride,
+    out_draft_col_ptr,
+    out_draft_stride,
+    out_prev_ptr,
+    num_blocks,
+    PADDED_NUM_BLOCKS: tl.constexpr,
+    WRITE_PREV: tl.constexpr,
+):
+    row = tl.program_id(0).to(tl.int64)
+    block = tl.arange(0, PADDED_NUM_BLOCKS)
+    mask = block < num_blocks
+    values = tl.load(
+        local_max_ptr + row * local_max_stride + block,
+        mask=mask,
+        other=float("-inf"),
+    )
+    nan_block = tl.min(tl.where(values != values, block, PADDED_NUM_BLOCKS), axis=0)
+    if nan_block < PADDED_NUM_BLOCKS:
+        winner = nan_block
+    else:
+        maximum = tl.max(values, axis=0)
+        winner = tl.min(
+            tl.where(mask & (values == maximum), block, PADDED_NUM_BLOCKS), axis=0
+        )
+    sampled = tl.load(local_argmax_ptr + row * local_argmax_stride + winner)
+    tl.store(out_draft_col_ptr + row * out_draft_stride, sampled)
+    if WRITE_PREV:
+        tl.store(out_prev_ptr + row, sampled)
+
+
+def sm80_markov_sample_batch(
+    state: torch.Tensor,
+    prev: torch.Tensor,
+    markov_w1: torch.Tensor,
+    ctx_rnn: torch.Tensor,
+    rnn_w_step: torch.Tensor,
+    fold_w: torch.Tensor,
+    fold_b: torch.Tensor,
+    base_logits: torch.Tensor,
+    keep_ids: torch.Tensor,
+    idx_map: torch.Tensor,
+    temp: torch.Tensor,
+    seeds: torch.Tensor,
+    sample_pos: torch.Tensor,
+    logits_cache: torch.Tensor | None,
+    softcap: float,
+    out_draft: torch.Tensor,
+    row_mapping: torch.Tensor | None = None,
+) -> None:
+    """Fused batched Markov RNN + fold GEMM + softcap + pruned Gumbel sample + cache."""
+    from .sm80_ops_v2 import markov_rnn_gate_256
+
+    num_reqs, rank = state.shape
+    n_spec = out_draft.shape[1]
+    k_vocab = fold_w.shape[0]
+    assert rank == 256 and 0 < num_reqs <= 64
+    mp = 16 if num_reqs <= 16 else (32 if num_reqs <= 32 else 64)
+    bn = 64 if mp == 64 else 128
+    bk = 128
+    num_blocks = triton.cdiv(k_vocab, bn)
+    padded_blocks = triton.next_power_of_2(num_blocks)
+    stream_id = current_stream().cuda_stream
+    local_argmax, local_max, prev_buf = _get_markov_batch_ws(
+        stream_id, state.device, num_reqs, num_blocks
+    )
+    has_cache = logits_cache is not None
+    has_row_map = row_mapping is not None
+    cache_s0 = logits_cache.stride(0) if logits_cache is not None else 0
+    cache_s1 = logits_cache.stride(1) if logits_cache is not None else 0
+    cur_prev = prev
+    for i in range(n_spec):
+        state, latent = markov_rnn_gate_256(
+            state, cur_prev, markov_w1, ctx_rnn[i], rnn_w_step
+        )
+        _markov_fold_softcap_gumbel_batch_kernel[(num_blocks,)](
+            latent,
+            fold_w,
+            fold_b,
+            base_logits[:, i],
+            keep_ids,
+            idx_map[:, i],
+            temp,
+            seeds,
+            sample_pos[:, i],
+            row_mapping,
+            logits_cache,
+            local_argmax,
+            local_max,
+            latent.stride(0),
+            fold_w.stride(0),
+            base_logits.stride(0),
+            idx_map.stride(0),
+            sample_pos.stride(0),
+            cache_s0,
+            cache_s1,
+            local_argmax.stride(0),
+            i,
+            num_reqs,
+            k_vocab,
+            softcap,
+            RANK=256,
+            MP=mp,
+            BN=bn,
+            BK=bk,
+            HAS_CACHE=has_cache,
+            HAS_ROW_MAP=has_row_map,
+            num_warps=4,
+            num_stages=2,
+        )
+        _markov_gumbel_combine_kernel[(num_reqs,)](
+            local_argmax,
+            local_argmax.stride(0),
+            local_max,
+            local_max.stride(0),
+            out_draft[:, i],
+            out_draft.stride(0),
+            prev_buf,
+            num_blocks,
+            PADDED_NUM_BLOCKS=padded_blocks,
+            WRITE_PREV=(i + 1 < n_spec),
+            num_warps=4,
+        )
+        cur_prev = prev_buf
 
 
 class Inkling2DSparkSpeculator(DSparkSpeculator):
@@ -786,6 +1070,41 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
                                 est.intercepts,
                             )
                     return
+
+            if (
+                1 < num_reqs <= 64
+                and self.draft_logits is not None
+                and self.draft_watermarker is None
+                and not self.use_fp64_gumbel
+                and self.acceptance_estimator is None
+                and head.markov_rank == 256
+                and head.rnn_w_step is not None
+                and head.fold_weight is not None
+                and head.fold_bias is not None
+                and state.dtype == torch.bfloat16
+            ):
+                if self._hybrid_suffix_enabled:
+                    self._suf_keep_dirty.fill_(1)
+                sm80_markov_sample_batch(
+                    state,
+                    prev,
+                    head.markov_w1.weight,
+                    context,
+                    head.rnn_w_step,
+                    head.fold_weight,
+                    head.fold_bias,
+                    base_logits,
+                    keep_ids,
+                    idx_map,
+                    self.temperature,
+                    self.seeds,
+                    sample_pos,
+                    self.draft_logits.values,
+                    self.model.config.final_logit_softcapping,
+                    self.draft_tokens[:num_reqs],
+                    row_mapping=self.draft_logits.row_mapping,
+                )
+                return
 
             if self._hybrid_suffix_enabled and self.draft_logits is not None:
                 self._suf_keep_dirty.fill_(1)

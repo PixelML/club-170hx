@@ -13,8 +13,23 @@ import tempfile
 import torch
 
 _LIB: ctypes.CDLL | None = None
+_EXT_LIB: ctypes.CDLL | None = None
 _ALIGN_WS: dict[int, torch.Tensor] = {}
 _SA32_WS: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+_SAMMA_WS: dict[tuple[int, int], tuple[torch.Tensor, torch.Tensor]] = {}
+_CCM_R6_WS: dict[tuple[int, int], torch.Tensor] = {}
+_BLEND_R6_WS: dict[
+    tuple[int, int],
+    tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ],
+] = {}
 _SWL64_WS: dict[
     int,
     tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
@@ -268,6 +283,131 @@ def _get_lib() -> ctypes.CDLL:
 
         _LIB = lib
     return _LIB
+
+
+def _resolve_ext_so_path() -> str | None:
+    here = os.path.dirname(os.path.abspath(__file__))
+    prebuilt_so = os.path.join(here, "libsm80_r6_ext.so")
+    if os.path.isfile(prebuilt_so):
+        return prebuilt_so
+    cu_path = os.path.join(here, "sm80_r6_ext.cu")
+    if not os.path.isfile(cu_path):
+        return None
+    with open(cu_path, "rb") as fp:
+        digest = hashlib.sha256(fp.read()).hexdigest()[:12]
+    cache_root = os.path.expanduser(
+        os.environ.get("VLLM_CACHE_ROOT", "").strip() or "~/.cache/vllm"
+    )
+    os.makedirs(cache_root, exist_ok=True)
+    cached_so = os.path.join(cache_root, f"sm80_r6_ext_{digest}.so")
+    if os.path.isfile(cached_so):
+        return cached_so
+    lock_path = f"{cached_so}.lock"
+    with open(lock_path, "w") as lock_fp:
+        fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+        try:
+            if os.path.isfile(cached_so):
+                return cached_so
+            nvcc = (
+                os.environ.get("CUDACXX", "").strip()
+                or shutil.which("nvcc")
+                or "/usr/local/cuda/bin/nvcc"
+            )
+            if not (os.path.isfile(nvcc) and os.access(nvcc, os.X_OK)):
+                return None
+            fd, tmp_so = tempfile.mkstemp(
+                prefix=f".sm80_r6_ext_{digest}.{os.getpid()}.",
+                suffix=".so",
+                dir=cache_root,
+            )
+            os.close(fd)
+            try:
+                subprocess.run(
+                    [
+                        nvcc,
+                        "-O3",
+                        "-arch=sm_80",
+                        "--shared",
+                        "-Xcompiler",
+                        "-fPIC",
+                        cu_path,
+                        "-o",
+                        tmp_so,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                os.replace(tmp_so, cached_so)
+            except BaseException:
+                if os.path.exists(tmp_so):
+                    os.unlink(tmp_so)
+                raise
+        finally:
+            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+    return cached_so
+
+
+def _get_ext_lib() -> ctypes.CDLL | None:
+    global _EXT_LIB
+    if _EXT_LIB is None:
+        so_path = _resolve_ext_so_path()
+        if so_path is None:
+            return None
+        lib = ctypes.CDLL(so_path)
+        vp = ctypes.c_void_p
+        i32 = ctypes.c_int32
+        f32 = ctypes.c_float
+
+        if hasattr(lib, "launch_select_and_align_r6_128_sm80"):
+            lib.launch_select_and_align_r6_128_sm80.argtypes = (
+                [vp] * 13 + [i32] * 4 + [f32, i32, vp]
+            )
+            lib.launch_select_and_align_r6_128_sm80.restype = None
+
+        if hasattr(lib, "launch_sm80_fast_blend_r6"):
+            i64 = ctypes.c_int64
+            lib.launch_sm80_fast_blend_r6.argtypes = (
+                [vp] * 13 + [i64] * 4 + [i32, i32, f32, i32, vp]
+            )
+            lib.launch_sm80_fast_blend_r6.restype = None
+
+        if hasattr(lib, "launch_sm80_down_64_r6"):
+            i64 = ctypes.c_int64
+            lib.launch_sm80_down_64_r6.argtypes = [vp] * 5 + [i64, i32, i32, vp]
+            lib.launch_sm80_down_64_r6.restype = None
+
+        if hasattr(lib, "launch_sm80_up_blend_r6"):
+            i64 = ctypes.c_int64
+            lib.launch_sm80_up_blend_r6.argtypes = (
+                [vp] * 7 + [i64] * 3 + [i32, i32, f32, vp]
+            )
+            lib.launch_sm80_up_blend_r6.restype = None
+
+        if hasattr(lib, "launch_bank_attn_res_2304_r6"):
+            i64 = ctypes.c_int64
+            lib.launch_bank_attn_res_2304_r6.argtypes = (
+                [vp, vp, vp, i64, i64, f32, i32, vp]
+            )
+            lib.launch_bank_attn_res_2304_r6.restype = None
+
+        if hasattr(lib, "launch_combine_conv_mix_r6_2304"):
+            i64 = ctypes.c_int64
+            lib.launch_combine_conv_mix_r6_2304.argtypes = (
+                [vp] * 9
+                + [i64] * 3
+                + [i32] * 5
+                + [f32]
+                + [vp] * 8
+                + [i32, vp]
+                + [i64]
+                + [i32] * 4
+                + [f32, f32, vp]
+            )
+            lib.launch_combine_conv_mix_r6_2304.restype = i32
+
+        _EXT_LIB = lib
+    return _EXT_LIB
 
 
 def _stream(dev: torch.device) -> int:
@@ -758,6 +898,100 @@ def conv_mix_2304(
     return out if ok else None
 
 
+def combine_conv_mix_2304(
+    down: torch.Tensor,
+    src2dst: torch.Tensor,
+    conv_weight: torch.Tensor,
+    cache: torch.Tensor,
+    positions: torch.Tensor,
+    block_table: torch.Tensor,
+    seq_idx: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    query_start: torch.Tensor,
+    stream_offset: int,
+    stream_width: int,
+    conv_out: torch.Tensor,
+    residual: torch.Tensor | None,
+    addend: torch.Tensor | None,
+    stack: torch.Tensor,
+    last: torch.Tensor | None,
+    queries: torch.Tensor,
+    norm_weight: torch.Tensor | None,
+    norm_eps: float,
+    eps: float = 1e-6,
+) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_combine_conv_mix_r6_2304"):
+        return None
+    num_tokens, d = conv_out.shape
+    num_stack = stack.shape[0]
+    num_q = queries.shape[0]
+    if (
+        d != 2304
+        or not (1 <= num_tokens <= 64)
+        or down.dtype != torch.bfloat16
+        or not down.is_contiguous()
+        or down.shape[1] != 2304
+        or src2dst.dtype != torch.int32
+        or not src2dst.is_contiguous()
+        or src2dst.numel() != num_tokens * 8
+        or cache.dtype != torch.bfloat16
+        or num_stack > 6
+        or num_q not in (1, 3)
+        or (stack.stride(0) & 7) != 0
+    ):
+        return None
+    dev = conv_out.device
+    st = _stream(dev)
+    key = (dev.index or 0, st)
+    ws_comb = _CCM_R6_WS.get(key)
+    if ws_comb is None:
+        ws_comb = torch.empty((64, 2304), dtype=torch.bfloat16, device=dev)
+        _CCM_R6_WS[key] = ws_comb
+    apply_norm = norm_weight is not None
+    out_dtype = torch.bfloat16 if apply_norm else torch.float32
+    out = torch.empty((num_q, num_tokens, d), dtype=out_dtype, device=dev)
+    ok = ext.launch_combine_conv_mix_r6_2304(
+        down.data_ptr(),
+        src2dst.data_ptr(),
+        conv_weight.data_ptr(),
+        cache.data_ptr(),
+        positions.data_ptr(),
+        block_table.data_ptr(),
+        seq_idx.data_ptr(),
+        slot_mapping.data_ptr(),
+        query_start.data_ptr(),
+        cache.stride(0),
+        cache.stride(1),
+        cache.stride(2),
+        block_table.stride(0),
+        block_table.shape[1],
+        cache.shape[2],
+        stream_offset,
+        stream_width,
+        5.0**-0.5,
+        conv_out.data_ptr(),
+        _ptr(residual),
+        _ptr(addend),
+        stack.data_ptr(),
+        _ptr(last),
+        queries.data_ptr(),
+        _ptr(norm_weight),
+        ws_comb.data_ptr(),
+        0,
+        out.data_ptr(),
+        stack.stride(0) >> 3,
+        num_tokens,
+        num_stack,
+        num_q,
+        1 if apply_norm else 0,
+        float(eps),
+        float(norm_eps),
+        st,
+    )
+    return out if ok else None
+
+
 def pair_rms_norm_2304(dest: torch.Tensor, message: torch.Tensor) -> torch.Tensor:
     s, t, d = message.shape
     out = message.new_empty((s, t, 2 * d), dtype=torch.bfloat16)
@@ -796,6 +1030,147 @@ def blend_rms_norm_2304(
         norm_eps,
         _stream(message.device),
     )
+    return out
+
+
+def fast_blend_r6_2304(
+    down: torch.Tensor,
+    up: torch.Tensor,
+    dest: torch.Tensor,
+    message: torch.Tensor,
+    norm_weight: torch.Tensor,
+    norm_eps: float,
+) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_sm80_fast_blend_r6"):
+        return None
+    s, t, d = message.shape
+    if (
+        d != 2304
+        or not (1 <= t <= 64)
+        or not (1 <= s <= 3)
+        or down.shape != (s, 64, 4608)
+        or up.shape != (s, 4608, 64)
+        or dest.dtype != torch.float32
+        or message.dtype != torch.float32
+        or down.dtype != torch.bfloat16
+        or up.dtype != torch.bfloat16
+        or norm_weight.dtype != torch.bfloat16
+        or not message.is_contiguous()
+        or not down.is_contiguous()
+        or not up.is_contiguous()
+        or dest.stride(1) != 2304
+        or dest.stride(2) != 1
+        or norm_weight.stride(1) != 1
+    ):
+        return None
+    dev = message.device
+    st = _stream(dev)
+    key = (dev.index or 0, st)
+    ws = _BLEND_R6_WS.get(key)
+    if ws is None:
+        ws = (
+            torch.empty((3 * 64 * 4608,), dtype=torch.bfloat16, device=dev),
+            torch.empty((3 * 64 * 64,), dtype=torch.bfloat16, device=dev),
+            torch.empty((12 * 18 * 64 * 16,), dtype=torch.float32, device=dev),
+            torch.zeros((32,), dtype=torch.int32, device=dev),
+            torch.empty((3 * 64 * 2304,), dtype=torch.float32, device=dev),
+            torch.empty((3 * 64 * 72,), dtype=torch.float32, device=dev),
+            torch.zeros((32,), dtype=torch.int32, device=dev),
+        )
+        _BLEND_R6_WS[key] = ws
+    ws_pair, hidden, ws_down, down_ctrs, ws_x, ws_sq, up_ctrs = ws
+    out = message.new_empty((s, t, d), dtype=torch.bfloat16)
+    from vllm.utils.platform_utils import num_compute_units
+
+    if num_compute_units() <= 80 and hasattr(ext, "launch_sm80_up_blend_r6"):
+        from .nvidia.ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+
+        pair = pair_rms_norm_2304(dest, message)
+        hid = (
+            sm80_bf16_ll_gemm(pair, down)
+            if use_sm80_bf16_ll_gemm(pair, down)
+            else torch.bmm(pair, down.transpose(1, 2))
+        )
+        ext.launch_sm80_up_blend_r6(
+            hid.data_ptr(),
+            up.data_ptr(),
+            dest.data_ptr(),
+            message.data_ptr(),
+            norm_weight.data_ptr(),
+            ws_x.data_ptr(),
+            out.data_ptr(),
+            up.stride(0),
+            dest.stride(0),
+            norm_weight.stride(0),
+            s,
+            t,
+            float(norm_eps),
+            st,
+        )
+        return out
+    ext.launch_sm80_fast_blend_r6(
+        down.data_ptr(),
+        up.data_ptr(),
+        dest.data_ptr(),
+        message.data_ptr(),
+        norm_weight.data_ptr(),
+        ws_pair.data_ptr(),
+        hidden.data_ptr(),
+        ws_down.data_ptr(),
+        down_ctrs.data_ptr(),
+        ws_x.data_ptr(),
+        ws_sq.data_ptr(),
+        up_ctrs.data_ptr(),
+        out.data_ptr(),
+        down.stride(0),
+        up.stride(0),
+        dest.stride(0),
+        norm_weight.stride(0),
+        s,
+        t,
+        float(norm_eps),
+        1,
+        st,
+    )
+    return out
+
+
+def bank_attn_res_r6_2304(
+    bank: torch.Tensor,
+    queries: torch.Tensor,
+    eps: float = 1e-6,
+    q_per_cta: int = 0,
+) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_bank_attn_res_2304_r6"):
+        return None
+    if (
+        bank.ndim != 3
+        or bank.shape[0] != 2
+        or bank.shape[2] != 2304
+        or queries.shape != (4, 2304)
+        or bank.dtype != torch.bfloat16
+        or queries.dtype != torch.float32
+        or bank.stride(1) != 2304
+        or bank.stride(2) != 1
+        or (bank.stride(0) & 7) != 0
+        or not queries.is_contiguous()
+    ):
+        return None
+    t = bank.shape[1]
+    out = torch.empty((4, t, 2304), dtype=torch.float32, device=bank.device)
+    if t > 0:
+        ext.launch_bank_attn_res_2304_r6(
+            bank.data_ptr(),
+            queries.data_ptr(),
+            out.data_ptr(),
+            bank.stride(0) >> 3,
+            t,
+            float(eps),
+            int(q_per_cta),
+            _stream(bank.device),
+        )
     return out
 
 
@@ -1018,6 +1393,69 @@ def markov_fold_softcap_r1(
         _stream(latent.device),
     )
     return out
+
+
+def select_and_align_r6_128(
+    x: torch.Tensor,
+    gate_weight: torch.Tensor,
+    bias: torch.Tensor,
+    expert_bounds: torch.Tensor,
+    route_scale: float,
+    block_size: int = 8,
+    is_padding: torch.Tensor | None = None,
+    mode: int = 0,
+):
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_select_and_align_r6_128_sm80"):
+        return None
+    t = x.shape[0]
+    n = t * 8
+    max_pad = (
+        min(n * block_size, n + 128 * (block_size - 1))
+        if n < 128
+        else n + 128 * (block_size - 1)
+    )
+    n_blocks = (max_pad + block_size - 1) // block_size
+    dev = x.device
+    st = _stream(dev)
+    key = (dev.index or 0, st)
+    bufs = _SAMMA_WS.get(key)
+    if bufs is None:
+        bufs = (
+            torch.empty((9 * 16 * 128,), dtype=torch.float32, device=dev),
+            torch.zeros((1,), dtype=torch.int32, device=dev),
+        )
+        _SAMMA_WS[key] = bufs
+    ws_partials, ctr = bufs
+    ids = torch.empty((t, 8), dtype=torch.int32, device=dev)
+    weights = torch.empty((n,), dtype=torch.float32, device=dev)
+    src2dst = torch.empty((n,), dtype=torch.int32, device=dev)
+    sorted_ids = torch.empty((max_pad,), dtype=torch.int32, device=dev)
+    expert_ids = torch.empty((n_blocks,), dtype=torch.int32, device=dev)
+    num_post_pad = torch.empty((1,), dtype=torch.int32, device=dev)
+    ext.launch_select_and_align_r6_128_sm80(
+        x.data_ptr(),
+        gate_weight.data_ptr(),
+        bias.data_ptr(),
+        expert_bounds.data_ptr(),
+        _ptr(is_padding),
+        ws_partials.data_ptr(),
+        ctr.data_ptr(),
+        ids.data_ptr(),
+        weights.data_ptr(),
+        src2dst.data_ptr(),
+        sorted_ids.data_ptr(),
+        expert_ids.data_ptr(),
+        num_post_pad.data_ptr(),
+        t,
+        block_size,
+        max_pad,
+        n_blocks,
+        float(route_scale),
+        int(mode),
+        st,
+    )
+    return ids, weights, src2dst, sorted_ids, expert_ids, num_post_pad
 
 
 def select_and_align_32cta_128(

@@ -30,9 +30,9 @@ if [ ! -f "$MDIR/config.json" ]; then
   exit 1
 fi
 
-# Build SM80 Round-5 Best package + libsm80_fast_v6.so inside the pinned container if not yet staged
-if [ ! -f "$PATCH_DST/libsm80_fast_v6.so" ]; then
-  bash "$EXP_DIR/patches/install-sm80-r5.sh" "$PATCH_DST"
+# Build SM80 Round-6 Best package + libsm80_fast_v6.so + libsm80_r6_ext.so inside the pinned container if not yet staged
+if [ ! -f "$PATCH_DST/libsm80_fast_v6.so" ] || [ ! -f "$PATCH_DST/libsm80_r6_ext.so" ]; then
+  bash "$EXP_DIR/patches/install-sm80-r6.sh" "$PATCH_DST"
 fi
 
 mkdir -p "$WORK_DIR/cache"/{hf,vllm,triton,inductor,torch_compile,humming}

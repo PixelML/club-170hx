@@ -18,6 +18,7 @@ from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
     moe_align_block_size as _default_moe_align_block_size,
 )
 from vllm.triton_utils import tl, triton
+from vllm.utils.platform_utils import num_compute_units
 
 from . import is_sm80
 from .activation import _situ
@@ -240,15 +241,17 @@ class HummingExperts:
             # whose order (and so the result) changes from run to run.
             for _, _, kernel_config in tuning:
                 kernel_config["use_stream_k"] = False
-            # SM80 CMP 170HX (74 SMs, 140 W) Round-5 0-ULP Cold-HBM Overrides
+            # SM80 CMP 170HX / A100 Round-5/6 0-ULP Cold-HBM Overrides
             if is_sm80():
-                def _mk_cfg(b_sh, w_sh, stg, cta, evict=False):
+                sm_count = num_compute_units()
+
+                def _mk_cfg(b_sh, w_sh, stg, cta, evict=False, _sms=sm_count):
                     return {
                         "block_shape": b_sh,
                         "warp_shape": w_sh,
                         "use_stream_k": False,
                         "use_f16_accum": False,
-                        "num_sms": 74,
+                        "num_sms": _sms,
                         "num_stages": stg,
                         "num_ctas_per_sm": cta,
                         "output_chunk_rows": 0,

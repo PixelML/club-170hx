@@ -7,7 +7,7 @@ import torch
 
 from vllm.platforms import current_platform
 
-from vllm.models.inkling2.sm80_ops_v2 import conv_mix_2304
+from . import is_sm80
 from .attn_res import attn_res
 from .sconv import short_conv
 from .seq_parallel import SeqParallel
@@ -36,6 +36,7 @@ def conv_mix(
     sp: SeqParallel | None = None,
     halo: int = 0,
     prefix_align: int = 0,
+    src2dst: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """`short_conv` the reduced bf16 `x` into `conv_out` (with the
     optional `(residual + addend) + y` update), then `attn_res` over
@@ -53,6 +54,45 @@ def conv_mix(
     """
     num_tokens, d = conv_out.shape
     assert num_tokens > 0 and conv_out.is_contiguous()
+    if src2dst is not None:
+        if (
+            is_sm80()
+            and sp is None
+            and halo == 0
+            and x.dim() == 2
+            and x.shape[1] == d
+            and x.dtype == torch.bfloat16
+            and positions.shape[0] == num_tokens
+        ):
+            from ...sm80_ops_v2 import combine_conv_mix_2304
+
+            fused_ccm = combine_conv_mix_2304(
+                x,
+                src2dst,
+                conv_weight,
+                cache,
+                positions,
+                block_table,
+                seq_idx,
+                slot_mapping,
+                query_start,
+                stream_offset,
+                stream_width,
+                conv_out,
+                residual,
+                addend,
+                stack,
+                last,
+                queries,
+                norm_weight,
+                norm_eps,
+                eps,
+            )
+            if fused_ccm is not None:
+                return fused_ccm
+        from .moe import combine
+
+        x = combine(x, src2dst, src2dst.numel() // num_tokens, x.dtype)
     assert x.shape[-2:] == (halo + num_tokens, d)
     assert x.stride(-1) == 1 and x.stride(-2) == d
     assert x.dtype == torch.bfloat16
@@ -90,8 +130,12 @@ def conv_mix(
     )
     if sp is None:
         assert halo == 0 and positions.shape[0] == num_tokens and x.dim() == 2
-        if current_platform.is_device_capability_family(120) or not current_platform.has_device_capability(90):  # sm80 patch
-            if not current_platform.has_device_capability(90):
+        if current_platform.is_device_capability_family(120) or is_sm80():
+            # Native conv/mix kernels require Hopper or SM10x. Keep the
+            # loop executor's cache writes and residual rounding on SM12x/SM8x.
+            if is_sm80():
+                from ...sm80_ops_v2 import conv_mix_2304
+
                 fused_sm80 = conv_mix_2304(
                     x,
                     conv_weight,

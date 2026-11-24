@@ -25,6 +25,7 @@ from .ops.allreduce import Inkling2AllReduceWorkspace, all_reduce_conv_mix
 from .ops.conv_mix import conv_mix as fused_conv_mix
 from .ops.linear import linear_k_groups
 from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+from .ops.ll_gemm_sm120 import sm12x_bf16_ll_gemm, use_sm12x_bf16_ll_gemm
 from .ops.sconv import short_conv
 from .ops.seq_parallel import SeqParallel
 
@@ -105,6 +106,8 @@ class Inkling2ShortConv(nn.Module):
             4,
         ):
             return linear_k_groups(x.contiguous(), self.weight_proj, x.dtype)
+        if use_sm12x_bf16_ll_gemm(x, self.weight_proj):
+            return sm12x_bf16_ll_gemm(x, self.weight_proj)
         if use_sm80_bf16_ll_gemm(x, self.weight_proj):
             return sm80_bf16_ll_gemm(x, self.weight_proj)
         return nn.functional.linear(x, self.weight_proj)
@@ -163,6 +166,7 @@ class Inkling2ShortConv(nn.Module):
         halo: int = 0,
         prefix_align: int = 0,
         owner: InklingConvState | None = None,
+        src2dst: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Convolve the reduced `x` into `out` like `forward` and return
         the AttnRes mixes of `[*stack, (last +) out]` with `queries`
@@ -201,6 +205,7 @@ class Inkling2ShortConv(nn.Module):
             sp=sp,
             halo=halo,
             prefix_align=prefix_align,
+            src2dst=src2dst,
         )
 
     def all_reduce_mix(

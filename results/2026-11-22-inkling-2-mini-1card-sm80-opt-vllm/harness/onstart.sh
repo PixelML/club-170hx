@@ -60,8 +60,8 @@ fi
 
 if [ -d "$CONTAINER_PKG" ]; then
   # Mode A: Inside the vllm/vllm-openai container (e.g. Vast.ai / RunPod)
-  echo "[onstart] Detected container environment; installing SM80 Round-5 Best stack + compiling libsm80_fast_v6.so..."
-  bash "$EXP_DIR/patches/install-sm80-r5.sh" "$CONTAINER_PKG"
+  echo "[onstart] Detected container environment; installing SM80 Round-6 Best stack + compiling libsm80_fast_v6.so + libsm80_r6_ext.so..."
+  bash "$EXP_DIR/patches/install-sm80-r6.sh" "$CONTAINER_PKG"
 
   if [ ! -L /root/.humming ]; then
     cp -rn /root/.humming/* "$WORK_DIR/cache/humming/" 2>/dev/null || true

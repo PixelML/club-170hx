@@ -50,9 +50,11 @@ from .ops.dspark import (
     qk_norm_rope_,
     rope_,
     silu_and_mul,
+    sm80_mix_rmsnorm_4x,
 )
 from .ops.linear import linear
 from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+from .ops.norm import rsqrt as _rsqrt
 from .ops.sconv import _fp32_to_e4m3fn_u8
 
 
@@ -91,6 +93,171 @@ def _dspark_write_kv_kernel(
     else:
         _tl.store(KC + dst, kv_k, mask=valid)
         _tl.store(VC + dst, kv_v, mask=valid)
+
+
+@_triton.jit
+def _k_norm_rope_write_kv_kernel(
+    KV,
+    K_WEIGHT,
+    COS_SIN,
+    POS,
+    KC,
+    VC,
+    Slots,
+    kv_stride,
+    kv_size,
+    kc_sb,
+    kc_so,
+    kc_sh,
+    BS: _tl.constexpr,
+    D: _tl.constexpr,
+    EPS: _tl.constexpr,
+):
+    t = _tl.program_id(0).to(_tl.int64)
+    h = _tl.program_id(1).to(_tl.int64)
+    slot = _tl.load(Slots + t).to(_tl.int64)
+    if slot < 0:
+        return
+    pos = _tl.load(POS + t).to(_tl.int64)
+    HALF: _tl.constexpr = D // 2
+    half_ar = _tl.arange(0, HALF)
+    d_ar = _tl.arange(0, D)
+    cos = _tl.load(COS_SIN + pos * D + half_ar).to(_tl.float32)
+    sin = _tl.load(COS_SIN + pos * D + HALF + half_ar).to(_tl.float32)
+
+    k_ptr = KV + t * kv_stride + h * D
+    k_full = _tl.load(k_ptr + d_ar).to(_tl.float32)
+    ms = _tl.sum(k_full * k_full, 0) / D
+    inv = 1.0 / _tl.sqrt(ms + EPS)
+    k1 = _tl.load(k_ptr + half_ar).to(_tl.float32)
+    k2 = _tl.load(k_ptr + HALF + half_ar).to(_tl.float32)
+    w1 = _tl.load(K_WEIGHT + half_ar).to(_tl.float32)
+    w2 = _tl.load(K_WEIGHT + HALF + half_ar).to(_tl.float32)
+    x1 = (k1 * inv * w1).to(_tl.bfloat16).to(_tl.float32)
+    x2 = (k2 * inv * w2).to(_tl.bfloat16).to(_tl.float32)
+    o1 = x1 * cos - x2 * sin
+    o2 = x2 * cos + x1 * sin
+
+    v_ptr = KV + t * kv_stride + kv_size + h * D
+    v1 = _tl.load(v_ptr + half_ar)
+    v2 = _tl.load(v_ptr + HALF + half_ar)
+
+    blk = slot // BS
+    off = slot % BS
+    dst = blk * kc_sb + off * kc_so + h * kc_sh
+    if KC.dtype.element_ty == _tl.uint8:
+        _tl.store(KC + dst + half_ar, _fp32_to_e4m3fn_u8(o1.to(_tl.bfloat16).to(_tl.float32)))
+        _tl.store(KC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(o2.to(_tl.bfloat16).to(_tl.float32)))
+        _tl.store(VC + dst + half_ar, _fp32_to_e4m3fn_u8(v1.to(_tl.float32)))
+        _tl.store(VC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(v2.to(_tl.float32)))
+    else:
+        _tl.store(KC + dst + half_ar, o1.to(_tl.bfloat16))
+        _tl.store(KC + dst + HALF + half_ar, o2.to(_tl.bfloat16))
+        _tl.store(VC + dst + half_ar, v1)
+        _tl.store(VC + dst + HALF + half_ar, v2)
+
+
+@_triton.jit
+def _qk_norm_rope_write_kv_kernel(
+    QKV,
+    Q_WEIGHT,
+    K_WEIGHT,
+    COS_SIN,
+    POS,
+    KC,
+    VC,
+    Slots,
+    qkv_stride,
+    q_size,
+    kv_size,
+    kc_sb,
+    kc_so,
+    kc_sh,
+    BS: _tl.constexpr,
+    NHQ: _tl.constexpr,
+    D: _tl.constexpr,
+    EPS: _tl.constexpr,
+):
+    t = _tl.program_id(0).to(_tl.int64)
+    h = _tl.program_id(1)
+    pos = _tl.load(POS + t).to(_tl.int64)
+    HALF: _tl.constexpr = D // 2
+    half_ar = _tl.arange(0, HALF)
+    d_ar = _tl.arange(0, D)
+    cos = _tl.load(COS_SIN + pos * D + half_ar).to(_tl.float32)
+    sin = _tl.load(COS_SIN + pos * D + HALF + half_ar).to(_tl.float32)
+
+    is_q = h < NHQ
+    col0 = _tl.where(is_q, h * D, q_size + (h - NHQ) * D).to(_tl.int64)
+    row = QKV + t * qkv_stride + col0
+    w_ptr = _tl.where(is_q, Q_WEIGHT.to(_tl.int64), K_WEIGHT.to(_tl.int64)).to(
+        _tl.pointer_type(_tl.bfloat16)
+    )
+    x_full = _tl.load(row + d_ar).to(_tl.float32)
+    ms = _tl.sum(x_full * x_full, 0) / D
+    inv = 1.0 / _tl.sqrt(ms + EPS)
+    x1_in = _tl.load(row + half_ar).to(_tl.float32)
+    x2_in = _tl.load(row + HALF + half_ar).to(_tl.float32)
+    w1 = _tl.load(w_ptr + half_ar).to(_tl.float32)
+    w2 = _tl.load(w_ptr + HALF + half_ar).to(_tl.float32)
+    x1 = (x1_in * inv * w1).to(_tl.bfloat16).to(_tl.float32)
+    x2 = (x2_in * inv * w2).to(_tl.bfloat16).to(_tl.float32)
+    o1 = x1 * cos - x2 * sin
+    o2 = x2 * cos + x1 * sin
+    if is_q:
+        _tl.store(row + half_ar, o1.to(_tl.bfloat16))
+        _tl.store(row + HALF + half_ar, o2.to(_tl.bfloat16))
+    else:
+        slot = _tl.load(Slots + t).to(_tl.int64)
+        if slot >= 0:
+            kh = (h - NHQ).to(_tl.int64)
+            v_ptr = QKV + t * qkv_stride + q_size + kv_size + kh * D
+            v1 = _tl.load(v_ptr + half_ar)
+            v2 = _tl.load(v_ptr + HALF + half_ar)
+            blk = slot // BS
+            off = slot % BS
+            dst = blk * kc_sb + off * kc_so + kh * kc_sh
+            if KC.dtype.element_ty == _tl.uint8:
+                _tl.store(KC + dst + half_ar, _fp32_to_e4m3fn_u8(o1.to(_tl.bfloat16).to(_tl.float32)))
+                _tl.store(KC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(o2.to(_tl.bfloat16).to(_tl.float32)))
+                _tl.store(VC + dst + half_ar, _fp32_to_e4m3fn_u8(v1.to(_tl.float32)))
+                _tl.store(VC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(v2.to(_tl.float32)))
+            else:
+                _tl.store(KC + dst + half_ar, o1.to(_tl.bfloat16))
+                _tl.store(KC + dst + HALF + half_ar, o2.to(_tl.bfloat16))
+                _tl.store(VC + dst + half_ar, v1)
+                _tl.store(VC + dst + HALF + half_ar, v2)
+
+
+@_triton.jit
+def _dspark_embed_block_kernel(
+    IDS,
+    EMBED_W,
+    NORM_W,
+    MASK_EMBED,
+    OUT,
+    ids_s0,
+    ids_s1,
+    embed_s0,
+    BLOCK_SIZE: _tl.constexpr,
+    HIDDEN: _tl.constexpr,
+    BLOCK_H: _tl.constexpr,
+    EPS: _tl.constexpr,
+):
+    b = _tl.program_id(0).to(_tl.int64)
+    p = _tl.program_id(1).to(_tl.int64)
+    h = _tl.arange(0, BLOCK_H)
+    mask = h < HIDDEN
+    out_ptr = OUT + (b * BLOCK_SIZE + p) * HIDDEN + h
+    if p == 0:
+        tok = _tl.load(IDS + b * ids_s0).to(_tl.int64)
+        e = _tl.load(EMBED_W + tok * embed_s0 + h, mask=mask, other=0.0).to(_tl.float32)
+        rstd = _rsqrt(_tl.div_rn(_tl.sum(e * e), HIDDEN) + EPS)
+        nw = _tl.load(NORM_W + h, mask=mask, other=0.0).to(_tl.float32)
+        _tl.store(out_ptr, (e * rstd * nw).to(OUT.dtype.element_ty), mask=mask)
+    else:
+        m = _tl.load(MASK_EMBED + h, mask=mask, other=0.0)
+        _tl.store(out_ptr, m, mask=mask)
 
 
 class _RMSNorm(nn.Module):
@@ -285,28 +452,68 @@ class Inkling2DraftSelfAttention(nn.Module):
         self, positions: torch.Tensor, x: torch.Tensor, cos_sin_cache: torch.Tensor
     ) -> torch.Tensor:
         qkv = linear(x, self.qkv_proj.weight)
-        qk_norm_rope_(
-            qkv,
-            positions,
-            self.q_norm.weight,
-            self.k_norm.weight,
-            cos_sin_cache,
-            self.num_heads,
-            self.num_kv_heads,
-            self.eps,
-        )
-        q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
-        out = q.new_zeros((q.shape[0], self.q_size))
         md = self._metadata()
-        if md is not None:
-            self._write_kv(
-                k.view(-1, self.num_kv_heads, self.head_dim),
-                v.view(-1, self.num_kv_heads, self.head_dim),
-                md.slot_mapping[: q.shape[0]],
-            )
+        sm80_fused = (
+            is_sm80()
+            and md is not None
+            and self.attn.kv_cache.numel() > 0
+            and md.slot_mapping.shape[0] >= qkv.shape[0]
+            and (self.head_dim & (self.head_dim - 1)) == 0
+        )
+        if sm80_fused:
             key_cache, value_cache = self._split_kv_cache()
+            if qkv.shape[0]:
+                _qk_norm_rope_write_kv_kernel[
+                    (qkv.shape[0], self.num_heads + self.num_kv_heads)
+                ](
+                    qkv,
+                    self.q_norm.weight,
+                    self.k_norm.weight,
+                    cos_sin_cache,
+                    positions,
+                    key_cache,
+                    value_cache,
+                    md.slot_mapping[: qkv.shape[0]],
+                    qkv.stride(0),
+                    self.q_size,
+                    self.kv_size,
+                    key_cache.stride(0),
+                    key_cache.stride(1),
+                    key_cache.stride(2),
+                    BS=key_cache.shape[1],
+                    NHQ=self.num_heads,
+                    D=self.head_dim,
+                    EPS=self.eps,
+                    num_warps=4,
+                )
+            q = qkv[:, : self.q_size]
+        else:
+            qk_norm_rope_(
+                qkv,
+                positions,
+                self.q_norm.weight,
+                self.k_norm.weight,
+                cos_sin_cache,
+                self.num_heads,
+                self.num_kv_heads,
+                self.eps,
+            )
+            q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+            if md is not None:
+                self._write_kv(
+                    k.view(-1, self.num_kv_heads, self.head_dim),
+                    v.view(-1, self.num_kv_heads, self.head_dim),
+                    md.slot_mapping[: q.shape[0]],
+                )
+                key_cache, value_cache = self._split_kv_cache()
+        if md is not None:
             num_reqs = min(q.shape[0] // self.block, md.seq_lens.shape[0])
             num_tokens = num_reqs * self.block
+            out = (
+                q.new_empty((q.shape[0], self.q_size))
+                if num_tokens == q.shape[0]
+                else q.new_zeros((q.shape[0], self.q_size))
+            )
             # The plan's 0 (FA4, for very large target batches) is one split
             # here.
             num_splits = max(
@@ -332,6 +539,8 @@ class Inkling2DraftSelfAttention(nn.Module):
                 window=self.window,
                 num_splits=num_splits,
             )
+        else:
+            out = q.new_zeros((q.shape[0], self.q_size))
         return linear(out, self.o_proj.weight)
 
     def store_context_kv(
@@ -341,9 +550,8 @@ class Inkling2DraftSelfAttention(nn.Module):
         cos_sin_cache: torch.Tensor,
         slot_mapping: torch.Tensor | None,
     ) -> None:
-        k, v = linear(context, self.kv_proj_ctx.weight).split(
-            [self.kv_size, self.kv_size], -1
-        )
+        kv = linear(context, self.kv_proj_ctx.weight)
+        k, v = kv.split([self.kv_size, self.kv_size], -1)
         k = self.k_norm_ctx(k.reshape(-1, self.head_dim))
         k = k.view(-1, self.num_kv_heads, self.head_dim)
         rope_(k, positions, cos_sin_cache)
@@ -531,6 +739,35 @@ class Inkling2DSparkDecoder(nn.Module):
         assert self.embed_tokens is not None and self.embed_norm is not None
         block = self.config.draft_block_size
         ids = input_ids.view(-1, block)
+        if (
+            is_sm80()
+            and ids.shape[0] > 1
+            and getattr(self.embed_tokens, "tp_size", 1) == 1
+            and hasattr(self.embed_tokens, "weight")
+            and hasattr(self.embed_norm, "weight")
+            and self.embed_tokens.weight.dtype == self.mask_embed.dtype == torch.bfloat16
+        ):
+            num_blocks = ids.shape[0]
+            hidden = self.config.hidden_size
+            out = self.mask_embed.new_empty((num_blocks * block, hidden))
+            if num_blocks:
+                eps = getattr(self.embed_norm, "eps", self.config.rms_norm_eps)
+                _dspark_embed_block_kernel[(num_blocks, block)](
+                    ids,
+                    self.embed_tokens.weight,
+                    self.embed_norm.weight,
+                    self.mask_embed,
+                    out,
+                    ids.stride(0),
+                    ids.stride(1),
+                    self.embed_tokens.weight.stride(0),
+                    BLOCK_SIZE=block,
+                    HIDDEN=hidden,
+                    BLOCK_H=_triton.next_power_of_2(hidden),
+                    EPS=eps,
+                    num_warps=8,
+                )
+            return out
         x = self.mask_embed.expand(ids.shape[0], block, -1).clone()
         x[:, 0] = self.embed_norm(self.embed_tokens(ids[:, 0].contiguous()))
         return x.view(-1, self.config.hidden_size)
@@ -647,6 +884,14 @@ class Inkling2DSparkModel(nn.Module):
         self.model.fuse_alpha.copy_(
             torch.softmax(self.model.fuse_weight.float(), dim=-1)
         )
+        ws_list = [layer.dflare_norm.weight for layer in self.model.layers] + [
+            head.dflare_norm.weight
+        ]
+        stacked_ws = torch.stack(ws_list, dim=0)
+        if getattr(self.model, "dflare_ws", None) is None:
+            self.model.dflare_ws = stacked_ws.contiguous()
+        else:
+            self.model.dflare_ws.copy_(stacked_ws)
 
     def get_draft_kv_cache_layer_names(self) -> list[str]:
         return [layer.self_attn.attn.layer_name for layer in self.model.layers]
@@ -661,6 +906,23 @@ class Inkling2DSparkModel(nn.Module):
         context_positions: torch.Tensor,
         context_slot_mappings: list[torch.Tensor | None] | None = None,
     ) -> None:
+        dflare_ws = getattr(self.model, "dflare_ws", None)
+        if is_sm80() and dflare_ws is not None and len(self.model.layers) == 3:
+            contexts, _ = sm80_mix_rmsnorm_4x(
+                context_states,
+                None,
+                self.model.fuse_alpha,
+                dflare_ws,
+                self.config.rms_norm_eps,
+            )
+            for i, layer in enumerate(self.model.layers):
+                layer.self_attn.store_context_kv(
+                    contexts[i],
+                    context_positions,
+                    self.model.cos_sin_cache,
+                    None if context_slot_mappings is None else context_slot_mappings[i],
+                )
+            return
         for i, layer in enumerate(self.model.layers):
             context = self.model.mix(context_states, i, layer.dflare_norm)
             layer.self_attn.store_context_kv(

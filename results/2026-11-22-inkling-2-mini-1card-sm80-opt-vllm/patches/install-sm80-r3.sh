@@ -85,12 +85,15 @@ done < <(grep -rlZ -E 'gdc_wait|gdc_launch_dependents|launch_pdl=True' "$STAGE" 
 sed -i 's/from vllm.model_executor.layers.fused_moe.moe_align_block_size import (/from vllm.models.inkling2.sm80_moe_align import (  # sm80 patch/' \
   "$STAGE/nvidia/ops/moe_humming.py"
 
-# 2. Overlay Round-5 Python modules + sm80_fast_v6.cu
+# 2. Overlay Round-6 Python modules + sm80_fast_v6.cu + sm80_r6_ext.cu
 cp -a "$SCRIPT_DIR/overlay/." "$STAGE/"
 cp -f "$SCRIPT_DIR/sm80_fast_v6.cu" "$STAGE/sm80_fast_v6.cu"
+if [ -f "$SCRIPT_DIR/sm80_r6_ext.cu" ]; then
+  cp -f "$SCRIPT_DIR/sm80_r6_ext.cu" "$STAGE/sm80_r6_ext.cu"
+fi
 find "$STAGE" \( -name "__pycache__" -o -name "*.pyc" \) -exec rm -rf {} +
 
-# 3. Compile standalone libsm80_fast_v6.so for sm_80 (container lacks <cusparse.h>, so compile directly via nvcc + ctypes)
+# 3. Compile standalone libsm80_fast_v6.so + libsm80_r6_ext.so for sm_80 (container lacks <cusparse.h>, so compile directly via nvcc + ctypes)
 NVCC_BIN="${NVCC:-}"
 if [ -z "$NVCC_BIN" ]; then
   if command -v nvcc >/dev/null 2>&1; then
@@ -102,16 +105,20 @@ fi
 
 if [ "${SKIP_NVCC:-0}" != "1" ]; then
   if [ -n "$NVCC_BIN" ]; then
-    echo "[install-sm80-r5] Compiling libsm80_fast_v6.so with $NVCC_BIN (-O3 -arch=sm_80)..."
+    echo "[install-sm80-r6] Compiling libsm80_fast_v6.so + libsm80_r6_ext.so with $NVCC_BIN (-O3 -arch=sm_80)..."
     "$NVCC_BIN" -O3 -arch=sm_80 --shared -Xcompiler -fPIC \
       "$STAGE/sm80_fast_v6.cu" -o "$STAGE/libsm80_fast_v6.so"
+    if [ -f "$STAGE/sm80_r6_ext.cu" ]; then
+      "$NVCC_BIN" -O3 -arch=sm_80 --shared -Xcompiler -fPIC \
+        "$STAGE/sm80_r6_ext.cu" -o "$STAGE/libsm80_r6_ext.so"
+    fi
   elif command -v docker >/dev/null 2>&1; then
-    echo "[install-sm80-r5] Compiling libsm80_fast_v6.so inside $IMG ..."
+    echo "[install-sm80-r6] Compiling libsm80_fast_v6.so + libsm80_r6_ext.so inside $IMG ..."
     docker run --rm --entrypoint bash \
       -v "$STAGE:/stage" \
-      "$IMG" -c "/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC /stage/sm80_fast_v6.cu -o /stage/libsm80_fast_v6.so"
+      "$IMG" -c "/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC /stage/sm80_fast_v6.cu -o /stage/libsm80_fast_v6.so && if [ -f /stage/sm80_r6_ext.cu ]; then /usr/local/cuda/bin/nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC /stage/sm80_r6_ext.cu -o /stage/libsm80_r6_ext.so; fi"
   else
-    echo "WARNING: nvcc not found; sm80_fast_v6.cu staged without libsm80_fast_v6.so (compile inside container before serving)." >&2
+    echo "WARNING: nvcc not found; sm80_fast_v6.cu / sm80_r6_ext.cu staged without .so (compile inside container before serving)." >&2
   fi
 fi
 
