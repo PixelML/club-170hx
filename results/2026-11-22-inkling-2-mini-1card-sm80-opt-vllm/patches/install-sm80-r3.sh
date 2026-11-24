@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # install-sm80-r3.sh [DEST_DIR] [BASE_INKLING2_DIR]
 #
-# Builds the Round-4 Best CMP 170HX (sm_80) Inkling-2-Mini package from source (zero .so blobs in git):
+# Builds the Round-5 Best CMP 170HX (sm_80) Inkling-2-Mini package from source (zero .so blobs in git):
 #   1. Starts from vllm/models/inkling2 inside vllm/vllm-openai@sha256:c2dc759f5984f69c1e2418c6af7c26eb756f5ed2a8934c768ae1253645d1449e
 #      (or from an existing PixelML/sm80vllm / vllm checkout >= PR #69028).
 #   2. Applies the baseline SM80 capability + Triton PDL edits across nvidia/ops/*.py.
-#   3. Overlays the Round-1..4 Python modules + sm80_fast_v5.cu (zero-ULP Humming v3 buckets,
+#   3. Overlays the Round-1..5 Python modules + sm80_fast_v6.cu (universal 0-ULP 140W Humming v5 buckets,
 #      ported PR #69168 low-M Tensor Core GEMMs, 49,152-vocab DSpark pruning, zero-scatter
 #      DraftLogitsCache, monolithic M<=21 FULL CUDA graphs, 18-split SM80 decode attention,
-#      and optional unit-scale SM80 E4M3 FP8 KV cache with lossless BF16 DSpark KV).
-#   4. Compiles libsm80_fast_v5.so inside the container (or with local nvcc) via:
-#        nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC sm80_fast_v5.cu -o libsm80_fast_v5.so
+#      slots-safe Sconv metadata deduplication, FA2 vision encoder, and 13-group coalesced
+#      unit-scale SM80 E4M3 FP8 KV cache across Target + DSpark).
+#   4. Compiles libsm80_fast_v6.so inside the container (or with local nvcc) via:
+#        nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC sm80_fast_v6.cu -o libsm80_fast_v6.so
 #      Note: always replaces DEST_DIR via rm -rf + mv so no running process sees a truncated mmap.
 set -euo pipefail
 
@@ -84,12 +85,12 @@ done < <(grep -rlZ -E 'gdc_wait|gdc_launch_dependents|launch_pdl=True' "$STAGE" 
 sed -i 's/from vllm.model_executor.layers.fused_moe.moe_align_block_size import (/from vllm.models.inkling2.sm80_moe_align import (  # sm80 patch/' \
   "$STAGE/nvidia/ops/moe_humming.py"
 
-# 2. Overlay Round-4 Python modules + sm80_fast_v5.cu
+# 2. Overlay Round-5 Python modules + sm80_fast_v6.cu
 cp -a "$SCRIPT_DIR/overlay/." "$STAGE/"
-cp -f "$SCRIPT_DIR/sm80_fast_v5.cu" "$STAGE/sm80_fast_v5.cu"
+cp -f "$SCRIPT_DIR/sm80_fast_v6.cu" "$STAGE/sm80_fast_v6.cu"
 find "$STAGE" \( -name "__pycache__" -o -name "*.pyc" \) -exec rm -rf {} +
 
-# 3. Compile standalone libsm80_fast_v5.so for sm_80 (container lacks <cusparse.h>, so compile directly via nvcc + ctypes)
+# 3. Compile standalone libsm80_fast_v6.so for sm_80 (container lacks <cusparse.h>, so compile directly via nvcc + ctypes)
 NVCC_BIN="${NVCC:-}"
 if [ -z "$NVCC_BIN" ]; then
   if command -v nvcc >/dev/null 2>&1; then
@@ -101,16 +102,16 @@ fi
 
 if [ "${SKIP_NVCC:-0}" != "1" ]; then
   if [ -n "$NVCC_BIN" ]; then
-    echo "[install-sm80-r4] Compiling libsm80_fast_v5.so with $NVCC_BIN (-O3 -arch=sm_80)..."
+    echo "[install-sm80-r5] Compiling libsm80_fast_v6.so with $NVCC_BIN (-O3 -arch=sm_80)..."
     "$NVCC_BIN" -O3 -arch=sm_80 --shared -Xcompiler -fPIC \
-      "$STAGE/sm80_fast_v5.cu" -o "$STAGE/libsm80_fast_v5.so"
+      "$STAGE/sm80_fast_v6.cu" -o "$STAGE/libsm80_fast_v6.so"
   elif command -v docker >/dev/null 2>&1; then
-    echo "[install-sm80-r4] Compiling libsm80_fast_v5.so inside $IMG ..."
+    echo "[install-sm80-r5] Compiling libsm80_fast_v6.so inside $IMG ..."
     docker run --rm --entrypoint bash \
       -v "$STAGE:/stage" \
-      "$IMG" -c "/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC /stage/sm80_fast_v5.cu -o /stage/libsm80_fast_v5.so"
+      "$IMG" -c "/usr/local/cuda/bin/nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC /stage/sm80_fast_v6.cu -o /stage/libsm80_fast_v6.so"
   else
-    echo "WARNING: nvcc not found; sm80_fast_v5.cu staged without libsm80_fast_v5.so (compile inside container before serving)." >&2
+    echo "WARNING: nvcc not found; sm80_fast_v6.cu staged without libsm80_fast_v6.so (compile inside container before serving)." >&2
   fi
 fi
 

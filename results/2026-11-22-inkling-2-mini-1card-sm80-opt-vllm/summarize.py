@@ -92,9 +92,11 @@ ROUNDS: list[dict] = [
     },
 ]
 
-# Optional Round-4 auto-hook: if receipts/round4-spec.json is dropped in later, append automatically.
+# Optional Round-4 and Round-5 auto-hooks:
 if (R / "round4-spec.json").is_file():
     ROUNDS.append(json.loads((R / "round4-spec.json").read_text(encoding="utf-8")))
+if (R / "round5-spec.json").is_file():
+    ROUNDS.append(json.loads((R / "round5-spec.json").read_text(encoding="utf-8")))
 
 # PR #90 published reference on the +200 MHz SM offset card @ 32K context (for side-by-side context)
 PR90_PUBLISHED_OFFSET_CARD = {

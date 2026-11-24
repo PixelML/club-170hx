@@ -35,6 +35,7 @@ from vllm.model_executor.models.interfaces import (
     MultiModalEmbeddings,
     SupportsEagle3,
     SupportsEncoderCudaGraph,
+    SupportsKVCacheGrouping,
     SupportsLoRA,
     SupportsMultiModal,
 )
@@ -80,7 +81,7 @@ from .vision import Inkling2VisionEncoder, VisionMetadata
 
 
 class Inkling2LogitsProcessor(LogitsProcessor):
-    """Use the low-M projection while preserving vocab gathering and softcaps."""
+    """Use low-M projection for M<=4 prefill parity and cuBLAS for M>=5 decode while preserving vocab gathering and softcaps."""
 
     def _apply_head(self, lm_head, hidden_states, embedding_bias):
         from vllm.model_executor.layers.linear import UnquantizedLinearMethod
@@ -94,7 +95,8 @@ class Inkling2LogitsProcessor(LogitsProcessor):
                 lm_head.quant_method,
                 (UnquantizedEmbeddingMethod, UnquantizedLinearMethod),
             )
-            and hidden_states.shape[0] <= 4 and use_sm80_bf16_ll_gemm(hidden_states, lm_head.weight, embedding_bias)
+            and hidden_states.shape[0] <= 4
+            and use_sm80_bf16_ll_gemm(hidden_states, lm_head.weight, embedding_bias)
         ):
             return sm80_bf16_ll_gemm(
                 hidden_states, lm_head.weight, embedding_bias, out_dtype=torch.float32
@@ -516,8 +518,33 @@ class Inkling2ForConditionalGeneration(
     SupportsMultiModal,
     SupportsEagle3,
     SupportsEncoderCudaGraph,
+    SupportsKVCacheGrouping,
     SupportsLoRA,
 ):
+    @classmethod
+    def get_kv_cache_groups(
+        cls,
+        vllm_config: VllmConfig,
+        layer_configs: dict[str, Any],
+    ) -> list[Any]:
+        import os
+        from vllm.v1.core.kv_cache_planning import (
+            get_kv_cache_groups,
+            unify_kv_cache_spec_page_size,
+        )
+
+        if os.environ.get("VLLM_INKLING2_KV_GROUPING", "0") != "1":
+            return get_kv_cache_groups(vllm_config, layer_configs)
+        draft = {n: c for n, c in layer_configs.items() if c.is_draft}
+        target = {n: c for n, c in layer_configs.items() if not c.is_draft}
+        layout = vllm_config.cache_config.get_resolved_kv_cache_layout()
+        if not draft or not target or layout.is_block_outermost:
+            return get_kv_cache_groups(vllm_config, layer_configs)
+        configs = unify_kv_cache_spec_page_size(target | draft)
+        return get_kv_cache_groups(
+            vllm_config, {n: configs[n] for n in target}
+        ) + get_kv_cache_groups(vllm_config, {n: configs[n] for n in draft})
+
     # LoRA (``lora.py``): adapters use the checkpoint's module names.
     packed_modules_mapping = PACKED_MODULES_MAPPING
     embedding_modules: dict[str, str] = {}

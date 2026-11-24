@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING
 import torch
 
 import vllm.envs as envs
-from vllm.models.inkling2.sm80_ops_v2 import (
-    moe_align_block_size,
-    swiglu_1152,
+from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
+    moe_align_block_size as _default_moe_align_block_size,
 )
 from vllm.triton_utils import tl, triton
 
+from . import is_sm80
 from .activation import _situ
 from .linear import k_group_partials
 from .moe import _load_bias, _local_experts, _select_experts
@@ -141,7 +141,15 @@ def swiglu(
     columns times the routing weights, in bf16, for the local rows (the
     others are left unset)."""
     rows, n = gate_up.shape[0], gate_up.shape[1] // 2
-    if n == 1152 and gate_cap == 4.0 and up_cap == 25.0 and gate_up.is_contiguous():
+    if (
+        is_sm80()
+        and n == 1152
+        and gate_cap == 4.0
+        and up_cap == 25.0
+        and gate_up.is_contiguous()
+    ):
+        from ...sm80_ops_v2 import swiglu_1152
+
         return swiglu_1152(gate_up, weights, src2dst)
     block = 256 if n % 256 == 0 else 128
     assert n % block == 0
@@ -232,9 +240,8 @@ class HummingExperts:
             # whose order (and so the result) changes from run to run.
             for _, _, kernel_config in tuning:
                 kernel_config["use_stream_k"] = False
-            # SM80 CMP 170HX (74 SMs) Round-3 v3 100%-Bitwise-Exact Cold-HBM Overrides
-            from vllm.platforms import current_platform as _plat
-            if not _plat.has_device_capability(90) and _plat.has_device_capability(80):
+            # SM80 CMP 170HX (74 SMs, 140 W) Round-5 0-ULP Cold-HBM Overrides
+            if is_sm80():
                 def _mk_cfg(b_sh, w_sh, stg, cta, evict=False):
                     return {
                         "block_shape": b_sh,
@@ -253,12 +260,13 @@ class HummingExperts:
                         "use_tma_as": False,
                         "use_tma_as2": False,
                     }
-                def _up_cfg(target_r):
-                    for lo, hi, kcfg in tuning:
+
+                def _up_cfg(target_r, _tuning=tuning):
+                    for lo, hi, kcfg in _tuning:
                         eff_hi = hi if hi > 0 else (1 << 30)
                         if lo < target_r <= eff_hi:
                             return kcfg
-                    return tuning[-1][2]
+                    return _tuning[-1][2]
 
                 tiny_b = [x for x in tuning if 0 < x[1] <= 16]
                 c_prefill_2k = _up_cfg(2048)
@@ -266,32 +274,72 @@ class HummingExperts:
                 if nvfp4:
                     if name == "w13":
                         tuning = tiny_b + [
-                            [16, 256, _mk_cfg([8, 256, 64], [8, 32, 64], 4, 2, evict=True)],
-                            [256, 912, _up_cfg(512)],
+                            [
+                                16,
+                                256,
+                                _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3, evict=False),
+                            ],
+                            [
+                                256,
+                                912,
+                                _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True),
+                            ],
                             [912, 4096, c_prefill_2k],
                             [4096, 1 << 30, c_prefill_hi],
                         ]
                     else:
                         tuning = tiny_b + [
-                            [16, 256, _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True)],
-                            [256, 912, _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=False)],
+                            [
+                                16,
+                                256,
+                                _mk_cfg([8, 128, 128], [8, 64, 64], 3, 3, evict=True),
+                            ],
+                            [
+                                256,
+                                912,
+                                _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=False),
+                            ],
                             [912, 4096, c_prefill_2k],
                             [4096, 1 << 30, c_prefill_hi],
                         ]
                 else:
                     if name == "w13":
                         tuning = tiny_b + [
-                            [16, 256, _mk_cfg([8, 64, 128], [8, 32, 64], 4, 2, evict=False)],
-                            [256, 912, _mk_cfg([8, 256, 128], [8, 64, 64], 3, 3, evict=True)],
-                            [912, 2048, _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False)],
+                            [
+                                16,
+                                256,
+                                _mk_cfg([8, 64, 128], [8, 32, 64], 4, 2, evict=False),
+                            ],
+                            [
+                                256,
+                                912,
+                                _mk_cfg([8, 256, 128], [8, 64, 64], 3, 3, evict=True),
+                            ],
+                            [
+                                912,
+                                2048,
+                                _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False),
+                            ],
                             [2048, 8192, c_prefill_2k],
                             [8192, 1 << 30, c_prefill_hi],
                         ]
                     else:
                         tuning = tiny_b + [
-                            [16, 256, _mk_cfg([8, 128, 64], [8, 32, 64], 4, 3, evict=False)],
-                            [256, 912, _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True)],
-                            [912, 2048, _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False)],
+                            [
+                                16,
+                                256,
+                                _mk_cfg([8, 128, 64], [8, 32, 64], 4, 3, evict=False),
+                            ],
+                            [
+                                256,
+                                912,
+                                _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True),
+                            ],
+                            [
+                                912,
+                                2048,
+                                _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False),
+                            ],
                             [2048, 8192, c_prefill_2k],
                             [8192, 1 << 30, c_prefill_hi],
                         ]
@@ -367,11 +415,15 @@ class HummingExperts:
         # Expected local rows, which pick the kernel configs.
         valid_rows = -(-rows * self.num_experts // num_global_experts)
         block_m = {name: self._block_m(name, valid_rows) for name in ("w13", "w2")}
+        if is_sm80():
+            from ...sm80_ops_v2 import moe_align_block_size as align_fn
+        else:
+            align_fn = _default_moe_align_block_size
         alignments = {
             size: (
                 pre_align8
                 if (size == 8 and pre_align8 is not None)
-                else moe_align_block_size(
+                else align_fn(
                     ids, size, self.num_experts, ignore_invalid_experts=True
                 )[:3]
             )

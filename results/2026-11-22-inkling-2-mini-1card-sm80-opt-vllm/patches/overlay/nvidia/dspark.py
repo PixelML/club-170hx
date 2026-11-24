@@ -9,37 +9,6 @@ from collections.abc import Iterable
 from typing import cast
 
 import torch
-
-from vllm.triton_utils import tl as _tl, triton as _triton
-from .ops.sconv import _fp32_to_e4m3fn_u8
-
-
-@_triton.jit
-def _dspark_write_kv_kernel(
-    K, V, KC, VC, Slots,
-    k_st, k_sh, v_st, v_sh, kc_sb, kc_so, kc_sh,
-    BS: _tl.constexpr, H: _tl.constexpr, D: _tl.constexpr,
-):
-    t = _tl.program_id(0)
-    slot = _tl.load(Slots + t).to(_tl.int64)
-    valid = slot >= 0
-    safe_slot = _tl.maximum(slot, 0)
-    blk = safe_slot // BS
-    off = safe_slot % BS
-    h = _tl.arange(0, H)[:, None]
-    d = _tl.arange(0, D)[None, :]
-    kv_k = _tl.load(K + t * k_st + h * k_sh + d, mask=valid, other=0.0)
-    kv_v = _tl.load(V + t * v_st + v_sh * h + d, mask=valid, other=0.0)
-    dst = blk * kc_sb + off * kc_so + h * kc_sh + d
-    if KC.dtype.element_ty == _tl.uint8:
-        _tl.store(KC + dst, _fp32_to_e4m3fn_u8(kv_k.to(_tl.float32)), mask=valid)
-        _tl.store(VC + dst, _fp32_to_e4m3fn_u8(kv_v.to(_tl.float32)), mask=valid)
-    else:
-        _tl.store(KC + dst, kv_k, mask=valid)
-        _tl.store(VC + dst, kv_v, mask=valid)
-
-
-from vllm.platforms import current_platform
 from torch import nn
 
 from vllm.config import VllmConfig, get_current_vllm_config
@@ -59,6 +28,9 @@ from vllm.model_executor.layers.linear import (
 )
 from vllm.model_executor.layers.rotary_embedding import get_rope
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+from vllm.platforms import current_platform
+from vllm.triton_utils import tl as _tl
+from vllm.triton_utils import triton as _triton
 from vllm.utils.torch_utils import canonicalize_singleton_dim_strides
 from vllm.v1.attention.backends.flash_attn import (
     FlashAttentionBackend,
@@ -69,8 +41,8 @@ from vllm.v1.worker.gpu.sample.greedy_argmax import greedy_argmax
 
 from ..configs import Inkling2DSparkConfig
 from ..speculator_config import Inkling2DSparkSpeculatorConfig
+from .ops import is_sm80
 from .ops.attention import block_decode_attention, plan_decode_attention
-from vllm.models.inkling2.sm80_ops_v2 import markov_fold_softcap_r1, markov_rnn_gate_256
 from .ops.dspark import (
     add_softcap,
     markov_gate,
@@ -81,6 +53,44 @@ from .ops.dspark import (
 )
 from .ops.linear import linear
 from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+from .ops.sconv import _fp32_to_e4m3fn_u8
+
+
+@_triton.jit
+def _dspark_write_kv_kernel(
+    K,
+    V,
+    KC,
+    VC,
+    Slots,
+    k_st,
+    k_sh,
+    v_st,
+    v_sh,
+    kc_sb,
+    kc_so,
+    kc_sh,
+    BS: _tl.constexpr,
+    H: _tl.constexpr,
+    D: _tl.constexpr,
+):
+    t = _tl.program_id(0)
+    slot = _tl.load(Slots + t).to(_tl.int64)
+    valid = slot >= 0
+    safe_slot = _tl.maximum(slot, 0)
+    blk = safe_slot // BS
+    off = safe_slot % BS
+    h = _tl.arange(0, H)[:, None]
+    d = _tl.arange(0, D)[None, :]
+    kv_k = _tl.load(K + t * k_st + h * k_sh + d, mask=valid, other=0.0)
+    kv_v = _tl.load(V + t * v_st + h * v_sh + d, mask=valid, other=0.0)
+    dst = blk * kc_sb + off * kc_so + h * kc_sh + d
+    if KC.dtype.element_ty == _tl.uint8:
+        _tl.store(KC + dst, _fp32_to_e4m3fn_u8(kv_k.to(_tl.float32)), mask=valid)
+        _tl.store(VC + dst, _fp32_to_e4m3fn_u8(kv_v.to(_tl.float32)), mask=valid)
+    else:
+        _tl.store(KC + dst, kv_k, mask=valid)
+        _tl.store(VC + dst, kv_v, mask=valid)
 
 
 class _RMSNorm(nn.Module):
@@ -206,6 +216,13 @@ class Inkling2DraftSelfAttention(nn.Module):
         self.window = config.sliding_window_size + self.block if is_local else 0
         vllm_config = get_current_vllm_config()
         self.fp8_kv = vllm_config.cache_config.cache_dtype in ("fp8", "fp8_e4m3")
+        if is_sm80() and self.fp8_kv:
+            from vllm.utils.torch_utils import kv_cache_dtype_str_to_dtype
+
+            self.attn.kv_cache_dtype = vllm_config.cache_config.cache_dtype
+            self.attn.kv_cache_torch_dtype = kv_cache_dtype_str_to_dtype(
+                vllm_config.cache_config.cache_dtype, vllm_config.model_config
+            )
         max_num_seqs = vllm_config.scheduler_config.max_num_seqs
         self.register_buffer(
             "cu_seqlens_q",
@@ -215,8 +232,12 @@ class Inkling2DraftSelfAttention(nn.Module):
 
     def _split_kv_cache(self) -> tuple[torch.Tensor, torch.Tensor]:
         kv = self.attn.kv_cache
-        if kv.element_size() == 1 and not current_platform.has_device_capability(89):
-            kv = kv.view(torch.uint8)
+        if kv.element_size() == 1:
+            kv = kv.view(
+                torch.float8_e4m3fn
+                if current_platform.has_device_capability(89)
+                else torch.uint8
+            )
         return kv.transpose(1, 2).split(self.head_dim, dim=-1)
 
     def _metadata(self) -> FlashAttentionMetadata | None:
@@ -228,7 +249,7 @@ class Inkling2DraftSelfAttention(nn.Module):
     def _write_kv(
         self, k: torch.Tensor, v: torch.Tensor, slot_mapping: torch.Tensor
     ) -> None:
-        if not current_platform.has_device_capability(90):  # sm80 patch: fused Triton KV write
+        if is_sm80():
             kv = self.attn.kv_cache
             n = slot_mapping.shape[0]
             if kv.numel() == 0 or n == 0:
@@ -239,10 +260,22 @@ class Inkling2DraftSelfAttention(nn.Module):
             kv_k = k.reshape(-1, heads, hd)
             kv_v = v.reshape(-1, heads, hd)
             _dspark_write_kv_kernel[(n,)](
-                kv_k, kv_v, key_cache, value_cache, slot_mapping,
-                kv_k.stride(0), kv_k.stride(1), kv_v.stride(0), kv_v.stride(1),
-                key_cache.stride(0), key_cache.stride(1), key_cache.stride(2),
-                BS=key_cache.shape[1], H=heads, D=hd, num_warps=4,
+                kv_k,
+                kv_v,
+                key_cache,
+                value_cache,
+                slot_mapping,
+                kv_k.stride(0),
+                kv_k.stride(1),
+                kv_v.stride(0),
+                kv_v.stride(1),
+                key_cache.stride(0),
+                key_cache.stride(1),
+                key_cache.stride(2),
+                BS=key_cache.shape[1],
+                H=heads,
+                D=hd,
+                num_warps=4,
             )
             return
         impl = cast(FlashAttentionImpl, self.attn.impl)
@@ -434,12 +467,21 @@ class Inkling2MarkovHead(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """One recurrence step; returns the new state and the TP-local bias."""
         assert self.fold_weight is not None and self.fold_bias is not None
-        if self.markov_rank == 256 and self.rnn_w_step is not None and state.dtype == torch.bfloat16:
+        if (
+            is_sm80()
+            and self.markov_rank == 256
+            and self.rnn_w_step is not None
+            and state.dtype == torch.bfloat16
+        ):
+            from ..sm80_ops_v2 import markov_rnn_gate_256
+
             state, latent = markov_rnn_gate_256(
                 state, prev_tokens, self.markov_w1.weight, context, self.rnn_w_step
             )
             if use_sm80_bf16_ll_gemm(latent, self.fold_weight, self.fold_bias):
-                return state, sm80_bf16_ll_gemm(latent, self.fold_weight, self.fold_bias)
+                return state, sm80_bf16_ll_gemm(
+                    latent, self.fold_weight, self.fold_bias
+                )
             return state, torch.addmm(self.fold_bias, latent, self.fold_weight.T)
         inputs = torch.cat([state, self.markov_w1(prev_tokens)], dim=-1)
         weight = self.rnn_proj.weight[:, : 2 * self.markov_rank]
@@ -529,15 +571,14 @@ class Inkling2DSparkModel(nn.Module):
         assert isinstance(config, Inkling2DSparkConfig)
         num_spec = vllm_config.speculative_config.num_speculative_tokens
         if not (1 <= num_spec <= config.draft_block_size - 1):
-            raise ValueError(f'Invalid num_spec={num_spec}')
+            raise ValueError(
+                "Inkling2 DSpark requires 1 <= num_speculative_tokens <= "
+                f"{config.draft_block_size - 1} (the checkpoint's block size - 1), "
+                f"got {num_spec}"
+            )
         if config.draft_block_size != num_spec + 1:
             config.draft_block_size = num_spec + 1
             config.dspark_block_size = num_spec
-        if False:
-            raise ValueError(
-                "Inkling2 DSpark requires num_speculative_tokens = "
-                f"{config.draft_block_size - 1} (the checkpoint's block size - 1)"
-            )
         if vllm_config.model_config.max_model_len > config.max_position_embeddings:
             raise ValueError(
                 "Inkling2 DSpark drafts up to max_position_embeddings="
@@ -561,15 +602,23 @@ class Inkling2DSparkModel(nn.Module):
         head.rnn_bias = torch.empty_like(head.rnn_proj.bias, dtype=torch.float32)
         self.keep_ids: torch.Tensor | None = None
         self.pruned_lm_weight: torch.Tensor | None = None
-        K = 49152
-        if get_tensor_model_parallel_world_size() == 1 and self.config.vocab_size > K:
+        pruned_vocab = 49152
+        if (
+            is_sm80()
+            and get_tensor_model_parallel_world_size() == 1
+            and self.config.vocab_size > pruned_vocab
+        ):
             v_unpadded = self.config.vocab_size
             norms = head.markov_w1.weight[:v_unpadded].float().norm(dim=-1)
             norms[:256] = float("inf")
             norms[199998:v_unpadded] = float("inf")
-            self.keep_ids = torch.topk(norms, K, largest=True).indices.sort().values.to(torch.int64)
+            self.keep_ids = (
+                torch.topk(norms, pruned_vocab, largest=True)
+                .indices.sort()
+                .values.to(torch.int64)
+            )
             self.pruned_lm_weight = torch.empty(
-                (K, self.config.hidden_size),
+                (pruned_vocab, self.config.hidden_size),
                 dtype=torch.bfloat16,
                 device=self.lm_head.weight.device,
             )
@@ -584,12 +633,17 @@ class Inkling2DSparkModel(nn.Module):
         head = self.model.markov_head
         assert head.rnn_bias is not None
         if self.keep_ids is not None and self.pruned_lm_weight is not None:
-            self.pruned_lm_weight.copy_(self.lm_head.weight.index_select(0, self.keep_ids))
+            self.pruned_lm_weight.copy_(
+                self.lm_head.weight.index_select(0, self.keep_ids)
+            )
             head.fold(self.pruned_lm_weight)
         else:
             head.fold(self.lm_head.weight)
         head.rnn_bias.copy_(head.rnn_proj.bias)
-        head.rnn_w_step = head.rnn_proj.weight[:, : 2 * head.markov_rank].contiguous()
+        if is_sm80():
+            head.rnn_w_step = head.rnn_proj.weight[
+                :, : 2 * head.markov_rank
+            ].contiguous()
         self.model.fuse_alpha.copy_(
             torch.softmax(self.model.fuse_weight.float(), dim=-1)
         )
@@ -629,9 +683,13 @@ class Inkling2DSparkModel(nn.Module):
         return self.model(input_ids, positions)
 
     def compute_base_logits(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """TP-local bf16 base logits (bf16 GEMM, or pruned vocab at TP=1)."""
+        """TP-local bf16 base logits (bf16 GEMM, or pruned vocab on SM80 TP=1)."""
         assert self.lm_head is not None
-        w = self.pruned_lm_weight if self.pruned_lm_weight is not None else self.lm_head.weight
+        w = (
+            self.pruned_lm_weight
+            if self.pruned_lm_weight is not None
+            else self.lm_head.weight
+        )
         return linear(hidden_states, w)
 
     def markov_step(
@@ -649,7 +707,8 @@ class Inkling2DSparkModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         head = self.model.markov_head
         if (
-            self.keep_ids is not None
+            is_sm80()
+            and self.keep_ids is not None
             and state.shape[0] == 1
             and head.markov_rank == 256
             and head.rnn_w_step is not None
@@ -657,6 +716,8 @@ class Inkling2DSparkModel(nn.Module):
             and head.fold_bias is not None
             and state.dtype == torch.bfloat16
         ):
+            from ..sm80_ops_v2 import markov_fold_softcap_r1, markov_rnn_gate_256
+
             state, latent = markov_rnn_gate_256(
                 state, prev_tokens, head.markov_w1.weight, context, head.rnn_w_step
             )
@@ -674,7 +735,8 @@ class Inkling2DSparkModel(nn.Module):
     def markov_logits(
         self, base_logits: torch.Tensor, bias: torch.Tensor
     ) -> torch.Tensor:
-        """Softcapped logits (pruned draft vocab when keep_ids is active, else full vocab)."""
+        """Softcapped logits (pruned draft vocab when keep_ids is active, else
+        full vocab)."""
         logits = add_softcap(base_logits, bias, self.config.final_logit_softcapping)
         if self.keep_ids is not None:
             return logits

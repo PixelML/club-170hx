@@ -25,13 +25,11 @@ from vllm.model_executor.layers.linear import (
 )
 from vllm.model_executor.utils import set_weight_attrs
 from vllm.models.inkling.nvidia.ops.fa4_rel_attention import bucket_max_seqlen_q
+from vllm.models.inkling.nvidia.ops.sconv import sconv_seq_metadata
 from vllm.models.inkling.nvidia.sconv_swa_attn import (
     InklingConvState,
+    InklingSconvMetadata,
     InklingSconvMetadataBuilder,
-)
-
-InklingSconvMetadataBuilder.get_varlen_cudagraph_max_query_len = classmethod(  # type: ignore[method-assign]
-    lambda cls, vllm_config, kv_cache_spec: 262144
 )
 from vllm.platforms import current_platform
 from vllm.utils.torch_utils import (
@@ -57,7 +55,7 @@ from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheLayerConfig
 
 from ..configs import Inkling2ModelConfig
 from .lora import add_linear_lora
-from .ops import use_sm100_kernels
+from .ops import is_sm80, use_sm100_kernels
 from .ops.attention import (
     _INKLING2_FA4_REL_ATTENTION_KERNEL,
     gate_sink,
@@ -68,8 +66,89 @@ from .ops.attention import (
 from .ops.attention_sm90 import MODE_OUT_LSE, rel_attention
 from .ops.linear import linear
 from .ops.ll_gemm_sm80 import sm80_qkv_bmm, use_sm80_qkv_bmm
+from .ops.ll_gemm_sm120 import qkv_bmm, use_qkv_bmm
 from .ops.sconv import attention_prologue, shift_rel_proj
 from .sconv import K_STREAM, V_STREAM, Inkling2ShortConv, conv_metadata
+
+_orig_sconv_varlen_max_q = (
+    InklingSconvMetadataBuilder.get_varlen_cudagraph_max_query_len.__func__
+)
+InklingSconvMetadataBuilder.get_varlen_cudagraph_max_query_len = classmethod(  # type: ignore[method-assign]
+    lambda cls, vllm_config, kv_cache_spec: (
+        262144
+        if is_sm80()
+        else _orig_sconv_varlen_max_q(cls, vllm_config, kv_cache_spec)
+    )
+)
+
+# Deduplicate `sconv_seq_metadata` across all conv KV cache groups in a step
+# (saves 5 redundant Triton launches/step in BF16 and FP8).
+_SCONV_SHARED_BUFS: dict[
+    tuple[torch.device, int], tuple[torch.Tensor, torch.Tensor]
+] = {}
+_SCONV_LAST_STEP: dict[tuple[torch.device, int], tuple[torch.Tensor, int]] = {}
+_orig_sconv_builder_init = InklingSconvMetadataBuilder.__init__
+_orig_sconv_builder_build = InklingSconvMetadataBuilder.build
+
+
+def _patched_sconv_init(self, kv_cache_spec, layer_names, vllm_config, device):
+    _orig_sconv_builder_init(self, kv_cache_spec, layer_names, vllm_config, device)
+    if is_sm80():
+        max_num_tokens = vllm_config.scheduler_config.max_num_batched_tokens
+        key = (device, max_num_tokens)
+        self._sconv_key = key
+        bufs = _SCONV_SHARED_BUFS.get(key)
+        if bufs is None:
+            bufs = (self.seq_idx_buffer, self.query_start_buffer)
+            _SCONV_SHARED_BUFS[key] = bufs
+        else:
+            self.seq_idx_buffer, self.query_start_buffer = bufs
+
+
+def _patched_sconv_build(
+    self,
+    common_prefix_len: int,
+    common_attn_metadata: CommonAttentionMetadata,
+    fast_build: bool = False,
+) -> InklingSconvMetadata:
+    if not is_sm80():
+        return _orig_sconv_builder_build(
+            self, common_prefix_len, common_attn_metadata, fast_build
+        )
+    num_reqs = common_attn_metadata.num_reqs
+    num_actual_tokens = int(common_attn_metadata.query_start_loc_cpu[-1])
+    num_padded_tokens = common_attn_metadata.slot_mapping.shape[0]
+    assert num_padded_tokens >= num_actual_tokens
+
+    key = getattr(self, "_sconv_key", (self.device, self.seq_idx_buffer.shape[0]))
+    prev = _SCONV_LAST_STEP.get(key)
+    if (
+        prev is None
+        or prev[0] is not common_attn_metadata.seq_lens
+        or prev[1] != num_padded_tokens
+    ):
+        sconv_seq_metadata(
+            common_attn_metadata.query_start_loc,
+            num_reqs,
+            num_actual_tokens,
+            self.seq_idx_buffer,
+            self.query_start_buffer,
+            num_padded_tokens,
+        )
+        _SCONV_LAST_STEP[key] = (common_attn_metadata.seq_lens, num_padded_tokens)
+
+    return InklingSconvMetadata(
+        block_table=common_attn_metadata.block_table_tensor,
+        slot_mapping=common_attn_metadata.slot_mapping[:num_padded_tokens],
+        seq_idx=self.seq_idx_buffer[:num_padded_tokens],
+        query_start=self.query_start_buffer[:num_padded_tokens],
+    )
+
+
+if not getattr(InklingSconvMetadataBuilder, "_sm80_dedup_patched", False):
+    InklingSconvMetadataBuilder.__init__ = _patched_sconv_init  # type: ignore[method-assign]
+    InklingSconvMetadataBuilder.build = _patched_sconv_build  # type: ignore[method-assign]
+    InklingSconvMetadataBuilder._sm80_dedup_patched = True  # type: ignore[attr-defined]
 
 
 @dataclass
@@ -90,8 +169,10 @@ class Inkling2AttentionMetadataBuilder(FlashAttentionMetadataBuilder):
     @classmethod
     def get_varlen_cudagraph_max_query_len(
         cls, vllm_config: VllmConfig, kv_cache_spec: AttentionSpec
-    ) -> int:
-        return 21
+    ) -> int | None:
+        if is_sm80():
+            return 21
+        return super().get_varlen_cudagraph_max_query_len(vllm_config, kv_cache_spec)
 
     def build(
         self,
@@ -307,7 +388,7 @@ class Inkling2Attention(nn.Module, AttentionLayerBase):
         supported: tuple[str, ...] = ("auto", "bfloat16")
         if current_platform.is_device_capability_family(120):
             supported += ("float16", "fp8", "fp8_e4m3")
-        elif current_platform.has_device_capability(80) and not current_platform.has_device_capability(90):
+        elif is_sm80():
             supported += ("fp8", "fp8_e4m3")
         if cache_dtype not in supported:
             raise ValueError(f"Inkling2 KV cache dtype must be one of {supported}")
@@ -355,6 +436,13 @@ class Inkling2Attention(nn.Module, AttentionLayerBase):
             return list(projected.split(self.split_sizes, dim=-1)[:6])
         q_side, kv_size = sum(self.split_sizes[:4]), self.split_sizes[4]
         k_end = q_side + kv_size
+        if use_qkv_bmm(x_q, x_k, x_v, weight):
+            projected = qkv_bmm(x_q, x_k, x_v, weight, q_side, k_end)
+            splits = projected.split(self.split_sizes, dim=-1)
+            add_linear_lora(self.qkvr, projected, x_q, range(4))
+            add_linear_lora(self.qkvr, splits[4], x_k, [4])
+            add_linear_lora(self.qkvr, splits[5], x_v, [5])
+            return list(splits[:6])
         if use_sm80_qkv_bmm(x_q, x_k, x_v, weight):
             projected = sm80_qkv_bmm(x_q, x_k, x_v, weight, q_side, k_end)
             splits = projected.split(self.split_sizes, dim=-1)
@@ -376,10 +464,11 @@ class Inkling2Attention(nn.Module, AttentionLayerBase):
         if self.fp8_kv:
             # Every loop pass owns byte storage containing unit-scale E4M3 KV.
             # Keep uint8 on pre-SM89 (SM80) so Triton never rejects fp8e4nv args.
-            if current_platform.has_device_capability(89):
-                kv_cache = kv_cache.view(torch.float8_e4m3fn)
-            else:
-                kv_cache = kv_cache.view(torch.uint8)
+            kv_cache = kv_cache.view(
+                torch.float8_e4m3fn
+                if current_platform.has_device_capability(89)
+                else torch.uint8
+            )
         key_cache, value_cache = kv_cache.transpose(1, 2).split(self.head_dim, dim=-1)
         return (
             canonicalize_singleton_dim_strides(key_cache),
@@ -409,7 +498,7 @@ class Inkling2Attention(nn.Module, AttentionLayerBase):
         q, r, gate, sinks, k, v = self._project(x_q, x_k, x_v)
         output = (
             torch.zeros(gate.shape, dtype=q.dtype, device=q.device)
-            if q.shape[0] <= 512
+            if (is_sm80() and q.shape[0] <= 512)
             else torch.empty(gate.shape, dtype=q.dtype, device=q.device)
         )
         self._attention(
