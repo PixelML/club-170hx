@@ -30,12 +30,12 @@ if [ ! -f "$MDIR/config.json" ]; then
   exit 1
 fi
 
-# Build SM80 Round-6 Best package + libsm80_fast_v6.so + libsm80_r6_ext.so inside the pinned container if not yet staged
-if [ ! -f "$PATCH_DST/libsm80_fast_v6.so" ] || [ ! -f "$PATCH_DST/libsm80_r6_ext.so" ]; then
-  bash "$EXP_DIR/patches/install-sm80-r6.sh" "$PATCH_DST"
+# Build SM80 Round-7 Best package + libsm80_fast_v6.so + libsm80_r6_ext.so inside the pinned container if not yet staged
+if [ ! -f "$PATCH_DST/libsm80_fast_v6.so" ] || [ ! -f "$PATCH_DST/libsm80_r6_ext.so" ] || [ ! -f "$PATCH_DST/humming_include/humming/epilogue/gmem_writer.cuh" ]; then
+  bash "$EXP_DIR/patches/install-sm80-r7.sh" "$PATCH_DST"
 fi
 
-mkdir -p "$WORK_DIR/cache"/{hf,vllm,triton,inductor,torch_compile,humming}
+mkdir -p "$WORK_DIR/cache"/{hf,vllm,triton,inductor,torch_compile,humming,flashinfer}
 
 CONTAINER_PKG="/usr/local/lib/python3.14/dist-packages/vllm/models/inkling2"
 CUDAGRAPH_CFG='{"custom_ops":["none"],"cudagraph_capture_sizes":[1,2,3,4,5,6,8,9,10,12,15,16,18,20,21,24,27,30,32,36,42,48,54,60,64,72,84,96,108,120,132,144,168,192,216,240,264,288,312,336,384,432,480,512]}'
@@ -50,6 +50,7 @@ docker run -d --name "inkling-vllm-$TAG" \
   -e TORCHINDUCTOR_CACHE_DIR=/work/cache/inductor \
   -e TORCH_COMPILE_CACHE_DIR=/work/cache/torch_compile \
   -e HUMMING_CACHE_DIR=/work/cache/humming \
+  -e FLASHINFER_WORKSPACE_BASE=/work/cache/flashinfer \
   -e TORCHINDUCTOR_COMPILE_THREADS=1 \
   -v "$MDIR:/models/Inkling-2-Mini:ro" \
   -v "$PATCH_DST:$CONTAINER_PKG:ro" \

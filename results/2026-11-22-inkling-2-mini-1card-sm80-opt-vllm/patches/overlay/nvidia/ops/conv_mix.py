@@ -12,6 +12,15 @@ from .attn_res import attn_res
 from .sconv import short_conv
 from .seq_parallel import SeqParallel
 
+try:
+    from ...sm80_ops_v2 import (
+        combine_conv_mix_2304 as _sm80_combine_conv_mix_2304,
+        conv_mix_2304 as _sm80_conv_mix_2304,
+    )
+except Exception:
+    _sm80_combine_conv_mix_2304 = None
+    _sm80_conv_mix_2304 = None
+
 
 def conv_mix(
     x: torch.Tensor,
@@ -57,6 +66,7 @@ def conv_mix(
     if src2dst is not None:
         if (
             is_sm80()
+            and _sm80_combine_conv_mix_2304 is not None
             and sp is None
             and halo == 0
             and x.dim() == 2
@@ -64,9 +74,7 @@ def conv_mix(
             and x.dtype == torch.bfloat16
             and positions.shape[0] == num_tokens
         ):
-            from ...sm80_ops_v2 import combine_conv_mix_2304
-
-            fused_ccm = combine_conv_mix_2304(
+            fused_ccm = _sm80_combine_conv_mix_2304(
                 x,
                 src2dst,
                 conv_weight,
@@ -133,10 +141,8 @@ def conv_mix(
         if current_platform.is_device_capability_family(120) or is_sm80():
             # Native conv/mix kernels require Hopper or SM10x. Keep the
             # loop executor's cache writes and residual rounding on SM12x/SM8x.
-            if is_sm80():
-                from ...sm80_ops_v2 import conv_mix_2304
-
-                fused_sm80 = conv_mix_2304(
+            if is_sm80() and _sm80_conv_mix_2304 is not None:
+                fused_sm80 = _sm80_conv_mix_2304(
                     x,
                     conv_weight,
                     cache,

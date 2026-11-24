@@ -1,0 +1,56 @@
+{
+  "gates": {
+    "1_load_models": {
+      "ok": true,
+      "models": [
+        "inkling"
+      ]
+    },
+    "2_chat_short": {
+      "ok": true,
+      "finish_reason": "stop",
+      "content": "Hello, friend, how are you?"
+    },
+    "3_reasoning": {
+      "ok": true,
+      "finish_reason": "stop",
+      "reasoning_chars": 205,
+      "content": "1610"
+    },
+    "4_tools_roundtrip": {
+      "ok": true,
+      "tool_call": {
+        "name": "get_rack_telemetry",
+        "arguments": "{\"rack_id\":\"R-17\"}"
+      },
+      "final_content": "Rack R-17 is at exactly **23.4 \u00b0C**."
+    },
+    "5_concurrent_long_soak": {
+      "ok": true,
+      "wall_seconds": 87.59,
+      "total_prompt_tokens": 335655,
+      "streams": [
+        {
+          "stream": 0,
+          "prompt_tokens": 167788,
+          "completion_tokens": 576,
+          "finish_reason": "stop",
+          "needle_expected": "KITE-900-754401",
+          "needle_hit": true,
+          "seconds": 87.57,
+          "content_head": "KITE-900-754401\nFresnel lenses concentrate light into a strong, focused beam while remaining much thinner and lighter than traditional glass lenses. Their concentric grooves refract light efficiently,"
+        },
+        {
+          "stream": 1,
+          "prompt_tokens": 167867,
+          "completion_tokens": 383,
+          "finish_reason": "stop",
+          "needle_expected": "KITE-901-552166",
+          "needle_hit": true,
+          "seconds": 86.43,
+          "content_head": "KITE-901-552166\n\nFresnel lenses concentrate and shape light into a narrow, intense beam that can be seen from far away. Their concentric-ring design packs a large effective aperture into a compact, li"
+        }
+      ]
+    }
+  }
+}

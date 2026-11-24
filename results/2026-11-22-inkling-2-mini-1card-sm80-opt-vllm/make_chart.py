@@ -20,8 +20,8 @@ n_rounds = len(sb)
 fig, (ax1, ax2, ax3) = plt.subplots(
     1,
     3,
-    figsize=(18.8, 5.6) if n_rounds >= 7 else (17.2, 5.5),
-    gridspec_kw={"width_ratios": [1.18, 1.32, 1.16] if n_rounds >= 7 else [1.14, 1.34, 1.12]},
+    figsize=(20.2, 5.7) if n_rounds >= 8 else ((18.8, 5.6) if n_rounds >= 7 else (17.2, 5.5)),
+    gridspec_kw={"width_ratios": [1.22, 1.34, 1.20] if n_rounds >= 8 else ([1.18, 1.32, 1.16] if n_rounds >= 7 else [1.14, 1.34, 1.12])},
 )
 
 # Panel 1: 6-prompt single-user decode progression (T=0.6)

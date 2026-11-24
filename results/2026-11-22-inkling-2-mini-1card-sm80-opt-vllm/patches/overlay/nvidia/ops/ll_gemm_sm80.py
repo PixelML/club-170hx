@@ -167,6 +167,97 @@ def _qkv_bmm_kernel(
     )
 
 
+@triton.jit
+def _qkv_dyn_bmm_kernel(
+    XQ,
+    XK,
+    XV,
+    W,
+    WK_dyn,
+    WV_dyn,
+    Y,
+    YK_dyn,
+    YV_dyn,
+    M,
+    K,
+    SXQ,
+    SXK,
+    SXV,
+    SWN,
+    SWK,
+    SWV,
+    SYM,
+    SYKD,
+    SYVD,
+    N0,
+    N1,
+    N2,
+    N_DYN,
+    NB0,
+    NB1,
+    NB2,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    MP: tl.constexpr,
+):
+    """5-way fused low-M GEMM (single K-loop, 0 spills): QKV segments + k_dyn + v_dyn."""
+    pid = tl.program_id(0)
+    is_dyn = pid >= NB0 + NB1 + NB2
+    if pid < NB0:
+        X, SX = XQ, SXQ
+        WP, SW_U = W, SWN
+        YP, SY_U = Y, SYM
+        lo, hi, local = 0, N0, pid
+    elif pid < NB0 + NB1:
+        X, SX = XK, SXK
+        WP, SW_U = W, SWN
+        YP, SY_U = Y, SYM
+        lo, hi, local = N0, N0 + N1, pid - NB0
+    elif pid < NB0 + NB1 + NB2:
+        X, SX = XV, SXV
+        WP, SW_U = W, SWN
+        YP, SY_U = Y, SYM
+        lo, hi, local = N0 + N1, N0 + N1 + N2, pid - NB0 - NB1
+    elif pid == NB0 + NB1 + NB2:
+        X, SX = XK, SXK
+        WP, SW_U = WK_dyn, SWK
+        YP, SY_U = YK_dyn, SYKD
+        lo, hi, local = 0, N_DYN, 0
+    else:
+        X, SX = XV, SXV
+        WP, SW_U = WV_dyn, SWV
+        YP, SY_U = YV_dyn, SYVD
+        lo, hi, local = 0, N_DYN, 0
+
+    cols = lo + local * BN + tl.arange(0, BN)
+    cmask = cols < hi
+    rows = tl.arange(0, MP)
+    ks = tl.arange(0, BK)
+    w_ptrs = WP + cols[None, :].to(tl.int64) * SW_U + ks[:, None]
+    x_ptrs = X + rows[:, None] * SX + ks[None, :]
+    acc = tl.zeros((MP, BN), tl.float32)
+    for _ in range(0, K, BK):
+        w = tl.load(w_ptrs, cmask[None, :] & (ks[:, None] < K), other=0)
+        x = tl.load(x_ptrs, (rows[:, None] < M) & (ks[None, :] < K), other=0)
+        if is_dyn:
+            # Match split-K (k_per_split=BK) FP32 reduction order of `_ll_gemm_kernel`.
+            partial = tl.dot(x, w)
+            partial = tl.inline_asm_elementwise(
+                "mov.b32 $0, $1;", "=f,f", [partial], dtype=tl.float32, is_pure=True, pack=1
+            )
+            acc += partial
+        else:
+            acc += tl.dot(x, w)
+        w_ptrs += BK
+        x_ptrs += BK
+        ks += BK
+    tl.store(
+        YP + rows[:, None] * SY_U + cols[None, :],
+        acc.to(YP.dtype.element_ty),
+        (rows[:, None] < M) & cmask[None, :],
+    )
+
+
 class _Config(NamedTuple):
     bn: int
     bk: int
@@ -352,6 +443,93 @@ def sm80_qkv_bmm(
         num_stages=4,
     )
     return out
+
+
+def use_sm80_qkv_dyn_bmm(
+    x_q: torch.Tensor,
+    x_k: torch.Tensor,
+    x_v: torch.Tensor,
+    w: torch.Tensor,
+    wk_dyn: torch.Tensor,
+    wv_dyn: torch.Tensor,
+) -> bool:
+    return (
+        use_sm80_qkv_bmm(x_q, x_k, x_v, w)
+        and wk_dyn.is_cuda
+        and wv_dyn.is_cuda
+        and wk_dyn.device == wv_dyn.device == x_q.device
+        and wk_dyn.dtype == wv_dyn.dtype == torch.bfloat16
+        and wk_dyn.ndim == 2
+        and wv_dyn.ndim == 2
+        and wk_dyn.shape == wv_dyn.shape
+        and wk_dyn.shape[1] == x_q.shape[1]
+        and 0 < wk_dyn.shape[0] <= 32
+        and wk_dyn.stride(1) == 1
+        and wv_dyn.stride(1) == 1
+    )
+
+
+def sm80_qkv_dyn_bmm(
+    x_q: torch.Tensor,
+    x_k: torch.Tensor,
+    x_v: torch.Tensor,
+    w: torch.Tensor,
+    wk_dyn: torch.Tensor,
+    wv_dyn: torch.Tensor,
+    k_start: int,
+    v_start: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    xs = (x_q, x_k, x_v)
+    m, k = x_q.shape
+    n = w.shape[0]
+    n_dyn = wk_dyn.shape[0]
+    s1, s2 = k_start, v_start
+    n0, n1, n2 = s1, s2 - s1, n - s2
+    bn = 64 if (n0 >= 64 and n1 >= 64 and n2 >= 64) else 32
+    assert 0 < m <= MAX_M and w.shape == (n, k)
+    assert all(x.shape == (m, k) and x.stride(1) == 1 for x in xs)
+    assert w.stride(1) == 1 and s1 > 0 and s1 < s2 <= n
+    assert wk_dyn.shape == (n_dyn, k) and wv_dyn.shape == (n_dyn, k)
+    assert wk_dyn.stride(1) == wv_dyn.stride(1) == 1 and 0 < n_dyn <= bn
+    out = torch.empty((m, n), dtype=x_q.dtype, device=x_q.device)
+    yk_dyn = torch.empty((m, n_dyn), dtype=x_q.dtype, device=x_q.device)
+    yv_dyn = torch.empty((m, n_dyn), dtype=x_q.dtype, device=x_q.device)
+    nb0, nb1, nb2 = triton.cdiv(n0, bn), triton.cdiv(n1, bn), triton.cdiv(n2, bn)
+    _qkv_dyn_bmm_kernel[(nb0 + nb1 + nb2 + 2,)](
+        x_q,
+        x_k,
+        x_v,
+        w,
+        wk_dyn,
+        wv_dyn,
+        out,
+        yk_dyn,
+        yv_dyn,
+        m,
+        k,
+        x_q.stride(0),
+        x_k.stride(0),
+        x_v.stride(0),
+        w.stride(0),
+        wk_dyn.stride(0),
+        wv_dyn.stride(0),
+        out.stride(0),
+        yk_dyn.stride(0),
+        yv_dyn.stride(0),
+        n0,
+        n1,
+        n2,
+        n_dyn,
+        nb0,
+        nb1,
+        nb2,
+        BN=bn,
+        BK=128,
+        MP=_MP,
+        num_warps=4,
+        num_stages=3,
+    )
+    return out, yk_dyn, yv_dyn
 
 
 def sm80_bf16_ll_gemm(

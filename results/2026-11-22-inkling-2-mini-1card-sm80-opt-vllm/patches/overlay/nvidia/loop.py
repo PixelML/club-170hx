@@ -38,6 +38,21 @@ from .ops.loop import blend_rms_norm, pair_rms_norm
 from .ops.norm import rsqrt as _rsqrt
 from .sconv import conv_metadata
 
+try:
+    from ..sm80_ops_v2 import (
+        bank_rank2_finalize_r7 as _sm80_bank_rank2_finalize_r7,
+        bank_stats_r7_2304 as _sm80_bank_stats_r7_2304,
+        fast_blend_r6_2304 as _sm80_fast_blend_r6_2304,
+        pair_rms_norm_rank2_2304_r7 as _sm80_pair_rms_norm_rank2_r7,
+        up_blend_rank2_rms_2304_r7 as _sm80_up_blend_rank2_rms_r7,
+    )
+except Exception:
+    _sm80_bank_rank2_finalize_r7 = None
+    _sm80_bank_stats_r7_2304 = None
+    _sm80_fast_blend_r6_2304 = None
+    _sm80_pair_rms_norm_rank2_r7 = None
+    _sm80_up_blend_rank2_rms_r7 = None
+
 LOOP_STREAMS = ("attn", "k", "v", "mlp")
 
 
@@ -139,13 +154,199 @@ def sm80_fast_blend(
 ) -> torch.Tensor | None:
     """2-launch SM80 Tensor-Core fused loop controller:
     (pair_rms_norm + down) + (up + unfused tanh blend + RMSNorm)."""
-    if not is_sm80():
+    if not is_sm80() or _sm80_fast_blend_r6_2304 is None:
         return None
-    from ..sm80_ops_v2 import fast_blend_r6_2304
-
-    return fast_blend_r6_2304(
+    return _sm80_fast_blend_r6_2304(
         ctrl_down, ctrl_up, dest, message, norm_weight, norm_eps
     )
+
+
+_Q_SPLIT_CACHE: dict[tuple[int, tuple[int, ...], int, int], torch.Tensor] = {}
+
+
+def _get_q_split_bf16_t(message_queries: torch.Tensor) -> torch.Tensor:
+    key = (
+        message_queries.data_ptr(),
+        tuple(message_queries.shape),
+        message_queries.device.index or 0,
+        message_queries._version,
+    )
+    qt = _Q_SPLIT_CACHE.get(key)
+    if qt is None:
+        if len(_Q_SPLIT_CACHE) >= 8:
+            _Q_SPLIT_CACHE.clear()
+        q_flat = message_queries.reshape(-1, message_queries.shape[-1])
+        q_hi = q_flat.to(torch.bfloat16)
+        q_lo = (q_flat - q_hi.to(torch.float32)).to(torch.bfloat16)
+        qt = torch.cat((q_hi, q_lo), dim=0).t().contiguous()
+        _Q_SPLIT_CACHE[key] = qt
+    return qt
+
+
+def _sm80_blend_rms_norm_rank2(
+    dest: torch.Tensor,
+    bank: torch.Tensor,
+    c_raw: torch.Tensor,
+    c_norm: torch.Tensor,
+    ctrl_down: torch.Tensor,
+    ctrl_up: torch.Tensor,
+    norm_weight: torch.Tensor,
+    norm_eps: float,
+) -> torch.Tensor | None:
+    """3-call zero-spill CUDA MMA SM80 rank-2 prefill controller blend + RMSNorm:
+    1) pair_rms_norm_rank2_2304_r7 (288-thr uint4, bcast3-specialized)
+    2) torch.bmm(pair, ctrl_down.T)
+    3) up_blend_rank2_rms_2304_r7 (1 ctypes call -> CUDA MMA up+tanh+blend + RMSNorm)."""
+    if _sm80_pair_rms_norm_rank2_r7 is None or _sm80_up_blend_rank2_rms_r7 is None:
+        return None
+    s, m, d = dest.shape
+    if (
+        d != 2304
+        or m <= 0
+        or ctrl_down.shape != (s, 64, 4608)
+        or ctrl_up.shape != (s, 4608, 64)
+        or not ctrl_down.is_contiguous()
+        or not ctrl_up.is_contiguous()
+        or dest.stride(1) != 2304
+        or dest.stride(2) != 1
+        or norm_weight.stride(1) != 1
+    ):
+        return None
+
+    pair = _sm80_pair_rms_norm_rank2_r7(dest, bank, c_norm, 1e-6)
+    if s == 1:
+        hidden = torch.mm(pair[0], ctrl_down[0].t()).unsqueeze(0)
+    else:
+        hidden = torch.bmm(pair, ctrl_down.transpose(1, 2))
+    del pair
+    return _sm80_up_blend_rank2_rms_r7(
+        hidden, ctrl_up, dest, bank, c_raw, norm_weight, norm_eps
+    )
+
+
+def sm80_prepare_pass_bank(
+    bank: torch.Tensor,
+    message_queries: torch.Tensor,
+    q_split_bf16_t: torch.Tensor | None = None,
+) -> tuple:
+    """Pass-hoisted SM80 bank preparation:
+    - Decode (1 <= T <= 256): single 0-ULP Triton launch over all 48 queries.
+    - Prefill (T > 256): rank-2 scalar coefficients (c_raw, c_norm) via split-BF16 GEMM."""
+    t = bank.shape[1]
+    if (
+        is_sm80()
+        and bank.ndim == 3
+        and bank.shape[0] == 2
+        and bank.shape[2] == 2304
+        and message_queries.ndim == 3
+        and message_queries.shape[2] == 2304
+        and bank.dtype == torch.bfloat16
+        and message_queries.dtype == torch.float32
+        and bank.stride(1) == 2304
+        and bank.stride(2) == 1
+        and message_queries.is_contiguous()
+    ):
+        num_layers, num_streams, d = message_queries.shape
+        q_tot = num_layers * num_streams
+        if 1 <= t <= 256:
+            qpc = 2 if t <= 8 else 8
+            while q_tot % qpc != 0:
+                qpc -= 1
+            out = torch.empty(
+                (num_layers, num_streams, t, d),
+                dtype=torch.float32,
+                device=bank.device,
+            )
+            _bank_attn_res_1pass_kernel[(q_tot // qpc, t)](
+                bank,
+                message_queries.view(q_tot, d),
+                out,
+                bank.stride(0),
+                t,
+                1e-6,
+                D=2304,
+                Q_PER_CTA=qpc,
+                BLOCK_A=2048,
+                BLOCK_B=256,
+                num_warps=8,
+                enable_fp_fusion=False,
+            )
+            return ("dense", out)
+        if (
+            t > 256
+            and _sm80_bank_stats_r7_2304 is not None
+            and _sm80_bank_rank2_finalize_r7 is not None
+        ):
+            bank_c = bank if bank.is_contiguous() else bank.contiguous()
+            stats = _sm80_bank_stats_r7_2304(bank_c, 1e-6)
+            if stats is not None:
+                qt = (
+                    q_split_bf16_t
+                    if q_split_bf16_t is not None
+                    else _get_q_split_bf16_t(message_queries)
+                )
+                dots = torch.mm(
+                    bank_c.view(2 * t, 2304), qt, out_dtype=torch.float32
+                )
+                res = _sm80_bank_rank2_finalize_r7(
+                    dots, stats, num_layers, num_streams, 1e-6
+                )
+                if res is not None:
+                    c_raw, c_norm = res
+                    return ("rank2", bank_c, c_raw, c_norm)
+    return ("fallback", bank, message_queries)
+
+
+def sm80_blend_pass_layer(
+    pass_state: tuple,
+    layer_rel_idx: int,
+    streams: slice,
+    ctrl_down: torch.Tensor,
+    ctrl_up: torch.Tensor,
+    dest: torch.Tensor,
+    norm_weight: torch.Tensor,
+    norm_eps: float,
+) -> torch.Tensor:
+    """Blend one layer's streams using pass-hoisted `pass_state`."""
+    kind = pass_state[0]
+    if kind == "dense":
+        message = pass_state[1][layer_rel_idx, streams]
+        out = sm80_fast_blend(
+            ctrl_down, ctrl_up, dest, message, norm_weight, norm_eps
+        )
+        if out is not None:
+            return out
+    elif kind == "rank2":
+        _, bank, c_raw_all, c_norm_all = pass_state
+        c_raw = c_raw_all[layer_rel_idx, streams]
+        c_norm = c_norm_all[layer_rel_idx, streams]
+        out = _sm80_blend_rms_norm_rank2(
+            dest, bank, c_raw, c_norm, ctrl_down, ctrl_up, norm_weight, norm_eps
+        )
+        if out is not None:
+            return out
+        # Fallback if non-standard shape
+        message = (
+            c_raw[..., :1] * bank[0].to(torch.float32)
+            + c_raw[..., 1:] * bank[1].to(torch.float32)
+        )
+    else:
+        _, bank, message_queries = pass_state
+        message = sm80_bank_attn_res(bank, message_queries[layer_rel_idx])[streams]
+
+    pair = pair_rms_norm(dest, message)
+    if use_sm12x_bf16_ll_gemm(pair, ctrl_down):
+        hidden = sm12x_bf16_ll_gemm(pair, ctrl_down)
+        gain_forget = sm12x_bf16_ll_gemm(hidden, ctrl_up, out_dtype=torch.float32)
+    elif use_sm80_bf16_ll_gemm(pair, ctrl_down):
+        hidden = sm80_bf16_ll_gemm(pair, ctrl_down)
+        gain_forget = sm80_bf16_ll_gemm(hidden, ctrl_up, out_dtype=torch.float32)
+    else:
+        hidden = torch.bmm(pair, ctrl_down.transpose(1, 2))
+        gain_forget = torch.bmm(
+            hidden, ctrl_up.transpose(1, 2), out_dtype=torch.float32
+        )
+    return blend_rms_norm(dest, message, gain_forget, norm_weight, norm_eps)
 
 
 class Inkling2MessageController(nn.Module):
@@ -286,6 +487,7 @@ class Inkling2LoopModel(Inkling2Model):
             ),
             persistent=False,
         )
+        self._q_split_bf16_t: torch.Tensor | None = None
 
     def process_weights_after_loading(self) -> None:
         queries = self.middle_cycle_cross_pass_queries.view(-1, 2, self.hidden_size)
@@ -297,6 +499,17 @@ class Inkling2LoopModel(Inkling2Model):
             (queries[:, 0], kv_queries[:, 0], kv_queries[:, 1], queries[:, 1]), 1
         )
         self.message_queries.copy_(stacked * self.hidden_size**-0.5)
+        self._q_split_bf16_t = None
+        _Q_SPLIT_CACHE.clear()
+        if is_sm80():
+            self._q_split_bf16_t = _get_q_split_bf16_t(self.message_queries)
+
+    def _get_q_split_bf16_t(self) -> torch.Tensor:
+        qt = self._q_split_bf16_t
+        if qt is None or qt.device != self.message_queries.device:
+            qt = _get_q_split_bf16_t(self.message_queries)
+            self._q_split_bf16_t = qt
+        return qt
 
     def _make_layer(
         self,
@@ -332,6 +545,7 @@ class Inkling2LoopModel(Inkling2Model):
         positions: torch.Tensor,
         tau: torch.Tensor | None,
         plan: list[tuple[bool, bool]],
+        pass_state: tuple | None = None,
     ) -> tuple[int, torch.Tensor]:
         """Run decoder layer `i` in loop pass `pass_idx` on its `inputs`
         (the attention inputs; for a visit with messages from `bank`, the
@@ -343,32 +557,46 @@ class Inkling2LoopModel(Inkling2Model):
         owner = layer.conv_states[pass_idx]
         workspace = self.allreduce_workspace
         (attn_fused, attn_two_shot), (moe_fused, moe_two_shot) = plan
+        has_msg = bank is not None
         messages = None
+        layer_rel_idx = i - self.loop_core.start
         attn_inputs: Sequence[torch.Tensor]
         if bank is not None:
             assert isinstance(layer, Inkling2LoopDecoderLayer) and inputs is not None
-            # All four streams' messages: a mix of the bank's two blocks.
-            q_msg = self.message_queries[i - self.loop_core.start]
-            if is_sm80():
-                messages = sm80_bank_attn_res(bank, q_msg)
-            else:
-                messages = attn_res(
-                    bank[:1],
-                    bank[1],
-                    None,
-                    q_msg,
-                    None,
-                    0.0,
-                    True,
-                )
             norm = layer.attn_norm
             dests, norm_weight = inputs, norm.weight
             if layer.is_local:
                 dests = dests.expand(3, -1, -1)
                 norm_weight = norm_weight.expand(3, -1)
-            attn_inputs = layer.blend(
-                slice(0, 3), dests, messages[:3], norm_weight, norm.eps
-            )
+            if pass_state is not None:
+                attn_inputs = sm80_blend_pass_layer(
+                    pass_state,
+                    layer_rel_idx,
+                    slice(0, 3),
+                    layer.controller_down[0:3],
+                    layer.controller_gain_forget[0:3],
+                    dests,
+                    norm_weight,
+                    norm.eps,
+                )
+            else:
+                # All four streams' messages: a mix of the bank's two blocks.
+                q_msg = self.message_queries[layer_rel_idx]
+                if is_sm80():
+                    messages = sm80_bank_attn_res(bank, q_msg)
+                else:
+                    messages = attn_res(
+                        bank[:1],
+                        bank[1],
+                        None,
+                        q_msg,
+                        None,
+                        0.0,
+                        True,
+                    )
+                attn_inputs = layer.blend(
+                    slice(0, 3), dests, messages[:3], norm_weight, norm.eps
+                )
         elif inputs is None:
             assert num_blocks == 0
             attn_inputs = [
@@ -387,7 +615,7 @@ class Inkling2LoopModel(Inkling2Model):
             stack[: num_blocks + first],
             None if first else partial,
             self.attn_res.mlp_queries[i],
-            None if messages is not None else layer.mlp_norm,
+            None if has_msg else layer.mlp_norm,
         )
         if attn_fused:
             assert workspace is not None
@@ -401,12 +629,25 @@ class Inkling2LoopModel(Inkling2Model):
         else:
             attn_reduced = tensor_model_parallel_all_reduce(attn_partial)
             mlp_in = layer.attn_sconv.conv_mix(attn_reduced, *mix_args, owner=owner)
-        if messages is not None:
+        if has_msg:
             assert isinstance(layer, Inkling2LoopDecoderLayer)
             norm = layer.mlp_norm
-            mlp_in = layer.blend(
-                slice(3, 4), mlp_in, messages[3:], norm.weight, norm.eps
-            )
+            if pass_state is not None:
+                mlp_in = sm80_blend_pass_layer(
+                    pass_state,
+                    layer_rel_idx,
+                    slice(3, 4),
+                    layer.controller_down[3:4],
+                    layer.controller_gain_forget[3:4],
+                    mlp_in,
+                    norm.weight,
+                    norm.eps,
+                )
+            else:
+                assert messages is not None
+                mlp_in = layer.blend(
+                    slice(3, 4), mlp_in, messages[3:], norm.weight, norm.eps
+                )
 
         # The MLP short conv also applies the residual update.
         residual = None if first else partial
@@ -487,7 +728,7 @@ class Inkling2LoopModel(Inkling2Model):
         aux_hidden_states = []
         next_norm: nn.Module | None
         num_blocks = 0
-        inputs = bank = prelude_blocks = prelude_partial = prelude_dests = None
+        inputs = bank = pass_state = prelude_blocks = prelude_partial = prelude_dests = None
         for visit, (i, pass_idx) in enumerate(visits):
             looped = pass_idx > 0
             if i == core.start and not looped:
@@ -499,6 +740,17 @@ class Inkling2LoopModel(Inkling2Model):
                 # the messages' bank.
                 assert prelude_blocks is not None and prelude_partial is not None
                 bank = stack[prelude_blocks + 1 : num_blocks + 1].clone()
+                pass_state = (
+                    sm80_prepare_pass_bank(
+                        bank,
+                        self.message_queries,
+                        q_split_bf16_t=(
+                            self._get_q_split_bf16_t() if num_tokens > 256 else None
+                        ),
+                    )
+                    if is_sm80()
+                    else None
+                )
                 num_blocks = prelude_blocks
                 stack[num_blocks].copy_(prelude_partial)
                 if prelude_dests is None:
@@ -534,6 +786,7 @@ class Inkling2LoopModel(Inkling2Model):
                 positions,
                 tau,
                 plan,
+                pass_state if looped else None,
             )
         assert inputs is not None
         out = inputs[0]

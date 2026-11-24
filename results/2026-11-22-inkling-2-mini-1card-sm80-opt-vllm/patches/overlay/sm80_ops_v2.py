@@ -406,6 +406,61 @@ def _get_ext_lib() -> ctypes.CDLL | None:
             )
             lib.launch_combine_conv_mix_r6_2304.restype = i32
 
+        if hasattr(lib, "launch_bank_stats_r7_2304"):
+            i64 = ctypes.c_int64
+            lib.launch_bank_stats_r7_2304.argtypes = [vp, vp, i64, i32, f32, vp]
+            lib.launch_bank_stats_r7_2304.restype = None
+
+        if hasattr(lib, "launch_bank_rank2_finalize_r7"):
+            lib.launch_bank_rank2_finalize_r7.argtypes = [
+                vp,
+                vp,
+                vp,
+                vp,
+                i32,
+                i32,
+                f32,
+                vp,
+            ]
+            lib.launch_bank_rank2_finalize_r7.restype = None
+
+        if hasattr(lib, "launch_pair_rms_norm_rank2_2304_r7"):
+            i64 = ctypes.c_int64
+            lib.launch_pair_rms_norm_rank2_2304_r7.argtypes = [
+                vp,
+                vp,
+                vp,
+                vp,
+                i64,
+                i64,
+                i32,
+                i32,
+                f32,
+                vp,
+            ]
+            lib.launch_pair_rms_norm_rank2_2304_r7.restype = None
+
+        if hasattr(lib, "launch_up_blend_rank2_rms_2304_r7"):
+            i64 = ctypes.c_int64
+            lib.launch_up_blend_rank2_rms_2304_r7.argtypes = (
+                [vp] * 8 + [i64] * 4 + [i32, i32, f32, vp]
+            )
+            lib.launch_up_blend_rank2_rms_2304_r7.restype = None
+
+        if hasattr(lib, "launch_combine_conv_mix_r7_pf_2304"):
+            i64 = ctypes.c_int64
+            lib.launch_combine_conv_mix_r7_pf_2304.argtypes = (
+                [vp] * 9
+                + [i64] * 3
+                + [i32] * 5
+                + [f32]
+                + [vp] * 9
+                + [i64]
+                + [i32] * 4
+                + [f32, f32, vp]
+            )
+            lib.launch_combine_conv_mix_r7_pf_2304.restype = i32
+
         _EXT_LIB = lib
     return _EXT_LIB
 
@@ -859,7 +914,56 @@ def conv_mix_2304(
         return None
     apply_norm = norm_weight is not None
     out_dtype = torch.bfloat16 if apply_norm else torch.float32
-    out = torch.empty((num_q, num_tokens, d), dtype=out_dtype, device=conv_out.device)
+    dev = conv_out.device
+    if (
+        num_tokens > 64
+        and num_q in (1, 3)
+        and x.is_contiguous()
+        and (stack.stride(0) & 7) == 0
+    ):
+        ext = _get_ext_lib()
+        if ext is not None and hasattr(ext, "launch_combine_conv_mix_r7_pf_2304"):
+            out = torch.empty((num_q, num_tokens, d), dtype=out_dtype, device=dev)
+            ok = ext.launch_combine_conv_mix_r7_pf_2304(
+                x.data_ptr(),
+                0,
+                conv_weight.data_ptr(),
+                cache.data_ptr(),
+                positions.data_ptr(),
+                block_table.data_ptr(),
+                seq_idx.data_ptr(),
+                slot_mapping.data_ptr(),
+                query_start.data_ptr(),
+                cache.stride(0),
+                cache.stride(1),
+                cache.stride(2),
+                block_table.stride(0),
+                block_table.shape[1],
+                cache.shape[2],
+                stream_offset,
+                stream_width,
+                5.0**-0.5,
+                conv_out.data_ptr(),
+                _ptr(residual),
+                _ptr(addend),
+                stack.data_ptr(),
+                _ptr(last),
+                queries.data_ptr(),
+                _ptr(norm_weight),
+                0,
+                out.data_ptr(),
+                stack.stride(0) >> 3,
+                num_tokens,
+                num_stack,
+                num_q,
+                1 if apply_norm else 0,
+                float(eps),
+                float(norm_eps),
+                _stream(dev),
+            )
+            if ok:
+                return out
+    out = torch.empty((num_q, num_tokens, d), dtype=out_dtype, device=dev)
     ok = _get_lib().launch_conv_mix_2304_sm80(
         x.data_ptr(),
         conv_weight.data_ptr(),
@@ -893,7 +997,7 @@ def conv_mix_2304(
         1 if apply_norm else 0,
         eps,
         norm_eps,
-        _stream(conv_out.device),
+        _stream(dev),
     )
     return out if ok else None
 
@@ -928,7 +1032,7 @@ def combine_conv_mix_2304(
     num_q = queries.shape[0]
     if (
         d != 2304
-        or not (1 <= num_tokens <= 64)
+        or num_tokens <= 0
         or down.dtype != torch.bfloat16
         or not down.is_contiguous()
         or down.shape[1] != 2304
@@ -943,13 +1047,56 @@ def combine_conv_mix_2304(
         return None
     dev = conv_out.device
     st = _stream(dev)
+    apply_norm = norm_weight is not None
+    out_dtype = torch.bfloat16 if apply_norm else torch.float32
+    if num_tokens > 64:
+        if not hasattr(ext, "launch_combine_conv_mix_r7_pf_2304"):
+            return None
+        ws_comb = torch.empty((num_tokens, 2304), dtype=torch.bfloat16, device=dev)
+        out = torch.empty((num_q, num_tokens, d), dtype=out_dtype, device=dev)
+        ok = ext.launch_combine_conv_mix_r7_pf_2304(
+            down.data_ptr(),
+            src2dst.data_ptr(),
+            conv_weight.data_ptr(),
+            cache.data_ptr(),
+            positions.data_ptr(),
+            block_table.data_ptr(),
+            seq_idx.data_ptr(),
+            slot_mapping.data_ptr(),
+            query_start.data_ptr(),
+            cache.stride(0),
+            cache.stride(1),
+            cache.stride(2),
+            block_table.stride(0),
+            block_table.shape[1],
+            cache.shape[2],
+            stream_offset,
+            stream_width,
+            5.0**-0.5,
+            conv_out.data_ptr(),
+            _ptr(residual),
+            _ptr(addend),
+            stack.data_ptr(),
+            _ptr(last),
+            queries.data_ptr(),
+            _ptr(norm_weight),
+            ws_comb.data_ptr(),
+            out.data_ptr(),
+            stack.stride(0) >> 3,
+            num_tokens,
+            num_stack,
+            num_q,
+            1 if apply_norm else 0,
+            float(eps),
+            float(norm_eps),
+            st,
+        )
+        return out if ok else None
     key = (dev.index or 0, st)
     ws_comb = _CCM_R6_WS.get(key)
     if ws_comb is None:
         ws_comb = torch.empty((64, 2304), dtype=torch.bfloat16, device=dev)
         _CCM_R6_WS[key] = ws_comb
-    apply_norm = norm_weight is not None
-    out_dtype = torch.bfloat16 if apply_norm else torch.float32
     out = torch.empty((num_q, num_tokens, d), dtype=out_dtype, device=dev)
     ok = ext.launch_combine_conv_mix_r6_2304(
         down.data_ptr(),
@@ -1674,6 +1821,115 @@ def markov_fold_gumbel_est_cache_r1(
         _stream(dev),
     )
     return out_sampled
+
+
+def bank_stats_r7_2304(bank: torch.Tensor, eps: float = 1e-6) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_bank_stats_r7_2304"):
+        return None
+    t = bank.shape[1]
+    stats = torch.empty((t, 5), dtype=torch.float32, device=bank.device)
+    if t > 0:
+        ext.launch_bank_stats_r7_2304(
+            bank.data_ptr(),
+            stats.data_ptr(),
+            bank.stride(0) >> 3,
+            t,
+            float(eps),
+            _stream(bank.device),
+        )
+    return stats
+
+
+def bank_rank2_finalize_r7(
+    dots: torch.Tensor,
+    stats: torch.Tensor,
+    num_layers: int,
+    num_streams: int,
+    eps: float = 1e-6,
+) -> tuple[torch.Tensor, torch.Tensor] | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_bank_rank2_finalize_r7"):
+        return None
+    t = stats.shape[0]
+    q_tot = num_layers * num_streams
+    c_raw = torch.empty(
+        (num_layers, num_streams, t, 2), dtype=torch.float32, device=dots.device
+    )
+    c_norm = torch.empty(
+        (num_layers, num_streams, t, 2), dtype=torch.float32, device=dots.device
+    )
+    if t > 0 and q_tot > 0:
+        ext.launch_bank_rank2_finalize_r7(
+            dots.data_ptr(),
+            stats.data_ptr(),
+            c_raw.data_ptr(),
+            c_norm.data_ptr(),
+            t,
+            q_tot,
+            float(eps),
+            _stream(dots.device),
+        )
+    return c_raw, c_norm
+
+
+def pair_rms_norm_rank2_2304_r7(
+    dest: torch.Tensor,
+    bank: torch.Tensor,
+    c_norm: torch.Tensor,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    s, t, d = dest.shape
+    out = torch.empty((s, t, 2 * d), dtype=torch.bfloat16, device=dest.device)
+    if t > 0:
+        _get_ext_lib().launch_pair_rms_norm_rank2_2304_r7(
+            dest.data_ptr(),
+            bank.data_ptr(),
+            c_norm.data_ptr(),
+            out.data_ptr(),
+            dest.stride(0),
+            bank.stride(0) >> 3,
+            s,
+            t,
+            float(eps),
+            _stream(dest.device),
+        )
+    return out
+
+
+def up_blend_rank2_rms_2304_r7(
+    hidden: torch.Tensor,
+    up: torch.Tensor,
+    dest: torch.Tensor,
+    bank: torch.Tensor,
+    c_raw: torch.Tensor,
+    norm_weight: torch.Tensor,
+    norm_eps: float,
+) -> torch.Tensor:
+    s, t, d = dest.shape
+    dev = dest.device
+    ws_x = torch.empty((s, t, d), dtype=torch.float32, device=dev)
+    out = torch.empty((s, t, d), dtype=torch.bfloat16, device=dev)
+    if t > 0:
+        _get_ext_lib().launch_up_blend_rank2_rms_2304_r7(
+            hidden.data_ptr(),
+            up.data_ptr(),
+            dest.data_ptr(),
+            bank.data_ptr(),
+            c_raw.data_ptr(),
+            norm_weight.data_ptr(),
+            ws_x.data_ptr(),
+            out.data_ptr(),
+            up.stride(0),
+            dest.stride(0),
+            bank.stride(0),
+            norm_weight.stride(0),
+            s,
+            t,
+            float(norm_eps),
+            _stream(dev),
+        )
+    return out
 
 
 def set_l2_persisting_window(

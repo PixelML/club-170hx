@@ -1,0 +1,10 @@
+exp_id	status	decode_0ulp_ok	prefill_parity_ok	c1_step_ms	c16_step_ms	prefill_chunk_ms	subsys_metric	description
+R6-base	baseline	1	1	15.4255	24.1234	204.1569	moe_c1=9.4249,moe_c16_skew=16.0113,loop_c1=0.7987,loop_pf=24.3057,cc_pf=11.6490	Round-6 baseline on CMP-170HX (inkling2-r7-neon, 140.00W)
+A1-fused-situ	keep	1	1	15.3825	23.8387	212.9920	moe_c1=9.3389,moe_c16_skew=15.7286,moe_c16_unif=26.6404,moe_pf=85.3156	Fused softcapped SiTU + gamma inside Humming w13 epilogue via content-hashed gmem_writer.cuh (0-ULP)
+A2-pass-bank-zpair	discard	1	0	15.2474	23.5725	203.4217	loop_c1=0.7107,loop_c16=1.0732,loop_pf=25.5816	Pass-hoisted 48-q decode (0-ULP) + zero-pair Triton rank-2 prefill (slower due to 6 eager launches & PF_FAIL max_diff=0.0625)
+A2-pass-bank-r2cuda	keep	1	1	15.2105	24.0435	197.5009	loop_c1=0.7229,loop_c16=1.0691,loop_pf=15.0651	Pass-hoisted 48-q decode (0-ULP) + 3-call zero-spill CUDA MMA rank-2 prefill (pair_r2 + bmm + fused MMA up_blend_rms)
+A2-pass-bank-tuned	keep	1	1	15.2392	23.1444	191.7665	loop_c1=0.7025,loop_c16=1.0670,loop_pf=13.5823	Tuned decode Q_PER_CTA (2 for T<=8, 8 for T>8) + MT=4 resident-W double-buffered CUDA MMA up_blend_r2 + S=1 torch.mm
+A3-prefill-ccm	keep	1	1	15.2474	22.0488	187.1647	cc_pf=6.4389,cc_c1=0.6881,cc_c16=0.8356	Zero-spill T>64 prefill combine (128b uint4 4+4 parallel) + 3-CTA/SM intra-fast-path conv_mix (T<=64 untouched 0-ULP)
+A4-moe-buckets	keep	1	1	15.2228	19.6649	170.8114	moe_c1=9.2774,moe_c16_skew=11.5753,moe_c16_unif=29.3560,moe_pf=66.2938	Skew-aware 140W Humming buckets (0-ULP BK=128 BM=16 for (256,912], BM=32 for (2048,8192], BM=128 for >16384)
+A4-e2e-cold	keep	1	1	15.2228	19.6649	170.8114	gates_ok=1,c1_med=165.45,c1_t0_code=222.74,agentic=214.84,c16_agg=852.89,pf4k=343.1,pf32k=6143.4	First E2E on inkling2-r7-neon (pf4k hit cold Triton JIT of _attn_prologue/_qr_rel; peak_vram=58656MB)
+A4-e2e-warm	keep	1	1	15.2228	19.6649	170.8114	gates_ok=1,startup_s=112.6,c1_med=164.91,c1_t0_code=222.06,agentic=213.97,c16_agg=851.05,pf4k=6694.2,pf32k=6151.8	Warm-cache E2E on inkling2-r7-neon (140W CMP 170HX; peak_vram=58656MB)

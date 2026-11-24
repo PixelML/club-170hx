@@ -28,12 +28,13 @@ VLLM_INKLING_PR69028 = "ab18334a4f60da74db7de89fe95594e5ed0cda36"
 VLLM_LLGEMM_PR69168 = "8c17e4692a7cf393e3d1dacf6404fa4d48d993a1"
 SKILL_COMMIT = "fda968e7fc1996aa23c67139c755fe541c9d4be0"
 TENSORFOLD_COMMIT = "34af03a12aa388130b71909c9d7b30481f6ec9da"
+SNAILBRAINX_COMMIT = "8340b99044d63280259bf2f17357b45cf9796815"
 PR90_COMMIT = "2f23339b66e6bba963b8b145f739ff8b78ecc927"
 
 # PixelML/sm80vllm rebased fork PR pin:
 SM80VLLM_PORT_PIN = os.environ.get(
     "SM80VLLM_PORT_PIN",
-    "PixelML/sm80vllm PR #3 @ a87301248f244c4a4a0a72eab01750885704f099 "
+    "PixelML/sm80vllm PR #3 @ 28de4699f24566ce27f875e194365d93a2e485f8 "
     "(https://github.com/PixelML/sm80vllm/pull/3, rebased onto vllm-project/vllm @ b976fff86af82c559b19aa676f52ea193eb0c188)",
 )
 
@@ -49,14 +50,14 @@ cells = []
 # --- Cell 0: First-screen hero cell (strictly follows notebooks/README.md) ---
 cells.append(
     md(
-        f"""# Inkling-2-Mini on 1x CMP 170HX (SM80, 140 W) — Round 1–6 100% 0-ULP SM80 autoresearch megakernels, Humming v5, monolithic CUDA graphs, 18-split decode attention & 13-group coalesced FP8 KV
+        f"""# Inkling-2-Mini on 1x CMP 170HX (SM80, 140 W) — Round 1–7 100% 0-ULP SM80 autoresearch megakernels, fused Humming SiTU epilogue, FlashInfer/rank-2 prefill, monolithic CUDA graphs & 13-group FP8 KV
 
 | Metric (1 stock card, 140 W, 262,144 ctx) | Value |
 |---|---|
-| Decode, c=1 | **{champ['c1_med']:.2f} tok/s** median (6-prompt panel, T=0.6; **167.66 tok/s** in 13-group FP8 KV) · **{champ['pr90']['code']['pooled']:.1f} / {champ['pr90']['struct']['pooled']:.1f} / {champ['pr90']['prose']['pooled']:.1f} tok/s** code / structured / prose (**{champ['pr90']['code']['t0']:.1f}** T=0 code, PR #90 suite) · **301.9–313.0 tok/s** JSON extraction |
-| Best aggregate | **{champ['c16_med']:.2f} tok/s** median / **{champ['c16_peak']:.2f} tok/s** peak at c=16 (same unified server; **713.24 / 715.17 tok/s** in 13-group FP8 KV; **{champ['pr90']['c16']:.2f} tok/s** on PR #90 c=16 suite) |
-| Prefill | **{champ['prefill_4k']:,.0f} tok/s** at 4K · **{champ['prefill_32k']:,.0f} tok/s** at 32K · **{champ['long_131k']['prefill']:,.0f} tok/s** at 131K · **{champ['long_231k']['prefill']:,.0f} tok/s** at 231K |
-| TTFT & Long KV | **{champ['ttft_ms']/1000:.3f} s** short TTFT (**0.071 s** warm) · **{champ['long_131k']['decode']:.2f} / {champ['long_231k']['decode']:.2f} tok/s** decode @ 131K / 231K (3/3 needles) · **809,126 KV tok (`3.09x` @ 262K, 13 KV groups, 109.7 s boot, 4×172.0K soak)** with `--kv-cache-dtype=fp8` |
+| Decode, c=1 | **{champ['c1_med']:.2f} tok/s** median / **{champ['c1_peak']:.2f} tok/s** peak (6-prompt panel, T=0.6; **169.56 tok/s** in 13-group FP8 KV) · **{champ['pr90']['code']['pooled']:.1f} / {champ['pr90']['struct']['pooled']:.1f} / {champ['pr90']['prose']['pooled']:.1f} tok/s** code / structured / prose (**{champ['pr90']['code']['t0']:.1f}** T=0 code, PR #90 suite) · **308.3–313.0 tok/s** JSON extraction |
+| Best aggregate | **{champ['c16_peak']:.2f} tok/s** peak (**718.77 tok/s** in 13-group FP8 KV · **{champ['c16_med']:.2f}–705.96 tok/s** BF16 at c=16 on the same unified server; **{champ['pr90']['c16']:.2f} tok/s** on PR #90 c=16 suite) |
+| Prefill | **{champ['prefill_4k']:,.0f} tok/s** at 4K · **{champ['prefill_32k']:,.0f} tok/s** at 32K · **{champ['long_131k']['prefill']:,.0f} tok/s** at 131K · **{champ['long_231k']['prefill']:,.0f} tok/s** at 231K (`+36.0%` vs R6) |
+| TTFT & Long KV | **{champ['ttft_ms']/1000:.3f} s** short TTFT (**0.072 s** warm) · **{champ['long_131k']['decode']:.2f} / {champ['long_231k']['decode']:.2f} tok/s** decode @ 131K / 231K (3/3 needles) · **805,704–809,126 KV tok (`3.07–3.09x` @ 262K, 13 KV groups, 110.3 s boot, 4×172.0K soak)** with `--kv-cache-dtype=fp8` |
 
 ![chart](../assets/charts/{EXP}.png)
 
@@ -102,18 +103,19 @@ cells.append(
     md(
         f"""## 1. TL;DR
 
-**Verdict (measured):** Six-round SM80 optimization follow-up to [PR #90 (`{PR90_EXP}`)]({PR90_EXP}.ipynb) on a **{S.HARDWARE_STOCK}** at full **`262,144`-token context** (strict `140.00 W` TDP cap, `0` register spills, `100% 0-ULP` lossless target distribution) lifts single-user 6-prompt median decode **`{progression_c1} tok/s` (`+{champ['c1_gain_pct']:.1f}%` over baseline, beating all 5 bracketed Round-5 controls on 6/6 prompts simultaneously)** and unified-server `c=16` aggregate throughput **`{progression_c16} tok/s` (`{champ['c16_peak']:.2f} tok/s` peak, `+{champ['c16_gain_pct']:.1f}%` / `+{champ['c16_peak_gain_pct']:.1f}%`, beating control on 16/16 streams)**, while lifting cold prefill to **`{champ['prefill_4k']:,.1f} / {champ['prefill_32k']:,.1f} tok/s`** (`~4K` / `~32K`) and cutting startup from **`{base['startup_s']:.1f} s` to `109.7–{champ['startup_s']:.1f} s`**. Cross-validated on a 108-SM **A100-SXM4-40GB** (`sm_80`, `131K` 13-group FP8 KV), Round 6 lifts end-to-end `vllm serve` `c=1` decode **`169.17 → 187.09 tok/s` (`+10.6%`)** and `c=16` **`1,116.96 → 1,189.20 tok/s` (`+6.5%`)**.
+**Verdict (measured):** Seven-round SM80 optimization follow-up to [PR #90 (`{PR90_EXP}`)]({PR90_EXP}.ipynb) on a **{S.HARDWARE_STOCK}** at full **`262,144`-token context** (strict `140.00 W` TDP cap, `0` register spills, `100% 0-ULP` lossless target decode distribution) lifts single-user 6-prompt median decode **`{progression_c1} tok/s` (`{champ['c1_peak']:.2f} tok/s` peak, `+{champ['c1_gain_pct']:.1f}%` / `+{champ['c1_peak_gain_pct']:.1f}%` over baseline, beating all 4 bracketed Round-6 controls AND Round-6 Best on 6/6 prompts simultaneously)** and unified-server `c=16` aggregate throughput **`{progression_c16} tok/s` (`{champ['c16_peak']:.2f} tok/s` peak, `+{champ['c16_peak_gain_pct']:.1f}%` — all-time `c=16` record in 13-group FP8 KV)**, while jumping cold prefill to **`{champ['prefill_4k']:,.1f} / {champ['prefill_32k']:,.1f} tok/s`** (`~4K` / `~32K`, `+14.7%` at `32K` over Round 6) and cutting startup from **`{base['startup_s']:.1f} s` to `110.3–{champ['startup_s']:.1f} s`**. Cross-validated on a 108-SM **A100-SXM4-40GB** (`sm_80`, `131K` 13-group FP8 KV), our SM80 stack lifts end-to-end `vllm serve` `c=1` decode **`169.17 → 187.09 tok/s` (`+10.6%`)** and `c=16` **`1,116.96 → 1,189.20 tok/s` (`+6.5%`)**.
 
-- **Apples-to-apples on PR #90's harness at `262,144` context (`receipts/pr90-r6best.jsonl`):** `{champ['pr90']['code']['pooled']:.1f} tok/s` code (**`{champ['pr90']['code']['t0']:.1f} tok/s` at `T=0`**, `{champ['pr90']['code']['max']:.1f}` peak), `{champ['pr90']['struct']['pooled']:.1f} tok/s` structured JSON (`{champ['pr90']['struct']['t1']:.1f}` `T=1` median, `{champ['pr90']['struct']['max']:.1f}` peak), `{champ['pr90']['prose']['pooled']:.1f} tok/s` prose (`{champ['pr90']['prose']['max']:.1f}` peak), and `{champ['pr90']['c16']:.1f} tok/s` at `c=16` — beating PR #90's stock-card baseline (`146.0 / 136.8 / 87.5`) by **`+48%` to `+49%`** and PR #90's `+200 MHz SM offset` card at `32K` context (`166.9 / 189.1 / 94.0` at `T=0`, `510.9` at `c=16`) by **`+38.7%` code (`T=0`), `+39.1%` prose, and `+30.6%` (`+44.8%` unified) at `c=16`**. On the 768-token agentic suite (`receipts/agentic-r6-0ulp-bf16.json`), Round 6 reaches **`229.7 tok/s` mean (`301.9 tok/s` JSON extraction; `313.0 tok/s` in Round 5)**.
-- **Lossless target distribution, 262K long-context & 13-group coalesced `--kv-cache-dtype=fp8` `3.09x` mode (`receipts/r6-gates-summary.json`, `receipts/soak-4x173k-r6-fp8kv.json`):** BF16-KV long-context needle retrieval is **`3/3` at `131,227` tokens** (**`{champ['long_131k']['prefill']:,.1f} tok/s` prefill, `{champ['long_131k']['decode']:.2f} tok/s` decode** — all-time CMP 170HX records) and **`3/3` at `231,044` tokens** (**`{champ['long_231k']['prefill']:,.1f} tok/s` prefill**, `{champ['long_231k']['decode']:.2f} tok/s` decode); **`2/2` concurrent `167.8K`-token soak** (`335,655` KV tok in `112.5–113.3 s`) and **GSM8K-50 `50/50 (100%)`**. In 13-group coalesced `--kv-cache-dtype=fp8` (`809,126` KV tok = `3.09x` @ `262,144`), Round 6 (`cand-54`) jumps FP8 `c=1` short decode **`121.62 → 162.59 → 167.66 tok/s` (`+37.9%` over R4 FP8, `252.28 tok/s` code peak — beating R4 BF16!)**, lifts `c=16` to **`713.24 tok/s` (`715.17` peak)**, cuts startup to **`109.7–114.4 s`**, lifts `231K` FP8 decode **`141.55 → 150.78 tok/s` (`3/3` needles)**, and passes **`4 × 172.0K` concurrent soak (`4/4` streams, `12/12` needles)** + **GSM8K-50**.
-- **Seven verified pillars across Waves 0–14 (`receipts/ledger.jsonl`):**
-  1. **Round-6 `100% 0-ULP` SM80 autoresearch CUDA & Triton kernels (`patches/sm80_r6_ext.cu` → `libsm80_r6_ext.so`, `nvidia/loop.py`, `nvidia/dspark.py`, `speculator.py`, 0 spills):** 1-launch 48-CTA (`BN=8 × 3` exact K-groups `1024, 1024, 256`) double-buffered MMA `select_and_align_mma256_k3g_t16` (`maxdiff = 0`, `-96` launches/step), `combine_2304_r6` + `cp.async` `conv_mix_288_r6` (`0-ULP` fused `combine_conv_mix_2304`), `0-ULP` `sm80_up_blend_x_mma_2304` + `sm80_rms_norm_x_2304`, 1-pass `0-ULP` Triton `_bank_attn_res_1pass_kernel` (`2–4×` fewer bank HBM reads), preallocated `_partials_workspace` (`-48` allocs/step) + `156 KiB` GA100 SMEM cap in `ll_gemm_sm80.py`, and `0-ULP` `sm80_mix_rmsnorm_4x` + 4-warp `_qk_norm_rope_write_kv_kernel` + `_dspark_embed_block_kernel` + batched `c=16` `sm80_markov_sample_batch` (`-52.9%` DSpark `c=16` latency).
-  2. **Universal `0-ULP` (`torch.equal == True`) 140 W Cold-HBM SM80 Humming v5 MoE buckets (`nvidia/ops/moe_sm90.py`):** `cta=3` `[8, 128, 64] stg=5` on `NVFP4 w13 (16, 256]` (`-0.461 ms/step`), `cta=3` `[8, 128, 128] stg=3` on `NVFP4 w2 (16, 256]`, `cta=2` `[8, 256, 128] stg=4` on `NVFP4 w13 (256, 912]`, `stg=4 cta=3` on `MXFP8 w2` (`1.553 → 0.863 ms`), and dynamic `num_compute_units()` across 74-SM CMP 170HX and 108-SM A100.
-  3. **Standalone SM80 CUDA megakernels (`patches/sm80_fast_v6.cu` → `libsm80_fast_v6.so`, 0 spills):** `moe_align_v3_sm80`, `select_and_align_32cta_128_sm80`, `<1 KB`-smem `conv_mix_2304_sm80`, `swiglu_1152_sm80`, `pair/blend_rms_norm_2304_sm80`, `markov_rnn_gate_256_sm80`, and 1-launch bitwise-exact `markov_fold_gumbel_cache_r1_sm80`.
-  4. **SM80 low-M Tensor-Core linears & FA2 vision (`nvidia/ops/ll_gemm_sm80.py`, `nvidia/model.py`, `nvidia/vision.py`):** ported & tuned `_ll_gemm_kernel` and 1-launch `_qkv_bmm_kernel` (`vllm` PR `#69168`), `BN=128` (`68` CTAs on 74 SMs, `44.0 µs` 4-stage) on `8600×2304` `loc_qkvr`, batched `MP=64` `_ll_gemm` for `loop.blend`, `cuBLAS` `M >= 5` `lm_head`, and SM80 FA2 23-layer ViT vision.
-  5. **Lossless DSpark `K=49,152` pruning + zero-scatter `-inf` `DraftLogitsCache` + bidirectional `k=4` + joint block verification (`"block"`) + dynamic batch `k` (`[[1,2,4],[3,6,3],[7,256,2]]`):** `fold_weight` shrinks `102.9 → 25.17 MB` to fit inside the CMP 170HX's `32.0 MiB` physical L2 cache; joint block verification lifts prose decode `+13.3%`; dynamic `k` unifies `c=1` (`k=4`) and `c=16` (`k=2`) in one server.
-  6. **Monolithic `M <= 21` FULL CUDA graphs + slots-safe Sconv metadata deduplication + 18-split SM80 global decode attention (`nvidia/attention.py`, `nvidia/ops/attention.py`):** eliminates 48 piecewise graph breaks/step, deduplicates `sconv_seq_metadata` (`6 → 1` launch/step), and reaches `1,329.8 GB/s` (`89.1%` raw HBM2e peak) at `131K` (`219.16 tok/s` decode).
-  7. **13-group coalesced unit-scale SM80 E4M3 FP8 KV (`nvidia/dspark.py`, `nvidia/ops/attention.py`, `nvidia/ops/sconv.py`):** branchless 9-instruction SIMD PTX `e4m3x2 → f16x2` + IEEE RNE `_fp32_to_e4m3fn_u8` across Target and DSpark coalesce vLLM V1's hybrid allocator from `99` to **`13` KV groups** (`809,126` KV tok = `3.09x` @ `262K`, `167.66 tok/s` `c=1`, `713.24 tok/s` `c=16`)."""
+- **Apples-to-apples on PR #90's harness at `262,144` context (`receipts/pr90-r7best.jsonl`):** `{champ['pr90']['code']['pooled']:.1f} tok/s` code (**`{champ['pr90']['code']['t0']:.1f} tok/s` at `T=0`**, `{champ['pr90']['code']['max']:.1f}` peak), `{champ['pr90']['struct']['pooled']:.1f} tok/s` structured JSON (`{champ['pr90']['struct']['t1']:.1f}` `T=1` median, `{champ['pr90']['struct']['max']:.1f}` peak), `{champ['pr90']['prose']['pooled']:.1f} tok/s` prose (`{champ['pr90']['prose']['max']:.1f}` peak), and `{champ['pr90']['c16']:.1f} tok/s` at `c=16` — beating PR #90's stock-card baseline (`146.0 / 136.8 / 87.5`) by **`+38%` to `+52%`** and PR #90's `+200 MHz SM offset` card at `32K` context (`166.9 / 189.1 / 94.0` at `T=0`, `510.9` at `c=16`) by **`+40.8%` code (`T=0`), `+41.2%` prose, and `+28.7%` (`+46.4%` unified peak) at `c=16`**. On the 768-token agentic suite (`receipts/agentic-r7-0ulp-bf16.json`), Round 7 reaches **`241.9 tok/s` `T=0.6` mean (`308.3 tok/s` JSON extraction peak, `239.1 tok/s` code refactor peak — `+5.3%` over Round 6)**.
+- **Lossless target decode distribution, 262K long-context & 13-group coalesced `--kv-cache-dtype=fp8` `3.07–3.09x` mode (`receipts/r7-gates-summary.json`, `receipts/soak-4x173k-r7-fp8kv.json`):** BF16-KV long-context needle retrieval is **`3/3` at `131,227` tokens** (**`{champ['long_131k']['prefill']:,.1f} tok/s` prefill `+12.0%` vs R6, `{champ['long_131k']['decode']:.2f} tok/s` decode**) and **`3/3` at `231,044` tokens** (**`{champ['long_231k']['prefill']:,.1f} tok/s` prefill `+36.0%` vs R6, `{champ['long_231k']['decode']:.2f} tok/s` decode `+5.5%` vs R6** — all-time `231K` records); **`2/2` concurrent `167.8K`-token soak** (`335,655` KV tok in **`86.4–87.6 s`, `-22.7%` faster** than Round 6) and **GSM8K-50 `49/50 (98.0%)`** (`50/50` in Round 6). In 13-group coalesced `--kv-cache-dtype=fp8` (`805,704–809,126` KV tok = `3.07–3.09x` @ `262,144`), Round 7 (`cand-58`) lifts FP8 `c=1` short decode **`121.62 → 162.59 → 167.66 → 169.56 tok/s` (`169.71` peak, `+39.5%` over R4 FP8, beating R6 FP8 on `6/6` prompts simultaneously)**, sets the all-time **`c=16` record at `718.77 tok/s` (`+46.4%`)**, cuts startup to **`110.3 s`**, lifts `131K / 231K` FP8 decode to **`204.32 / 152.80 tok/s` (`3/3` needles)**, and passes **`4 × 172.0K` concurrent soak (`4/4` streams = `689,932` KV tok in `409.6 s`, `12/12` needles)** + **GSM8K-50 `48/50 (96.0%)`**.
+- **Eight verified pillars across Waves 0–15 (`receipts/ledger.jsonl`):**
+  1. **Round-7 `100% 0-ULP` fused Humming SiTU epilogue, pass-hoisted/rank-2 loop bank, FlashInfer/Triton hybrid prefill, 5-way `qkv_dyn` & TP=2 (`humming_include/humming/epilogue/gmem_writer.cuh`, `sm80_r6_ext.cu`, `nvidia/loop.py`, `nvidia/ops/{{attention_sm90.py,moe_sm90.py,ll_gemm_sm80.py,conv_mix.py}}`, `sm80_tp_ops.py`, 0 spills):** fuses softcapped SwiGLU (`gate_cap=4.0, up_cap=25.0`) + routing `gamma` inside Humming's `w13` epilogue (`-48` launches/step, `3×` less `w13 → w2` HBM traffic at `0-ULP`), hoists all 48 core queries per pass in `_bank_attn_res_1pass_kernel` (`-22` launches/step at `0-ULP`), decomposes `T >= 256` prefill bank attention via zero-spill CUDA MMA rank-2 kernels (`-44.0%` loop prefill, `-450 MB` peak VRAM), accelerates `T > 64` `combine_conv` (`-62.4%`) + `BM=32/128` prefill MoE buckets (`-20.5%`), routes `max_query_len >= 256` global prefill to zero-copy FlashInfer HND `FAR` + Triton `NEAR` (`-47.7%`) and local prefill to 3-interval unmasked Triton (`-32.8%`), adds `0-ULP` `FAR` decode attention (`-6.7%`) and 5-way single-loop `_qkv_dyn_bmm_kernel` (`-28.6%`, `-16` launches/step), and registers `_C::vocab_parallel_embedding` for `TP=2`.
+  2. **Round-6 `100% 0-ULP` SM80 autoresearch CUDA & Triton kernels (`patches/sm80_r6_ext.cu` → `libsm80_r6_ext.so`, `nvidia/loop.py`, `nvidia/dspark.py`, `speculator.py`, 0 spills):** 1-launch 48-CTA (`BN=8 × 3` exact K-groups `1024, 1024, 256`) double-buffered MMA `select_and_align_mma256_k3g_t16` (`maxdiff = 0`, `-96` launches/step), `combine_2304_r6` + `cp.async` `conv_mix_288_r6` (`0-ULP` fused `combine_conv_mix_2304`), `0-ULP` `sm80_up_blend_x_mma_2304` + `sm80_rms_norm_x_2304`, preallocated `_partials_workspace` (`-48` allocs/step) + `156 KiB` GA100 SMEM cap in `ll_gemm_sm80.py`, and `0-ULP` `sm80_mix_rmsnorm_4x` + 4-warp `_qk_norm_rope_write_kv_kernel` + `_dspark_embed_block_kernel` + batched `c=16` `sm80_markov_sample_batch` (`-52.9%` DSpark `c=16` latency).
+  3. **Universal `0-ULP` (`torch.equal == True`) 140 W Cold-HBM SM80 Humming v5 MoE buckets (`nvidia/ops/moe_sm90.py`):** `cta=3` `[8, 128, 64] stg=5` on `NVFP4 w13 (16, 256]` (`-0.461 ms/step`), `cta=3` `[8, 128, 128] stg=3` on `NVFP4 w2 (16, 256]`, `cta=2` `[8, 256, 128] stg=4` on `NVFP4 w13 (256, 912]` (critical for `718.77 tok/s` uniform `c=16` routing), `stg=4 cta=3` on `MXFP8 w2` (`1.553 → 0.863 ms`), and dynamic `num_compute_units()` across 74-SM CMP 170HX and 108-SM A100.
+  4. **Standalone SM80 CUDA megakernels (`patches/sm80_fast_v6.cu` → `libsm80_fast_v6.so`, 0 spills):** `moe_align_v3_sm80`, `select_and_align_32cta_128_sm80`, `<1 KB`-smem `conv_mix_2304_sm80`, `pair/blend_rms_norm_2304_sm80`, `markov_rnn_gate_256_sm80`, and 1-launch bitwise-exact `markov_fold_gumbel_cache_r1_sm80`.
+  5. **SM80 low-M Tensor-Core linears & FA2 vision (`nvidia/ops/ll_gemm_sm80.py`, `nvidia/model.py`, `nvidia/vision.py`):** ported & tuned `_ll_gemm_kernel` and 1-launch `_qkv_bmm_kernel` (`vllm` PR `#69168`), `BN=128` (`68` CTAs on 74 SMs, `44.0 µs` 4-stage) on `8600×2304` `loc_qkvr`, batched `MP=64` `_ll_gemm` for `loop.blend`, `cuBLAS` `M >= 5` `lm_head`, and SM80 FA2 23-layer ViT vision.
+  6. **Lossless DSpark `K=49,152` pruning + zero-scatter `-inf` `DraftLogitsCache` + bidirectional `k=4` + joint block verification (`"block"`) + dynamic batch `k` (`[[1,2,4],[3,6,3],[7,256,2]]`):** `fold_weight` shrinks `102.9 → 25.17 MB` to fit inside the CMP 170HX's `32.0 MiB` physical L2 cache; joint block verification lifts prose decode `+13.3%`; dynamic `k` unifies `c=1` (`k=4`) and `c=16` (`k=2`) in one server.
+  7. **Monolithic `M <= 21` FULL CUDA graphs + slots-safe Sconv metadata deduplication + 18-split SM80 global decode attention (`nvidia/attention.py`, `nvidia/ops/attention.py`):** eliminates 48 piecewise graph breaks/step, deduplicates `sconv_seq_metadata` (`6 → 1` launch/step), and reaches `1,329.8 GB/s` (`89.1%` raw HBM2e peak) at `131K` (`216.4–219.2 tok/s` decode).
+  8. **13-group coalesced unit-scale SM80 E4M3 FP8 KV (`nvidia/dspark.py`, `nvidia/ops/attention.py`, `nvidia/ops/sconv.py`):** branchless 9-instruction SIMD PTX `e4m3x2 → f16x2` + IEEE RNE `_fp32_to_e4m3fn_u8` across Target and DSpark coalesce vLLM V1's hybrid allocator from `99` to **`13` KV groups** (`805,704–809,126` KV tok = `3.07–3.09x` @ `262K`, `169.56 tok/s` `c=1`, `718.77 tok/s` `c=16`)."""
     )
 )
 
@@ -142,13 +144,13 @@ render_table(
 )
 
 pins = [
-    ("Hardware (all R1–R6 scoreboard runs)", "{S.HARDWARE_STOCK} (GA100, sm_80, 74 SMs, 32.0 MiB physical L2 across 5 active HBM2e stacks, PCIe Gen2 x16)"),
+    ("Hardware (all R1–R7 scoreboard runs)", "{S.HARDWARE_STOCK} (GA100, sm_80, 74 SMs, 32.0 MiB physical L2 across 5 active HBM2e stacks, PCIe Gen2 x16)"),
     ("PR #90 reference card", "{S.HARDWARE_PR90_OFFSET} (PR #90 commit {PR90_COMMIT})"),
     ("Power / cooling", "nvidia-smi -pl 140; forced chassis airflow; fail-closed guard 80 °C core / 85 °C HBM / any Xid ({RD}/harness/guard.sh)"),
     ("Driver stack", "Guest NVIDIA driver 580.178.04 over host unlock amoghmunikote/cmpunlocker @ {CMPUNLOCKER_COMMIT} + PixelML/cmpunlocker @ {CLUB_CMPUNLOCKER_COMMIT} (74 SMs, HBM NDIV 64 = 1,728 MHz)"),
     ("vLLM container image", "{IMG} (vLLM 0.1.dev25855+g7cb5dae22, torch 2.14.0+cu130, Python 3.14.10, /usr/local/cuda/bin/nvcc)"),
     ("Model & DSpark drafter", "thinkingmachines/Inkling-2-Mini @ {MODEL_REV} (18.19 GiB main + 0.59 GiB mtp.safetensors, NVFP4 + MXFP8 + 23-layer ViT, Apache-2.0)"),
-    ("SM80 Round-6 Best source patch", "{RD}/patches/install-sm80-r6.sh + sm80_fast_v6.cu + sm80_r6_ext.cu + overlay/ (full diff: {RD}/patches/inkling2-sm80-r3.diff; zero .so blobs in git)"),
+    ("SM80 Round-7 Best source patch", "{RD}/patches/install-sm80-r7.sh + sm80_fast_v6.cu + sm80_r6_ext.cu + overlay/ (full diff: {RD}/patches/inkling2-sm80-r3.diff; zero .so blobs in git)"),
     ("Upstream vLLM commits ported", "vllm-project/vllm @ {VLLM_INKLING_PR69028} (PR #69028 Inkling-2-Mini) + {VLLM_LLGEMM_PR69168} (PR #69168 small-M Triton GEMM)"),
     ("PixelML/sm80vllm port", "{SM80VLLM_PORT_PIN}"),
     ("Winning vLLM serve flags", "--served-model-name=inkling --max-model-len=262144 --reasoning-parser=inkling --enable-auto-tool-choice --tool-call-parser=inkling --limit-mm-per-prompt={{\\"image\\":0}} --max-num-batched-tokens=4096 --compilation-config={{\\"custom_ops\\":[\\"none\\"],\\"cudagraph_capture_sizes\\":[1,2,3,4,5,6,8,9,10,12,15,16,18,20,21,24,27,30,32,36,42,48,54,60,64,72,84,96,108,120,132,144,168,192,216,240,264,288,312,336,384,432,480,512]}} --speculative-config={{\\"method\\":\\"dspark\\",\\"num_speculative_tokens\\":4,\\"draft_sample_method\\":\\"probabilistic\\",\\"rejection_sample_method\\":\\"block\\",\\"num_speculative_tokens_per_batch_size\\":[[1,2,4],[3,6,3],[7,256,2]]}} (optional: --kv-cache-dtype=fp8 for 3.09x KV; --limit-mm-per-prompt={{\\"image\\":4}} for SM80 FA2 vision)"),
@@ -293,6 +295,7 @@ for r in SB[1:]:
 for _fp8_label, _fp8_file in [
     ("Round 5 13-group FP8 (`cand-43`, `--kv-cache-dtype=fp8`)", "r5-fp8-winner-metrics.txt"),
     ("Round 6 13-group FP8 (`cand-54`, `--kv-cache-dtype=fp8`)", "r6-fp8-winner-metrics.txt"),
+    ("Round 7 13-group FP8 (`cand-58`, `--kv-cache-dtype=fp8`)", "r7-fp8-winner-metrics.txt"),
 ]:
     _m_fp8 = S.spec_metrics(_fp8_file)
     if _m_fp8:
@@ -365,9 +368,47 @@ ag_r6_bf16_json_pk = round(max(x["decode_tok_s"] for x in ag_r6_bf16 if x["case"
 ag_r6_fp8_t00 = round(_st.mean([x["decode_tok_s"] for x in ag_r6_fp8 if x["temp"] == 0.0]), 2)
 ag_r6_fp8_json_pk = round(max(x["decode_tok_s"] for x in ag_r6_fp8 if x["case"] == "json_extraction"), 2)
 
+r7_bf16 = by_name["cand-57-r7v2-bf16"][0]
+r7_bf16_b = by_name["cand-59-r7v2-bf16"][0]
+r7_bf16_c1_med = round(_st.median([r7_bf16["c1_decode"], r7_bf16_b["c1_decode"]]), 2)
+r7_fp8 = by_name["cand-58-r7v2-fp8kv"][0]
+r7_bf16_l131 = by_name["r7-winner-long-131k"][0]["long"]
+r7_bf16_l231 = by_name["r7-winner-long-231k"][0]["long"]
+r7_fp8_l131 = by_name["r7-fp8-long-131k"][0]["long"]
+r7_fp8_l231 = by_name["r7-fp8-long-231k"][0]["long"]
+soak4_r7 = _json.loads((RESULTS_DIR / "receipts" / "soak-4x173k-r7-fp8kv.json").read_text())
+gsm_r7_bf16 = S.gsm8k_summary("gsm8k-r7best.jsonl")
+gsm_r7_fp8 = S.gsm8k_summary("gsm8k-r7best-fp8.jsonl")
+ag_r7_bf16 = _json.loads((RESULTS_DIR / "receipts" / "agentic-r7-0ulp-bf16.json").read_text())
+ag_r7_fp8 = _json.loads((RESULTS_DIR / "receipts" / "agentic-r7-0ulp-fp8kv.json").read_text())
+ag_r7_bf16_t06 = round(_st.mean([x["decode_tok_s"] for x in ag_r7_bf16 if x["temp"] == 0.6]), 2)
+ag_r7_bf16_json_pk = round(max(x["decode_tok_s"] for x in ag_r7_bf16 if x["case"] == "json_extraction"), 2)
+ag_r7_fp8_t06 = round(_st.mean([x["decode_tok_s"] for x in ag_r7_fp8 if x["temp"] == 0.6]), 2)
+ag_r7_fp8_json_pk = round(max(x["decode_tok_s"] for x in ag_r7_fp8 if x["case"] == "json_extraction"), 2)
+
 kv_mode_rows = [
     (
-        "**Round 6 BF16 KV (`cand-53`, `--kv-cache-dtype=auto`, 13 KV groups)**",
+        "**Round 7 BF16 KV (`cand-57/59`, `--kv-cache-dtype=auto`, 13 KV groups)**",
+        "558,081–563,878 (2.13–2.15x @ 262K)",
+        f"**{r7_bf16_c1_med:.2f}** (pk 175.52; ag {ag_r7_bf16_t06:.1f}, JSON {ag_r7_bf16_json_pk:.1f})",
+        f"**{r7_bf16_b['c16_aggregate']:.2f}** (med 703.09)",
+        f"**{r7_bf16_l131['decode']:.2f}** ({r7_bf16_l131['retrieval']}, pf 4,098.9)",
+        f"**{r7_bf16_l231['decode']:.2f}** ({r7_bf16_l231['retrieval']}, pf 3,584.3)",
+        "**2 x 167.8K = 335,655 tok (2/2 PASS, 87.6 s, -22.7%)**",
+        f"**{gsm_r7_bf16['ok']}/{gsm_r7_bf16['n']} ({gsm_r7_bf16['pct']:.0f}%)**",
+    ),
+    (
+        "**Round 7 Coalesced E4M3 FP8 KV (`cand-58`, `--kv-cache-dtype=fp8`, 13 KV groups)**",
+        "**805,704–809,126 (3.07–3.09x @ 262K)**",
+        f"**{r7_fp8['c1_decode']:.2f}** (pk 169.71, +39.5% vs R4; ag {ag_r7_fp8_t06:.1f}, JSON {ag_r7_fp8_json_pk:.1f})",
+        f"**{r7_fp8['c16_aggregate']:.2f}** (+46.4% record)",
+        f"**{r7_fp8_l131['decode']:.2f}** ({r7_fp8_l131['retrieval']})",
+        f"**{r7_fp8_l231['decode']:.2f}** ({r7_fp8_l231['retrieval']})",
+        f"**4 x 172.0K = {soak4_r7['total_active_kv_tokens']:,} tok ({soak4_r7['streams_passed']} PASS in {soak4_r7['wall_s']} s, 12/12 needles)**",
+        f"**{gsm_r7_fp8['ok']}/{gsm_r7_fp8['n']} ({gsm_r7_fp8['pct']:.0f}%)**",
+    ),
+    (
+        "Round 6 BF16 KV (`cand-53`, `--kv-cache-dtype=auto`, 13 KV groups)",
         "563,614–563,878 (2.15x @ 262K)",
         f"**{r6_bf16['c1_decode']:.2f}** (ag {ag_r6_bf16_t06:.1f}, JSON {ag_r6_bf16_json_pk:.1f})",
         f"**{r6_bf16['c16_aggregate']:.2f}** (pk 716.68)",
@@ -444,14 +485,14 @@ hf download thinkingmachines/Inkling-2-Mini --revision {MODEL_REV} --local-dir /
 docker pull {IMG}
 ```
 
-**3. Build the zero-binary SM80 Round-6 Best package from source** (extracts `vllm/models/inkling2` from the pinned image, applies the SM80 overlays, and compiles `sm80_fast_v6.cu` → `libsm80_fast_v6.so` + `sm80_r6_ext.cu` → `libsm80_r6_ext.so` inside the container via `nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC`):
+**3. Build the zero-binary SM80 Round-7 Best package from source** (extracts `vllm/models/inkling2` from the pinned image, applies the SM80 overlays incl. `humming_include/humming/epilogue/gmem_writer.cuh`, and compiles `sm80_fast_v6.cu` → `libsm80_fast_v6.so` + `sm80_r6_ext.cu` → `libsm80_r6_ext.so` inside the container via `nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC`):
 ```bash
-bash {RD}/patches/install-sm80-r6.sh /work/patches/inkling2
+bash {RD}/patches/install-sm80-r7.sh /work/patches/inkling2
 ```
 
-**4. Launch the unified Round-6 Best server (`262,144` context, `100% 0-ULP` SM80 autoresearch megakernels + Humming v5, monolithic FULL CUDA graphs, 18-split decode attention, joint block verification, dynamic `k` — append `--kv-cache-dtype=fp8` for `809,126`-token / `3.09x` 13-group KV capacity, or set `--limit-mm-per-prompt='{{"image":4}}'` to enable SM80 FA2 ViT vision):**
+**4. Launch the unified Round-7 Best server (`262,144` context, `100% 0-ULP` SM80 autoresearch megakernels + fused Humming SiTU epilogue + FlashInfer/rank-2 prefill, monolithic FULL CUDA graphs, 18-split decode attention, joint block verification, dynamic `k` — append `--kv-cache-dtype=fp8` for `805,704–809,126`-token / `3.07–3.09x` 13-group KV capacity, or set `--limit-mm-per-prompt='{{"image":4}}'` to enable SM80 FA2 ViT vision):**
 ```bash
-MODEL_DIR=/work/models/Inkling-2-Mini bash {RD}/harness/run-vllm-r3.sh 0 18000 r6
+MODEL_DIR=/work/models/Inkling-2-Mini bash {RD}/harness/run-vllm-r3.sh 0 18000 r7
 ```
 Equivalent explicit `vllm serve` invocation inside the container:
 ```bash
@@ -469,18 +510,18 @@ vllm serve /models/Inkling-2-Mini \\
 
 **5. Vast.ai / cloud GPU rental one-command bring-up** (auto-detects whether running directly inside a rented `vllm/vllm-openai` container or on a Docker host) **& `PixelML/sm80vllm` checkout port:**
 ```bash
-# Inside a rented container or on a fresh GPU host (set RUN_BENCH=1 to auto-run gates + bench; set KV_CACHE_DTYPE=fp8 for 13-group 3.09x KV):
+# Inside a rented container or on a fresh GPU host (set RUN_BENCH=1 to auto-run gates + bench; set KV_CACHE_DTYPE=fp8 for 13-group 3.07x KV):
 RUN_BENCH=1 bash {RD}/harness/onstart.sh
 
 # Install into a PixelML/sm80vllm or vllm source checkout (or pull https://github.com/PixelML/sm80vllm/pull/3 directly):
-bash {RD}/patches/install-sm80-r6.sh /path/to/sm80vllm
+bash {RD}/patches/install-sm80-r7.sh /path/to/sm80vllm
 ```
 
 **6. Run capability gates, hill-climb benchmark, PR #90 suite & GSM8K:**
 ```bash
 python3 {RD}/harness/run_gates.py --url http://127.0.0.1:18000 --out gates-summary.json
-python3 {RD}/harness/bench.py --url http://127.0.0.1:18000 --engine r6best-dynk-block --out pr90-r6best.jsonl --suites c1,conc,prefill --reps 3 --n 768 --temps 0,1 --effort none --conc 16 --prefill 4000,32000
-python3 {RD}/harness/gsm8k.py --url http://127.0.0.1:18000 --engine r6best-dynk-block --data gsm8k-test.jsonl --out gsm8k-r6best.jsonl --n 50 --effort low
+python3 {RD}/harness/bench.py --url http://127.0.0.1:18000 --engine r7best-dynk-block --out pr90-r7best.jsonl --suites c1,conc,prefill --reps 3 --n 768 --temps 0,1 --effort none --conc 16 --prefill 4000,32000
+python3 {RD}/harness/gsm8k.py --url http://127.0.0.1:18000 --engine r7best-dynk-block --data gsm8k-test.jsonl --out gsm8k-r7best.jsonl --n 50 --effort low
 ```
 
 **7. Try your own prompt** (edit `request` below):"""
@@ -599,14 +640,25 @@ Every negative or rejected experiment is preserved in `receipts/ledger.jsonl` an
    - Initial Wave-14 candidates (`cand-45/47/49/51`) delivered peak `c=16` throughput (`716.68 tok/s` BF16 in `cand-47`, `715.17 tok/s` FP8 in `cand-48`) and `252.28 tok/s` FP8 code decode (`cand-46`), but 1-ULP FP32 associative differences (`8.94e-8` in 9-chunk vs 3-K-group router `gamma` amplified by `2.2M` `swiglu_1152` BF16 roundings/step, `__fmaf_rn` vs `__fadd_rn` in `sm80_rms_norm_x_2304`, `num_warps=2` vs `4` in `_qk_norm_rope_write_kv_kernel`, and 9-warp CUDA vs 8-warp Triton `bank_attn_res`) shifted `seed=0` DSpark trajectories (`161-165 tok/s`).
    - Aligning every Round-6 kernel to **`maxdiff = 0.000e+00` (`torch.equal == True`)** — via 48-CTA 3-K-group (`1024, 1024, 256`) `select_and_align_mma256_k3g_t16`, `cp.async` power-of-2 `combine_conv_mix_2304`, IEEE `tanhf` + unfused `__fadd_rn` in `sm80_up_blend_r6`, 1-pass `enable_fp_fusion=False` Triton `_bank_attn_res_1pass_kernel`, `_SMEM_LIMIT_BYTES = 156 * 1024` (preserving 4-stage `44.0 us` `loc_qkvr` on GA100's `163,840 B` SMEM), and `0-ULP` DSpark kernels — immediately unlocked **`cand-53-r6-100pct0ulp-bf16` (`173.78 tok/s` `c=1`, beating all 5 bracketed Round-5 controls `ctl-39..43` on `6/6` prompts simultaneously; `710.92 tok/s` `c=16`, beating `ctl-42` on `16/16` streams; `50/50 = 100%` GSM8K-50)** and **`cand-54-r6-100pct0ulp-fp8kv` (`167.66 tok/s` `c=1`, `713.24 tok/s` `c=16`, `109.7 s` startup, `4/4` `172.0K` soak, `50/50 = 100%` GSM8K-50)**.
 
+</details>
+
+<details><summary><b>Round-7 SM80 autoresearch breakthroughs: 0-ULP Humming SiTU epilogue, FlashInfer/rank-2 prefill & c=16 MoE tile ablation (Wave 15, strict 140.00 W)</b></summary>
+
+1. **Five orthogonal subsystems ported & hill-climbed (`receipts/results-r7-neon.tsv`, `receipts/results-r7-hydrogen.tsv`, `0` register spills, `30/30` exact `0-ULP` decode checks):**
+   - **Fused softcapped SwiGLU + routing `gamma` inside Humming `w13` epilogue (`humming_include/humming/epilogue/gmem_writer.cuh`, `moe_sm90.py`):** Evaluates `gate_cap=4.0, up_cap=25.0` softcapped SwiGLU and routing weight multiplication directly in `GMemWriter` before writing `[N_slots, 1152]` BF16 (`torch.equal == True` vs `swiglu_1152`), deleting 48 launches/step and cutting `w13 -> w2` intermediate HBM traffic `3x`, invalidated automatically via a content-SHA256 `Compiler.cuh_last_update_time` hook.
+   - **Pass-hoisted 48-query decode bank (`-12.0%` `loop_c1` at `0-ULP`) + zero-spill CUDA MMA rank-2 prefill bank (`-44.0%` `loop_pf1024`):** Hoists all 48 core queries per pass (`Q_PER_CTA=2` for `T<=8`, `8` for `T>8`, `-22` launches/step) and decomposes `T >= 256` prefill bank attention via `sm80_bank_stats_r7`, split-BF16 `torch.mm`, `sm80_bank_rank2_finalize_r7`, `sm80_pair_rms_norm_rank2_bcast3_r7`, and `MT=4` double-buffered `sm80_up_blend_rank2_mma_2304_r7` (saving `~450 MB` peak prefill VRAM), alongside `T > 64` `combine_2304_pf_r7` + `prefill_conv_mix_288_r7` (`-62.4%` `combine_conv` prefill).
+   - **Zero-copy FlashInfer HND `FAR` + Triton `NEAR` hybrid global prefill (`-47.7%`), 3-interval unmasked local prefill (`-32.8%`), `0-ULP` `FAR` decode loop (`-6.7%`), 5-way single-loop `_qkv_dyn_bmm_kernel` (`-28.6%`, `-16` launches/step), and `sm80_tp_ops.py`:** Gating the hybrid prefill kernels at `max_query_len >= 256` preserves `100% 0-ULP` parity on short bench prompts (`L_q = 45..95`) while lifting `32K` prefill `+14.7%` (`6,788.0 tok/s`) and `231K` prefill **`+36.0%` (`3,584.3 tok/s`, TTFT `87.6 -> 64.5 s`)**.
+2. **Wave-15 vs Wave-15b `c=16` Humming `(256, 912]` Tile Discovery (`cand-55 = 509.68` -> `cand-57 = 705.96` BF16 / `cand-58 = 718.77 tok/s` FP8):**
+   - Synthetic skewed `c=16` microbenchmarks favored `[16, 128, 128]` (`384` slots across `~64` experts), but in live `vllm serve` at `c=16` (`16` independent requests x `3` verify tokens x `top-8` = `384` slots uniformly spread across `~110` active experts, `mean ~3.5 rows/expert < BM=8`), halving `BN` from `256` to `128` doubled expert weight HBM traffic (`+4.72 ms/step` across 48 visits). Keeping `[8, 256, 128]` on `(256, 912]` while applying `BM=32` on `(2048, 8192]` and `BM=128` on `(16384, inf)` restored `705.96 tok/s` BF16 `c=16`, set the all-time **`718.77 tok/s` (`+46.4%`)** record in 13-group FP8 KV, and lifted BF16 `c=1` to **`175.37 tok/s` median / `175.52 tok/s` peak (`+61.7%`, beating all 4 bracketed Round-6 controls `ctl-44..47` AND Round-6 Best on `6/6` prompts simultaneously)**.
+
 </details>"""
     )
 )
 
-# Code cell rendering the complete 123-row append-only ledger so all evidence is visible in committed outputs
+# Code cell rendering the complete 136-row append-only ledger so all evidence is visible in committed outputs
 cells.append(
     code(
-        """# Complete append-only hill-climb ledger (Waves 0–14, receipts/ledger.jsonl)
+        """# Complete append-only hill-climb ledger (Waves 0–15, receipts/ledger.jsonl)
 ledger_table = []
 for i, d in enumerate(LEDGER, 1):
     if not d.get("ok", True):
@@ -648,7 +700,8 @@ cells.append(
 - **Thinking Machines Lab** ([@thinking-machines-lab](https://github.com/thinking-machines-lab)) authored [Inkling-2-Mini](https://huggingface.co/thinkingmachines/Inkling-2-Mini) and its bundled DSpark draft head (Apache-2.0), revision `{MODEL_REV}`.
 - **Woosuk Kwon** ([@WoosukKwon](https://github.com/WoosukKwon)) and the **vLLM team** ([@vllm-project](https://github.com/vllm-project)) authored vLLM Inkling-2-Mini support ([vllm-project/vllm PR #69028](https://github.com/vllm-project/vllm/pull/69028), `{VLLM_INKLING_PR69028}`, Apache-2.0) and the container image `{IMG}`.
 - **Thien Tran** ([@gau-nernst](https://github.com/gau-nernst)) authored the Triton low-M BF16 GEMM (`_ll_gemm_kernel` and `_qkv_bmm_kernel`) in [vllm-project/vllm PR #69168](https://github.com/vllm-project/vllm/pull/69168) (`{VLLM_LLGEMM_PR69168}`, Apache-2.0), which `patches/overlay/nvidia/ops/ll_gemm_sm80.py` ports and retunes (`BN=128`, `MP=64`) for 74-SM SM80.
-- **Andrej Karpathy** ([@karpathy](https://github.com/karpathy)) authored [autoresearch](https://github.com/karpathy/autoresearch) (MIT), whose iterative single-metric keep/discard methodology structured Round 6's two-lane SM80 kernel search.
+- **snailbrainx** ([@snailbrainx](https://github.com/snailbrainx)) authored [snailbrainx/inkling-2-mini-sm80](https://github.com/snailbrainx/inkling-2-mini-sm80) (`{SNAILBRAINX_COMMIT}`, Apache-2.0), inspiring Round 7's fused Humming `w13` SiTU epilogue, pass-hoisted/rank-2 loop residual bank, FlashInfer/Triton hybrid global prefill + 3-interval local prefill, 5-way `_qkv_dyn_bmm_kernel`, and `_C::vocab_parallel_embedding` TP=2 stand-in.
+- **Andrej Karpathy** ([@karpathy](https://github.com/karpathy)) authored [autoresearch](https://github.com/karpathy/autoresearch) (MIT), whose iterative single-metric keep/discard methodology structured Rounds 6–7's two-lane SM80 kernel search.
 - **0xSero** ([@0xSero](https://github.com/0xSero)) and **Sybil Solutions** ([@sybil-solutions](https://github.com/sybil-solutions)) authored [sybil-solutions/inference-optimisation-skill](https://github.com/sybil-solutions/inference-optimisation-skill) @ `{SKILL_COMMIT}` (`harness/hillclimb_bench.py`, `harness/ceiling.py`).
 - **Ziteng Sun**, **Ananda Theertha Suresh**, **Jae Hun Ro**, **Ahmad Beirami**, **Himanshu Jain**, and **Felix Yu** authored joint block-level draft verification (*Optimal Block-Level Draft Verification for Accelerating Speculative Decoding*, [arXiv:2403.10444](https://arxiv.org/abs/2403.10444)), enabled here via `"rejection_sample_method": "block"`.
 - **Amogh Munikote** ([@amoghmunikote](https://github.com/amoghmunikote)) authored [cmpunlocker](https://github.com/amoghmunikote/cmpunlocker) @ `{CMPUNLOCKER_COMMIT}`; **Cachenetics** ([@cachenetics](https://github.com/cachenetics)) authored 170tune; **Ash** ([@ashhart](https://github.com/ashhart)) authored [TensorFold](https://github.com/ashhart/TensorFold) @ `{TENSORFOLD_COMMIT}`.

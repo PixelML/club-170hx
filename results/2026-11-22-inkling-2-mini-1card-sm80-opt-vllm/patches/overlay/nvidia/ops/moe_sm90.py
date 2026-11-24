@@ -8,7 +8,10 @@ gathers each row's token, the down GEMM reads and writes row by row, and
 `ops.moe.combine` sums them with the identity `src2dst` (-1: not local).
 """
 
+import glob
+import hashlib
 import json
+import os
 from typing import TYPE_CHECKING
 
 import torch
@@ -30,6 +33,48 @@ if TYPE_CHECKING:
 
 # Row block size when no Humming tuning range covers the row count.
 _DEFAULT_BLOCK_M = 64
+
+
+def _install_sm80_humming_situ_epilogue() -> None:
+    """Prepend our patched `gmem_writer.cuh` to Humming's JIT include search
+    path on SM80 so `w13` fuses softcapped SwiGLU + routing weight in-epilogue.
+    Content-hashes `.cuh` files so cache keys stay stable across tar staging."""
+    if not is_sm80() or os.environ.get("INKLING_SM80_NO_FUSED_SITU") == "1":
+        return
+    patch_inc = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "humming_include")
+    )
+    if not os.path.isdir(patch_inc):
+        return
+    try:
+        import humming.jit.compiler as _hjc
+    except ImportError:
+        return
+    comp = _hjc.Compiler
+    if getattr(comp, "_inkling_sm80_situ_patched", False):
+        return
+    orig_inc = comp.include_dirs
+    orig_mt = comp.cuh_last_update_time
+
+    @staticmethod
+    def _patched_inc():
+        return [patch_inc] + orig_inc()
+
+    @staticmethod
+    def _patched_mt():
+        data = json.loads(orig_mt())
+        for fn in sorted(glob.glob(f"{patch_inc}/**/*.cuh", recursive=True)):
+            with open(fn, "rb") as fp:
+                digest = hashlib.sha256(fp.read()).hexdigest()[:16]
+            data["inkling_sm80:" + os.path.relpath(fn, patch_inc)] = digest
+        return json.dumps(data, ensure_ascii=False)
+
+    comp.include_dirs = _patched_inc
+    comp.cuh_last_update_time = _patched_mt
+    comp._inkling_sm80_situ_patched = True
+
+
+_install_sm80_humming_situ_epilogue()
 
 
 @triton.jit
@@ -189,6 +234,7 @@ class HummingExperts:
         nvfp4: bool,
         input_schema: "HummingInputSchema | None" = None,
     ) -> None:
+        _install_sm80_humming_situ_epilogue()
         from vllm.utils.humming import (
             GemmType,
             HummingInputSchema,
@@ -272,9 +318,12 @@ class HummingExperts:
                     return _tuning[-1][2]
 
                 tiny_b = [x for x in tuning if 0 < x[1] <= 16]
-                c_prefill_2k = _up_cfg(2048)
                 c_prefill_hi = _up_cfg(32768)
+                c_pf4k = _mk_cfg([128, 256, 64], [64, 64, 64], 3, 1, evict=False)
                 if nvfp4:
+                    c_m48_w13 = _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True)
+                    c_m48_w2 = _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=False)
+                    c_pf512 = _mk_cfg([32, 256, 64], [32, 64, 64], 4, 2, evict=False)
                     if name == "w13":
                         tuning = tiny_b + [
                             [
@@ -282,13 +331,15 @@ class HummingExperts:
                                 256,
                                 _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3, evict=False),
                             ],
+                            [256, 912, c_m48_w13],
                             [
-                                256,
                                 912,
-                                _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True),
+                                2048,
+                                _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False),
                             ],
-                            [912, 4096, c_prefill_2k],
-                            [4096, 1 << 30, c_prefill_hi],
+                            [2048, 8192, c_pf512],
+                            [8192, 16384, c_prefill_hi],
+                            [16384, 1 << 30, c_pf4k],
                         ]
                     else:
                         tuning = tiny_b + [
@@ -297,15 +348,20 @@ class HummingExperts:
                                 256,
                                 _mk_cfg([8, 128, 128], [8, 64, 64], 3, 3, evict=True),
                             ],
+                            [256, 912, c_m48_w2],
                             [
-                                256,
                                 912,
-                                _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=False),
+                                2048,
+                                _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False),
                             ],
-                            [912, 4096, c_prefill_2k],
-                            [4096, 1 << 30, c_prefill_hi],
+                            [2048, 8192, c_pf512],
+                            [8192, 16384, c_prefill_hi],
+                            [16384, 1 << 30, c_pf4k],
                         ]
                 else:
+                    c_m48_w13 = _mk_cfg([8, 256, 128], [8, 64, 64], 3, 3, evict=True)
+                    c_m48_w2 = _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True)
+                    c_pf512 = _mk_cfg([32, 128, 64], [32, 32, 64], 5, 2, evict=False)
                     if name == "w13":
                         tuning = tiny_b + [
                             [
@@ -313,18 +369,15 @@ class HummingExperts:
                                 256,
                                 _mk_cfg([8, 64, 128], [8, 32, 64], 4, 2, evict=False),
                             ],
-                            [
-                                256,
-                                912,
-                                _mk_cfg([8, 256, 128], [8, 64, 64], 3, 3, evict=True),
-                            ],
+                            [256, 912, c_m48_w13],
                             [
                                 912,
                                 2048,
                                 _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False),
                             ],
-                            [2048, 8192, c_prefill_2k],
-                            [8192, 1 << 30, c_prefill_hi],
+                            [2048, 8192, c_pf512],
+                            [8192, 16384, c_prefill_hi],
+                            [16384, 1 << 30, c_pf4k],
                         ]
                     else:
                         tuning = tiny_b + [
@@ -333,18 +386,15 @@ class HummingExperts:
                                 256,
                                 _mk_cfg([8, 128, 64], [8, 32, 64], 4, 3, evict=False),
                             ],
-                            [
-                                256,
-                                912,
-                                _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True),
-                            ],
+                            [256, 912, c_m48_w2],
                             [
                                 912,
                                 2048,
                                 _mk_cfg([16, 128, 64], [16, 32, 64], 5, 2, evict=False),
                             ],
-                            [2048, 8192, c_prefill_2k],
-                            [8192, 1 << 30, c_prefill_hi],
+                            [2048, 8192, c_pf512],
+                            [8192, 16384, c_prefill_hi],
+                            [16384, 1 << 30, c_pf4k],
                         ]
             self.configs[name] = config
             self.tensors[name] = tensors
@@ -374,6 +424,7 @@ class HummingExperts:
         alignment: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         top_k: int,
         valid_rows: int,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         from vllm.utils.humming import humming_forward
 
@@ -389,6 +440,7 @@ class HummingExperts:
             weight=tensors["weight"],
             weight_scale=tensors.get("weight_scale"),
             weight_scale_2=tensors.get("weight_scale_2"),
+            bias=bias,
             outputs=out,
             locks=self.locks,
             sorted_ids=sorted_ids,
@@ -432,11 +484,34 @@ class HummingExperts:
             )
             for size in set(block_m.values())
         }
-        gate_up = self._gemm(
-            "w13", x, rows, alignments[block_m["w13"]], topk, valid_rows
+        use_fused_situ = (
+            is_sm80()
+            and os.environ.get("INKLING_SM80_NO_FUSED_SITU") != "1"
+            and gate_cap == 4.0
+            and up_cap == 25.0
+            and weights.dtype == torch.float32
+            and weights.is_contiguous()
+            and self.configs["w13"].shape_n % 2 == 0
         )
-        activated = swiglu(gate_up, weights, src2dst, gate_cap, up_cap)
-        del gate_up
+        if use_fused_situ:
+            raw = self._gemm(
+                "w13",
+                x,
+                rows,
+                alignments[block_m["w13"]],
+                topk,
+                valid_rows,
+                bias=weights,
+            )
+            half_n = self.configs["w13"].shape_n // 2
+            activated = raw.view(-1)[: rows * half_n].view(rows, half_n)
+            del raw
+        else:
+            gate_up = self._gemm(
+                "w13", x, rows, alignments[block_m["w13"]], topk, valid_rows
+            )
+            activated = swiglu(gate_up, weights, src2dst, gate_cap, up_cap)
+            del gate_up
         return self._gemm(
             "w2", activated, rows, alignments[block_m["w2"]], 1, valid_rows
         )
