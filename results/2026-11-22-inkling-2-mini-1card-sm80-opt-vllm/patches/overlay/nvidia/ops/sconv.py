@@ -27,6 +27,8 @@ import torch
 from vllm.models.inkling2.nvidia.ops.norm import qr_clip_rel_tokens, rsqrt
 from vllm.triton_utils import tl, triton
 
+from . import LAUNCH_PDL, gdc_launch_dependents, gdc_wait
+
 
 @triton.jit
 def _cached_taps(
@@ -248,7 +250,7 @@ def _conv(
         cached1 = _cached_tap(*taps, 2)
         cached2 = _cached_tap(*taps, 1)
         cached3 = _cached_tap(*taps, 0)
-        pass  # sm80: no PDL
+        gdc_wait()
 
     dtype = cache_ptr.dtype.element_ty
     cur = tl.load(x_ptr + toff[:, None] * stride_x + coff[None, :], mask=tc_mask)
@@ -335,7 +337,7 @@ def _sconv_kernel(
     first = tl.program_id(0) * BT
     tile_reads_cache = True
     if SKIP_IDLE_CACHE:
-        pass  # sm80: no PDL
+        gdc_wait()
         # Request starts are non-decreasing: no token of the tile is among the
         # first W - 1 of its request unless the last token's request starts
         # after first - (W - 1).
@@ -458,7 +460,7 @@ def short_conv(
         SKIP_IDLE_CACHE=prefill,
         num_warps=4,
         enable_fp_fusion=False,
-        launch_pdl=False,
+        launch_pdl=LAUNCH_PDL,
     )
     return out
 
@@ -554,9 +556,9 @@ def _attn_prologue_kernel(
     QR_TOKENS: tl.constexpr,
     FUSE_QR: tl.constexpr,
 ):
-    pass  # sm80: no PDL
+    gdc_wait()
     # The decode attention kernel prefetches cached keys meanwhile.
-    pass  # sm80: no PDL
+    gdc_launch_dependents()
     # Programs (tile, head, 0 | 1) run the K | V conv of one KV head; programs
     # (tile, head, 2) clip q of QR_TOKENS of the tile's tokens and programs
     # (tile, head, 3 + c) their r and column block c of the relative logits.
@@ -700,12 +702,12 @@ def _qr_rel_kernel(
         BLOCK_HQ,
         BLOCK_E,
     )
-    pass  # sm80: no PDL
+    gdc_wait()
 
 
 @triton.jit
 def _fp32_to_e4m3fn_u8(x):
-    """Branchless IEEE round-to-nearest-even + satfinite FP32 -> E4M3FN uint8 for SM80."""
+    """Branchless IEEE RNE + satfinite FP32 -> E4M3FN uint8 for SM80."""
     bits = x.to(tl.int32, bitcast=True)
     sign = (bits >> 24) & 0x80
     abs_bits = bits & 0x7FFFFFFF
@@ -1009,7 +1011,7 @@ def attention_prologue(
         FUSE_QR=not qr_tokens,
         num_warps=4,
         enable_fp_fusion=False,
-        launch_pdl=False,
+        launch_pdl=LAUNCH_PDL,
     )
     if qr_tokens:
         _qr_rel_kernel[(triton.cdiv(num_tokens, qr_tokens), qr_blocks)](
@@ -1041,5 +1043,5 @@ def attention_prologue(
             QR_TOKENS=qr_tokens,
             num_warps=4,
             enable_fp_fusion=False,
-            launch_pdl=False,
+            launch_pdl=LAUNCH_PDL,
         )

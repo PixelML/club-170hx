@@ -30,9 +30,9 @@ if [ ! -f "$MDIR/config.json" ]; then
   exit 1
 fi
 
-# Build SM80 Round-7 Best package + libsm80_fast_v6.so + libsm80_r6_ext.so inside the pinned container if not yet staged
-if [ ! -f "$PATCH_DST/libsm80_fast_v6.so" ] || [ ! -f "$PATCH_DST/libsm80_r6_ext.so" ] || [ ! -f "$PATCH_DST/humming_include/humming/epilogue/gmem_writer.cuh" ]; then
-  bash "$EXP_DIR/patches/install-sm80-r7.sh" "$PATCH_DST"
+# Build SM80 Round-8 Best package + libsm80_fast_v6.so + libsm80_r6_ext.so inside the pinned container if not yet staged
+if [ ! -f "$PATCH_DST/libsm80_fast_v6.so" ] || [ ! -f "$PATCH_DST/libsm80_r6_ext.so" ] || [ ! -f "$PATCH_DST/sm80_rejection.py" ] || [ ! -f "$PATCH_DST/humming_include/humming/scheduler.cuh" ]; then
+  bash "$EXP_DIR/patches/install-sm80-r8.sh" "$PATCH_DST"
 fi
 
 mkdir -p "$WORK_DIR/cache"/{hf,vllm,triton,inductor,torch_compile,humming,flashinfer}

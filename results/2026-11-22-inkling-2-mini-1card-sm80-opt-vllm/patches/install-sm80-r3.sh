@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # install-sm80-r3.sh [DEST_DIR] [BASE_INKLING2_DIR]
 #
-# Builds the Round-7 Best CMP 170HX (sm_80) Inkling-2-Mini package from source (zero .so blobs in git):
+# Builds the Round-8 Best CMP 170HX (sm_80) Inkling-2-Mini package from source (zero .so blobs in git):
 #   1. Starts from vllm/models/inkling2 inside vllm/vllm-openai@sha256:c2dc759f5984f69c1e2418c6af7c26eb756f5ed2a8934c768ae1253645d1449e
 #      (or from an existing PixelML/sm80vllm / vllm checkout >= PR #69028).
 #   2. Applies the baseline SM80 capability + Triton PDL edits across nvidia/ops/*.py.
-#   3. Overlays the Round-1..7 Python modules + humming_include/humming/epilogue/gmem_writer.cuh +
-#      sm80_fast_v6.cu + sm80_r6_ext.cu (0-ULP fused softcapped SwiGLU + gamma Humming w13 epilogue,
+#   3. Overlays the Round-1..8 Python modules + humming_include/humming/{scheduler,epilogue/pipeline,epilogue/gmem_writer,arith/mainloop_arith}.cuh +
+#      sm80_rejection.py + sm80_fast_v6.cu + sm80_r6_ext.cu (1-call 0-spill C++ speculative rejection sampler,
+#      fused DSpark indexed f_rnn + store_context_kv + embed_block + in-place _store_hidden_states,
+#      0-spill Humming MoE tiles + static workspace + 4-header .cuh mainloop/epilogue overrides,
 #      pass-hoisted 48-query decode bank + zero-spill CUDA MMA rank-2 prefill bank, FlashInfer/Triton
-#      hybrid global prefill + 3-interval local prefill, 5-way single-loop qkv_dyn GEMV, TP=2 custom
-#      embedding op, universal 0-ULP 140W Humming v5 buckets, 49,152-vocab DSpark pruning, monolithic
-#      M<=21 FULL CUDA graphs, 18-split decode attention, FA2 vision, and 13-group E4M3 FP8 KV cache).
+#      hybrid global prefill + 3-interval local prefill, 5-way single-loop qkv_dyn GEMV up to M<=128,
+#      TP=2 custom embedding op, 49,152-vocab DSpark pruning, monolithic M<=21 FULL CUDA graphs,
+#      18-split decode attention, FA2 vision, and 13-group E4M3 FP8 KV cache).
 #   4. Compiles libsm80_fast_v6.so + libsm80_r6_ext.so inside the container (or with local nvcc) via:
 #        nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC sm80_fast_v6.cu -o libsm80_fast_v6.so
 #        nvcc -O3 -arch=sm_80 --shared -Xcompiler -fPIC sm80_r6_ext.cu -o libsm80_r6_ext.so

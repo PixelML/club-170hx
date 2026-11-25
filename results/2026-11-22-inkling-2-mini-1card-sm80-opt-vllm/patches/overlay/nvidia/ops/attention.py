@@ -20,7 +20,7 @@ from vllm.triton_utils import gl, gluon, tl, tldevice, triton
 from vllm.utils.platform_utils import num_compute_units
 from vllm.utils.torch_utils import kv_cache_dtype_str_to_dtype
 
-from . import use_sm100_kernels
+from . import LAUNCH_PDL, gdc_wait, is_sm80, use_sm100_kernels
 from .attention_sm90 import MODE_GATED, MODE_PARTIAL, rel_attention
 
 # Full-layer FA4 split estimate, fitted on GB200 over uniform and mixed
@@ -285,7 +285,7 @@ def _gate_sink_kernel(
     D: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    pass  # sm80: no PDL
+    gdc_wait()
     row = tl.program_id(0).to(tl.int64)
     col = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
     mask = col < H * D
@@ -333,7 +333,7 @@ def gate_sink(
         width // num_heads,
         512,
         enable_fp_fusion=False,
-        launch_pdl=False,
+        launch_pdl=LAUNCH_PDL,
     )
 
 
@@ -400,7 +400,7 @@ def plan_decode_attention(
         if work <= (16 if max_query_len <= 2 else 8):
             return triton.cdiv(rel_extent - 1, _FA4_BLOCK_N) + 1
         return 5 if work <= 16 else 3 if work <= 32 else 2 if work <= 64 else 1
-    head_splits = num_sms // 8 if use_sm100_kernels() else num_sms // 4
+    head_splits = num_sms // 4 if is_sm80() else num_sms // 8
     return max(num_sms // work, min(head_splits, 6 * num_sms // work))
 
 
@@ -467,7 +467,7 @@ def _rel_decode_combine_kernel(
         # gate and sink are ready.
         gate = tl.load(Gate + row * stride_gate + head * D + offs_d).to(tl.float32)
         sink = tl.load(Sink + row * stride_sink + head).to(tl.float32)
-    pass  # sm80: no PDL
+    gdc_wait()
     y_ptrs = Y + row * H * D + head * D + offs_d
     num_actual_tokens = tl.load(CuSeqlensQEnd)
     if row >= num_actual_tokens:
@@ -1297,7 +1297,7 @@ def _decode_attention(
         BLOCK_D=block_d,
         GATED=not draft,
         num_warps=num_warps,
-        launch_pdl=False,
+        launch_pdl=LAUNCH_PDL,
     )
 
 
@@ -1379,5 +1379,5 @@ def _launch_rel_verify(
         DRAFT=draft,
         WINDOW=window,
         num_warps=4,
-        launch_pdl=False,
+        launch_pdl=LAUNCH_PDL,
     )

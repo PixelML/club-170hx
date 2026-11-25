@@ -2817,3 +2817,2070 @@ extern "C" int launch_combine_conv_mix_r7_pf_2304(
     #undef LAUNCH_PF_CM_288
     return 1;
 }
+
+// ============================================================================
+// ROUND 8 SM80 KERNELS:
+//   1. launch_logits_softcap_bf16_r8: 1-pass strided-to-contiguous 0-ULP BF16 softcap
+//   2. launch_select_and_align_r8_t96_sm80: 1-launch 0-ULP MMA router + align for 1 <= T <= 96
+//   3. launch_markov_fold_gumbel_cal_r1_sm80: C++ Markov fold + lossless cal_alpha + Gumbel
+//   4. launch_w8a16_e4m3_gemm_bf16_r8: SM80 Tensor-Core W8A16 FP8(e4m3fn) -> BF16 low-M GEMM
+// ============================================================================
+
+#include <cuda_fp16.h>
+
+__global__ void __launch_bounds__(256, 4) logits_softcap_bf16_vec8_r8_kernel(
+    const uint4* __restrict__ in_u4,
+    uint4* __restrict__ out_u4,
+    const int64_t in_stride_u4,
+    const int64_t v_u4,
+    const int64_t total_u4,
+    const float softcap,
+    const int32_t exact_3pass)
+{
+    const int64_t step = static_cast<int64_t>(gridDim.x) * 256;
+    for (int64_t idx = static_cast<int64_t>(blockIdx.x) * 256 + threadIdx.x; idx < total_u4; idx += step) {
+        const int64_t row = idx / v_u4;
+        const int64_t col = idx - row * v_u4;
+        uint4 u = r6_ldcg_u4(in_u4 + row * in_stride_u4 + col);
+        float vals[8];
+        r6_unpack_bf16x8(u, vals);
+        if (exact_3pass) {
+            #pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                float q = r6_bf2f(r6_f2bf(__fdiv_rn(vals[i], softcap)));
+                float t = r6_bf2f(r6_f2bf(tanhf(q)));
+                vals[i] = __fmul_rn(t, softcap);
+            }
+        } else {
+            const float inv_sc = __fdiv_rn(1.0f, softcap);
+            #pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                vals[i] = __fmul_rn(softcap, tanhf(__fmul_rn(vals[i], inv_sc)));
+            }
+        }
+        r6_stcg_u4(out_u4 + idx, r6_pack_bf16x8(vals));
+    }
+}
+
+__global__ void __launch_bounds__(256, 4) logits_softcap_bf16_scalar_r8_kernel(
+    const __nv_bfloat16* __restrict__ in_ptr,
+    __nv_bfloat16* __restrict__ out_ptr,
+    const int64_t in_stride0,
+    const int64_t V,
+    const int64_t total,
+    const float softcap,
+    const int32_t exact_3pass)
+{
+    const int64_t step = static_cast<int64_t>(gridDim.x) * 256;
+    for (int64_t idx = static_cast<int64_t>(blockIdx.x) * 256 + threadIdx.x; idx < total; idx += step) {
+        const int64_t row = idx / V;
+        const int64_t col = idx - row * V;
+        float x = r6_bf2f(in_ptr[row * in_stride0 + col]);
+        float y;
+        if (exact_3pass) {
+            float q = r6_bf2f(r6_f2bf(__fdiv_rn(x, softcap)));
+            float t = r6_bf2f(r6_f2bf(tanhf(q)));
+            y = __fmul_rn(t, softcap);
+        } else {
+            y = __fmul_rn(softcap, tanhf(__fdiv_rn(x, softcap)));
+        }
+        out_ptr[idx] = r6_f2bf(y);
+    }
+}
+
+extern "C" void launch_logits_softcap_bf16_r8(
+    const void* in_ptr,
+    void* out_ptr,
+    int64_t in_stride0,
+    int32_t M,
+    int32_t V,
+    float softcap,
+    int32_t exact_3pass,
+    void* stream_ptr)
+{
+    if (M <= 0 || V <= 0) return;
+    cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+    if ((V & 7) == 0 && (in_stride0 & 7) == 0 &&
+        ((reinterpret_cast<uintptr_t>(in_ptr) & 15) == 0) &&
+        ((reinterpret_cast<uintptr_t>(out_ptr) & 15) == 0))
+    {
+        int64_t v_u4 = static_cast<int64_t>(V) >> 3;
+        int64_t total_u4 = static_cast<int64_t>(M) * v_u4;
+        int64_t blocks = (total_u4 + 255) >> 8;
+        if (blocks > 1184) blocks = 1184;
+        logits_softcap_bf16_vec8_r8_kernel<<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
+            static_cast<const uint4*>(in_ptr),
+            static_cast<uint4*>(out_ptr),
+            in_stride0 >> 3,
+            v_u4,
+            total_u4,
+            softcap,
+            exact_3pass);
+    } else {
+        int64_t total = static_cast<int64_t>(M) * V;
+        int64_t blocks = (total + 255) >> 8;
+        if (blocks > 1184) blocks = 1184;
+        logits_softcap_bf16_scalar_r8_kernel<<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
+            static_cast<const __nv_bfloat16*>(in_ptr),
+            static_cast<__nv_bfloat16*>(out_ptr),
+            in_stride0,
+            V,
+            total,
+            softcap,
+            exact_3pass);
+    }
+}
+
+__global__ void __launch_bounds__(256, 4) logits_softcap_fp32_contig_vec4_r8_kernel(
+    const uint4* __restrict__ in_u4,
+    uint4* __restrict__ out_u4,
+    const int64_t total_u4,
+    const float inv_softcap,
+    const float softcap)
+{
+    const int64_t step = static_cast<int64_t>(gridDim.x) * 256;
+    for (int64_t idx = static_cast<int64_t>(blockIdx.x) * 256 + threadIdx.x; idx < total_u4; idx += step) {
+        uint4 u = r6_ldcg_u4(in_u4 + idx);
+        float4 f = *reinterpret_cast<const float4*>(&u);
+        f.x = __fmul_rn(tanhf(__fdiv_rn(f.x, softcap)), softcap);
+        f.y = __fmul_rn(tanhf(__fdiv_rn(f.y, softcap)), softcap);
+        f.z = __fmul_rn(tanhf(__fdiv_rn(f.z, softcap)), softcap);
+        f.w = __fmul_rn(tanhf(__fdiv_rn(f.w, softcap)), softcap);
+        r6_stcg_u4(out_u4 + idx, *reinterpret_cast<const uint4*>(&f));
+    }
+}
+
+__global__ void __launch_bounds__(256, 4) logits_softcap_fp32_2d_vec4_r8_kernel(
+    const uint4* __restrict__ in_u4,
+    uint4* __restrict__ out_u4,
+    const int64_t in_stride_u4,
+    const int64_t v_u4,
+    const float inv_softcap,
+    const float softcap)
+{
+    const int64_t row = blockIdx.y;
+    const int64_t col = static_cast<int64_t>(blockIdx.x) * 256 + threadIdx.x;
+    if (col < v_u4) {
+        uint4 u = r6_ldcg_u4(in_u4 + row * in_stride_u4 + col);
+        float4 f = *reinterpret_cast<const float4*>(&u);
+        f.x = __fmul_rn(tanhf(__fdiv_rn(f.x, softcap)), softcap);
+        f.y = __fmul_rn(tanhf(__fdiv_rn(f.y, softcap)), softcap);
+        f.z = __fmul_rn(tanhf(__fdiv_rn(f.z, softcap)), softcap);
+        f.w = __fmul_rn(tanhf(__fdiv_rn(f.w, softcap)), softcap);
+        r6_stcg_u4(out_u4 + row * v_u4 + col, *reinterpret_cast<const uint4*>(&f));
+    }
+}
+
+__global__ void __launch_bounds__(256, 4) logits_softcap_fp32_scalar_r8_kernel(
+    const float* __restrict__ in_ptr,
+    float* __restrict__ out_ptr,
+    const int64_t in_stride0,
+    const int64_t V,
+    const float inv_softcap,
+    const float softcap)
+{
+    const int64_t row = blockIdx.y;
+    const int64_t col = static_cast<int64_t>(blockIdx.x) * 256 + threadIdx.x;
+    if (col < V) {
+        float v = in_ptr[row * in_stride0 + col];
+        out_ptr[row * V + col] = __fmul_rn(tanhf(__fdiv_rn(v, softcap)), softcap);
+    }
+}
+
+extern "C" void launch_logits_softcap_fp32_r8(
+    const void* in_ptr,
+    void* out_ptr,
+    int64_t in_stride0,
+    int32_t M,
+    int32_t V,
+    float softcap,
+    void* stream_ptr)
+{
+    if (M <= 0 || V <= 0) return;
+    cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+    const float inv_softcap = 1.0f / softcap;
+    if ((V & 3) == 0 && (in_stride0 & 3) == 0 &&
+        ((reinterpret_cast<uintptr_t>(in_ptr) & 15) == 0) &&
+        ((reinterpret_cast<uintptr_t>(out_ptr) & 15) == 0))
+    {
+        int64_t v_u4 = static_cast<int64_t>(V) >> 2;
+        if (in_stride0 == V) {
+            int64_t total_u4 = static_cast<int64_t>(M) * v_u4;
+            int64_t blocks = (total_u4 + 255) >> 8;
+            if (blocks > 1184) blocks = 1184;
+            logits_softcap_fp32_contig_vec4_r8_kernel<<<static_cast<unsigned int>(blocks), 256, 0, stream>>>(
+                static_cast<const uint4*>(in_ptr),
+                static_cast<uint4*>(out_ptr),
+                total_u4,
+                inv_softcap,
+                softcap);
+        } else {
+            dim3 grid(static_cast<unsigned int>((v_u4 + 255) >> 8), static_cast<unsigned int>(M));
+            logits_softcap_fp32_2d_vec4_r8_kernel<<<grid, 256, 0, stream>>>(
+                static_cast<const uint4*>(in_ptr),
+                static_cast<uint4*>(out_ptr),
+                in_stride0 >> 2,
+                v_u4,
+                inv_softcap,
+                softcap);
+        }
+    } else {
+        dim3 grid(static_cast<unsigned int>((V + 255) >> 8), static_cast<unsigned int>(M));
+        logits_softcap_fp32_scalar_r8_kernel<<<grid, 256, 0, stream>>>(
+            static_cast<const float*>(in_ptr),
+            static_cast<float*>(out_ptr),
+            in_stride0,
+            V,
+            inv_softcap,
+            softcap);
+    }
+}
+
+struct RouterP2SmemT96 {
+    int32_t s_counts[128];
+    int32_t s_pad_start[128];
+    int32_t s_pad_end[128];
+    int32_t s_warp_sums[4];
+    int16_t s_expert[768];
+    int16_t s_slot[768];
+};
+
+__global__ void __launch_bounds__(256, 3) select_and_align_mma256_k3g_t96_sm80_kernel(
+    const __nv_bfloat16* __restrict__ X,
+    const __nv_bfloat16* __restrict__ W,
+    const float* __restrict__ bias,
+    const int32_t* __restrict__ expert_bounds,
+    const uint8_t* __restrict__ is_padding,
+    float* __restrict__ ws_partials,
+    int32_t* __restrict__ cta_counter,
+    int32_t* __restrict__ out_ids,
+    float* __restrict__ out_weights,
+    int32_t* __restrict__ out_src2dst,
+    int32_t* __restrict__ sorted_ids,
+    int32_t* __restrict__ expert_ids,
+    int32_t* __restrict__ total_tokens_post_pad,
+    const int32_t T,
+    const int32_t block_size,
+    const int32_t max_pad,
+    const int32_t n_blocks,
+    const float route_scale,
+    const int32_t total_ctas)
+{
+    struct P1SmemT96 {
+        __align__(16) uint4 s_W[2][16][16];  // 8 KiB
+        __align__(16) uint4 s_X[2][16][16];  // 8 KiB
+    };
+    __shared__ union {
+        P1SmemT96 p1;
+        RouterP2SmemT96 p2;
+    } smem;
+    __shared__ int s_is_last;
+
+    const int tid = threadIdx.x;       // 0..255
+    const int warp_id = tid >> 5;      // 0..7
+    const int lane = tid & 31;         // 0..31
+    const int group_id = lane >> 2;    // 0..7
+    const int tid_in_grp = lane & 3;   // 0..3
+
+    const int e_base = static_cast<int>(blockIdx.x) << 4; // 0, 16, ..., 112 (BN=16)
+    const int g_idx  = static_cast<int>(blockIdx.y);      // 0, 1, 2 (1024, 1024, 256)
+    const int m_base = static_cast<int>(blockIdx.z) << 4; // 0, 16, ..., 80  (BM=16)
+    const int k_start = g_idx * 1024;
+    const int n_tiles = (g_idx < 2) ? 8 : 2;
+
+    auto issue_stage = [&](int st, int kt) {
+        const int kb = k_start + kt * 128;
+        const int wr = tid >> 4;   // 0..15
+        const int wc = tid & 15;   // 0..15
+        const int wsc = wc ^ (wr & 7);
+        const __nv_bfloat16* w_ptr = W + static_cast<int64_t>(e_base + wr) * 2304 + kb + (wc << 3);
+        uint32_t dst_w = static_cast<uint32_t>(__cvta_generic_to_shared(&smem.p1.s_W[st][wr][wsc]));
+        r6_cp_async_cg_16B(dst_w, w_ptr);
+
+        const int gm = m_base + wr;
+        if (gm < T) {
+            const __nv_bfloat16* x_ptr = X + static_cast<int64_t>(gm) * 2304 + kb + (wc << 3);
+            uint32_t dst_x = static_cast<uint32_t>(__cvta_generic_to_shared(&smem.p1.s_X[st][wr][wsc]));
+            r6_cp_async_ca_16B(dst_x, x_ptr);
+        } else if (kt < 2) {
+            smem.p1.s_X[st][wr][wsc] = make_uint4(0, 0, 0, 0);
+        }
+        r6_cp_async_commit();
+    };
+
+    issue_stage(0, 0);
+
+    if (blockIdx.x == 0 && g_idx == 0 && blockIdx.z == 0) {
+        const int numel = T * 8;
+        const int4 fill4 = make_int4(numel, numel, numel, numel);
+        int4* sorted4 = reinterpret_cast<int4*>(sorted_ids);
+        const int n_vec4 = max_pad >> 2;
+        for (int idx = tid; idx < n_vec4; idx += 256) sorted4[idx] = fill4;
+        for (int idx = (n_vec4 << 2) + tid; idx < max_pad; idx += 256) sorted_ids[idx] = numel;
+    }
+
+    if (n_tiles > 1) issue_stage(1, 1);
+
+    float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+    #pragma unroll 1
+    for (int kt = 0; kt < n_tiles; ++kt) {
+        if (kt + 1 < n_tiles) r6_cp_async_wait<1>();
+        else r6_cp_async_wait<0>();
+        __syncthreads();
+
+        const int st = kt & 1;
+        if (warp_id < 2) {
+            const int x_r0 = group_id;
+            const int x_r1 = group_id + 8;
+            const int w_r = (warp_id << 3) + group_id;
+            #pragma unroll
+            for (int kk = 0; kk < 8; ++kk) {
+                int c_lo = kk << 1;
+                int c_hi = c_lo + 1;
+                const uint32_t* x0_lo = reinterpret_cast<const uint32_t*>(&smem.p1.s_X[st][x_r0][c_lo ^ group_id]);
+                const uint32_t* x1_lo = reinterpret_cast<const uint32_t*>(&smem.p1.s_X[st][x_r1][c_lo ^ group_id]);
+                const uint32_t* x0_hi = reinterpret_cast<const uint32_t*>(&smem.p1.s_X[st][x_r0][c_hi ^ group_id]);
+                const uint32_t* x1_hi = reinterpret_cast<const uint32_t*>(&smem.p1.s_X[st][x_r1][c_hi ^ group_id]);
+                const uint32_t* w_lo  = reinterpret_cast<const uint32_t*>(&smem.p1.s_W[st][w_r][c_lo ^ group_id]);
+                const uint32_t* w_hi  = reinterpret_cast<const uint32_t*>(&smem.p1.s_W[st][w_r][c_hi ^ group_id]);
+                r6_mma_m16n8k16_bf16(
+                    acc0, acc1, acc2, acc3,
+                    x0_lo[tid_in_grp], x1_lo[tid_in_grp], x0_hi[tid_in_grp], x1_hi[tid_in_grp],
+                    w_lo[tid_in_grp], w_hi[tid_in_grp]
+                );
+            }
+        }
+        if (kt + 2 < n_tiles) {
+            __syncthreads();
+            issue_stage(st, kt + 2);
+        }
+    }
+
+    if (warp_id < 2) {
+        const int c0 = tid_in_grp << 1;
+        const int g_m0 = m_base + group_id;
+        const int g_m1 = g_m0 + 8;
+        const int e_sub = e_base + (warp_id << 3) + c0;
+        float* base_p = ws_partials + static_cast<int64_t>(g_idx) * T * 128;
+        if (g_m0 < T) {
+            r6_stcg_f2(reinterpret_cast<float2*>(base_p + g_m0 * 128 + e_sub), make_float2(acc0, acc1));
+        }
+        if (g_m1 < T) {
+            r6_stcg_f2(reinterpret_cast<float2*>(base_p + g_m1 * 128 + e_sub), make_float2(acc2, acc3));
+        }
+    }
+
+    __syncthreads();
+    if (tid == 0) {
+        __threadfence();
+        int prev = atomicAdd(cta_counter, 1);
+        s_is_last = (prev == total_ctas - 1) ? 1 : 0;
+        if (prev == total_ctas - 1) atomicExch(cta_counter, 0);
+    }
+    __syncthreads();
+    if (!s_is_last) return;
+
+    const int32_t eb_lo = expert_bounds[0];
+    const int32_t eb_hi = expert_bounds[1];
+    const float b0 = bias[lane + 0];
+    const float b1 = bias[lane + 32];
+    const float b2 = bias[lane + 64];
+    const float b3 = bias[lane + 96];
+
+    const int64_t stride_k = static_cast<int64_t>(T) * 128;
+    for (int t = warp_id; t < T; t += 8) {
+        const bool padded_tok = (is_padding != nullptr) ? (is_padding[t] != 0) : false;
+        const int base = t * 128 + lane;
+        auto sum_k3 = [&](int off) -> float {
+            const float* q = ws_partials + base + off;
+            return __fadd_rn(__fadd_rn(r6_ldcg_f32(q + 0 * stride_k), r6_ldcg_f32(q + 1 * stride_k)),
+                             r6_ldcg_f32(q + 2 * stride_k));
+        };
+        float lg0 = sum_k3(0);
+        float lg1 = sum_k3(32);
+        float lg2 = sum_k3(64);
+        float lg3 = sum_k3(96);
+
+        uint64_t k0 = r6_sel_key(lg0, b0, lane + 0);
+        uint64_t k1 = r6_sel_key(lg1, b1, lane + 32);
+        uint64_t k2 = r6_sel_key(lg2, b2, lane + 64);
+        uint64_t k3 = r6_sel_key(lg3, b3, lane + 96);
+
+        cswap_key(k0, lg0, k1, lg1);
+        cswap_key(k2, lg2, k3, lg3);
+        cswap_key(k0, lg0, k2, lg2);
+        cswap_key(k1, lg1, k3, lg3);
+        cswap_key(k1, lg1, k2, lg2);
+
+        int my_sel_e = 0;
+        float my_sel_lg = 0.0f;
+        #pragma unroll
+        for (int k = 0; k < 8; ++k) {
+            uint64_t w_k = k0;
+            #pragma unroll
+            for (int mask = 16; mask > 0; mask >>= 1) {
+                uint64_t ok = __shfl_xor_sync(0xffffffffu, w_k, mask);
+                if (ok > w_k) w_k = ok;
+            }
+            int w_e = 128 - static_cast<int>(w_k & 0xFFFFu);
+            float win_lg = __shfl_sync(0xffffffffu, lg0, w_e & 31);
+            if (lane == k) {
+                my_sel_e = w_e;
+                my_sel_lg = win_lg;
+            }
+            if (k0 == w_k) {
+                k0 = k1; lg0 = lg1;
+                k1 = k2; lg1 = lg2;
+                k2 = k3; lg2 = lg3;
+                k3 = 0ull;
+            }
+        }
+
+        if (lane < 8) {
+            float lp = fminf(my_sel_lg, 0.0f) - log1pf(expf(-fabsf(my_sel_lg)));
+            float mx = lp;
+            mx = fmaxf(mx, __shfl_xor_sync(0xffu, mx, 1));
+            mx = fmaxf(mx, __shfl_xor_sync(0xffu, mx, 2));
+            mx = fmaxf(mx, __shfl_xor_sync(0xffu, mx, 4));
+            float sh = expf(__fsub_rn(lp, mx));
+            float s02 = __fadd_rn(sh, __shfl_xor_sync(0xffu, sh, 2));
+            float s0123 = __fadd_rn(s02, __shfl_xor_sync(0xffu, s02, 1));
+            float total = __fadd_rn(s0123, __shfl_xor_sync(0xffu, s0123, 4));
+            total = __shfl_sync(0xffu, total, 0);
+            float lse = __fadd_rn(mx, logf(total));
+            float wt = __fmul_rn(expf(__fsub_rn(lp, lse)), route_scale);
+
+            int row = t * 8 + lane;
+            int le = (!padded_tok && my_sel_e >= eb_lo && my_sel_e < eb_hi) ? (my_sel_e - eb_lo) : -1;
+            out_ids[row] = le;
+            out_weights[row] = wt;
+            out_src2dst[row] = (le >= 0) ? row : -1;
+            smem.p2.s_expert[row] = static_cast<int16_t>(le);
+        }
+    }
+    __syncthreads();
+
+    const int numel = T * 8;
+    if (tid < 128) {
+        int slot = 0;
+        for (int r = 0; r < numel; ++r) {
+            if (smem.p2.s_expert[r] == tid) {
+                smem.p2.s_slot[r] = static_cast<int16_t>(slot++);
+            }
+        }
+        smem.p2.s_counts[tid] = slot;
+    }
+    __syncthreads();
+
+    int padded_c = 0;
+    int start_pos = 0;
+    int end_pos = 0;
+    if (tid < 128) {
+        const int c_val = smem.p2.s_counts[tid];
+        padded_c = ((c_val + block_size - 1) / block_size) * block_size;
+        int scan_v = r6_warp_inclusive_scan_int(padded_c);
+        if (lane == 31) smem.p2.s_warp_sums[warp_id] = scan_v;
+        end_pos = scan_v;
+    }
+    __syncthreads();
+
+    if (warp_id == 0) {
+        int ws = (lane < 4) ? smem.p2.s_warp_sums[lane] : 0;
+        ws = r6_warp_inclusive_scan_int(ws);
+        if (lane < 4) smem.p2.s_warp_sums[lane] = ws;
+    }
+    __syncthreads();
+
+    if (tid < 128) {
+        const int warp_prefix = (warp_id > 0) ? smem.p2.s_warp_sums[warp_id - 1] : 0;
+        end_pos += warp_prefix;
+        start_pos = end_pos - padded_c;
+        smem.p2.s_pad_start[tid] = start_pos;
+        smem.p2.s_pad_end[tid] = end_pos;
+        if (tid == 127) total_tokens_post_pad[0] = end_pos;
+    }
+    __syncthreads();
+
+    const int total_blocks = smem.p2.s_pad_end[127] / block_size;
+    if (tid < 128 && padded_c > 0) {
+        int b0_blk = start_pos / block_size;
+        int b1_blk = end_pos / block_size;
+        for (int b = b0_blk; b < b1_blk; ++b) {
+            if (b < n_blocks) expert_ids[b] = tid;
+        }
+    }
+    for (int b = total_blocks + tid; b < n_blocks; b += 256) {
+        expert_ids[b] = 0;
+    }
+    for (int i = tid; i < numel; i += 256) {
+        int ex = smem.p2.s_expert[i];
+        if (ex >= 0) {
+            sorted_ids[smem.p2.s_pad_start[ex] + smem.p2.s_slot[i]] = i;
+        }
+    }
+}
+
+extern "C" void launch_select_and_align_r8_t96_sm80(
+    const void* X, const void* W, const void* bias, const void* expert_bounds, const void* is_padding,
+    void* ws_partials, void* tile_counters,
+    void* out_ids, void* out_weights, void* out_src2dst,
+    void* sorted_ids, void* expert_ids, void* total_tokens_post_pad,
+    int32_t T, int32_t block_size, int32_t max_pad, int32_t n_blocks,
+    float route_scale, int32_t mode, void* stream_ptr)
+{
+    if (T <= 0 || T > 96) return;
+    if (T <= 16) {
+        launch_select_and_align_r6_128_sm80(
+            X, W, bias, expert_bounds, is_padding, ws_partials, tile_counters,
+            out_ids, out_weights, out_src2dst, sorted_ids, expert_ids, total_tokens_post_pad,
+            T, block_size, max_pad, n_blocks, route_scale, mode, stream_ptr);
+        return;
+    }
+    cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+    int32_t m_tiles = (T + 15) >> 4;
+    int32_t total_ctas = 24 * m_tiles;
+    dim3 grid(8, 3, static_cast<unsigned int>(m_tiles));
+    select_and_align_mma256_k3g_t96_sm80_kernel<<<grid, 256, 0, stream>>>(
+        static_cast<const __nv_bfloat16*>(X),
+        static_cast<const __nv_bfloat16*>(W),
+        static_cast<const float*>(bias),
+        static_cast<const int32_t*>(expert_bounds),
+        static_cast<const uint8_t*>(is_padding),
+        static_cast<float*>(ws_partials),
+        static_cast<int32_t*>(tile_counters),
+        static_cast<int32_t*>(out_ids),
+        static_cast<float*>(out_weights),
+        static_cast<int32_t*>(out_src2dst),
+        static_cast<int32_t*>(sorted_ids),
+        static_cast<int32_t*>(expert_ids),
+        static_cast<int32_t*>(total_tokens_post_pad),
+        T, block_size, max_pad, n_blocks, route_scale, total_ctas);
+}
+
+// Murmur3 Gumbel helper matching sm80_fast_v6.cu / vllm gumbel.py bit-for-bit
+__device__ __forceinline__ uint32_t r8_murmur3_rotl32(uint32_t v, int shift) {
+    return (v << shift) | (v >> (32 - shift));
+}
+__device__ __forceinline__ uint32_t r8_murmur3_mix(uint32_t h, uint32_t k) {
+    k *= 0xcc9e2d51u;
+    k = r8_murmur3_rotl32(k, 15);
+    k *= 0x1b873593u;
+    h ^= k;
+    h = r8_murmur3_rotl32(h, 13);
+    return h * 5u + 0xe6546b64u;
+}
+__device__ __forceinline__ uint32_t r8_murmur3_fmix32(uint32_t h) {
+    h ^= h >> 16;
+    h *= 0x85ebca6bu;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35u;
+    h ^= h >> 16;
+    return h;
+}
+__device__ __forceinline__ float r8_murmur3_gumbel_noise(int64_t seed, int64_t pos_salted, uint32_t key) {
+    uint32_t h = 0u;
+    h = r8_murmur3_mix(h, static_cast<uint32_t>(seed & 0xFFFFFFFFLL));
+    h = r8_murmur3_mix(h, static_cast<uint32_t>((static_cast<uint64_t>(seed) >> 32) & 0xFFFFFFFFULL));
+    h = r8_murmur3_mix(h, static_cast<uint32_t>(pos_salted & 0xFFFFFFFFLL));
+    uint32_t h2 = r8_murmur3_mix(h, key);
+    uint32_t random32 = r8_murmur3_fmix32(h2 ^ 16u);
+    int32_t hi16 = static_cast<int32_t>(random32 >> 16);
+    int32_t lo16 = static_cast<int32_t>(random32 & 0xFFFFu);
+    float u = static_cast<float>(hi16) * 1.52587890625e-05f
+            + (static_cast<float>(lo16) + 0.5f) * 2.3283064365386963e-10f;
+    float neg_u = -u;
+    float log1p_neg = (u < 1e-4f) ? __fmaf_rn(-0.5f * u, u, neg_u) : logf(1.0f - u);
+    return -logf(-log1p_neg);
+}
+
+__global__ void __launch_bounds__(256) markov_fold_gumbel_cal_r1_sm80_kernel(
+    const uint4* __restrict__ latent,
+    const uint4* __restrict__ fold_w,
+    const uint4* __restrict__ fold_b,
+    const uint4* __restrict__ base_logits,
+    const int64_t* __restrict__ keep_ids,
+    const int64_t* __restrict__ idx_map,
+    const float* __restrict__ temp_ptr,
+    const int64_t* __restrict__ seeds_ptr,
+    const int64_t* __restrict__ sample_pos_ptr,
+    const int32_t* __restrict__ row_mapping_ptr,
+    const int32_t* __restrict__ skip_flag_ptr,
+    const float* __restrict__ cal_alpha_ptr,
+    int32_t* __restrict__ keep_dirty_ptr,
+    __nv_bfloat16* __restrict__ logits_cache,
+    float* __restrict__ ws_max,
+    int64_t* __restrict__ ws_id,
+    int32_t* __restrict__ cta_counter,
+    int64_t* __restrict__ out_sampled,
+    int64_t* __restrict__ out_draft_col,
+    int64_t cache_stride_0,
+    int64_t cache_stride_1,
+    int32_t step_col,
+    int32_t K_vocab,
+    float softcap,
+    float cal_alpha_scalar)
+{
+    if (skip_flag_ptr != nullptr && skip_flag_ptr[0] != 0) return;
+
+    __shared__ float s_wmax[8];
+    __shared__ int64_t s_wid[8];
+
+    const int tid = threadIdx.x;
+    const int warp = tid >> 5;
+    const int lane = tid & 31;
+
+    float lat[8];
+    r6_unpack_bf16x8(latent[lane], lat);
+
+    const float cal_alpha = (cal_alpha_ptr != nullptr) ? __ldg(cal_alpha_ptr) : cal_alpha_scalar;
+
+    const int64_t req_state_idx = idx_map[0];
+    const bool valid_req = (req_state_idx >= 0);
+    const float temp = valid_req ? temp_ptr[req_state_idx] : 0.0f;
+    int64_t cache_row = req_state_idx;
+    if (row_mapping_ptr != nullptr) {
+        cache_row = valid_req ? static_cast<int64_t>(row_mapping_ptr[req_state_idx]) : -1;
+    }
+    const int64_t raw_seed = valid_req ? seeds_ptr[req_state_idx] : 0LL;
+    const int64_t seed = raw_seed ^ (static_cast<int64_t>(step_col) << 32);
+    const int64_t pos_salted = (sample_pos_ptr[0] - 1LL) + (1LL << 30);
+    const float inv_sc = 1.0f / softcap;
+
+    float best_val = -INFINITY;
+    int64_t best_id = (1LL << 60);
+
+    const int warp_base = blockIdx.x * 256 + warp * 32;
+    #pragma unroll
+    for (int g = 0; g < 4; ++g) {
+        int row0 = warp_base + g * 8;
+        if (row0 < K_vocab) {
+            float dots[8];
+            #pragma unroll
+            for (int r = 0; r < 8; ++r) {
+                float w[8];
+                r6_unpack_bf16x8(fold_w[(row0 + r) * 32 + lane], w);
+                float s = 0.f;
+                #pragma unroll
+                for (int j = 0; j < 8; ++j) s = __fmaf_rn(lat[j], w[j], s);
+                dots[r] = r6_warp_sum_rn(s);
+            }
+            float my_dot = 0.f;
+            #pragma unroll
+            for (int r = 0; r < 8; ++r) {
+                float d_r = __shfl_sync(0xffffffffu, dots[r], 0);
+                if (lane == r) my_dot = d_r;
+            }
+            if (lane < 8) {
+                int col = row0 + lane;
+                const __nv_bfloat16* fb_ptr = reinterpret_cast<const __nv_bfloat16*>(fold_b);
+                const __nv_bfloat16* bl_ptr = reinterpret_cast<const __nv_bfloat16*>(base_logits);
+                float fb_v = r6_bf2f(fb_ptr[col]);
+                float bl_v = r6_bf2f(bl_ptr[col]);
+                float bias_bf = r6_bf2f(r6_f2bf(__fadd_rn(fb_v, my_dot)));
+                float x_bf = r6_bf2f(r6_f2bf(__fadd_rn(bl_v, bias_bf)));
+                float out_f = __fmul_rn(softcap, tanhf(__fmul_rn(x_bf, inv_sc)));
+                __nv_bfloat16 logit_bf = r6_f2bf(out_f);
+                if (cal_alpha != 1.0f && temp != 0.0f) {
+                    logit_bf = r6_f2bf(__fmul_rn(r6_bf2f(logit_bf), cal_alpha));
+                }
+                float logit_f32 = r6_bf2f(logit_bf);
+                int64_t target_id = keep_ids[col];
+                if (cache_row >= 0) {
+                    logits_cache[cache_row * cache_stride_0 + static_cast<int64_t>(step_col) * cache_stride_1 + target_id] = logit_bf;
+                }
+                float score = logit_f32;
+                if (temp != 0.0f) {
+                    score = (score / temp) + r8_murmur3_gumbel_noise(seed, pos_salted, static_cast<uint32_t>(target_id));
+                }
+                if (score > best_val || (score == best_val && target_id < best_id)) {
+                    best_val = score;
+                    best_id = target_id;
+                }
+            }
+        }
+    }
+
+    #pragma unroll
+    for (int offset = 4; offset > 0; offset >>= 1) {
+        float ov = __shfl_down_sync(0xffu, best_val, offset);
+        int64_t oid = __shfl_down_sync(0xffu, best_id, offset);
+        if (ov > best_val || (ov == best_val && oid < best_id)) {
+            best_val = ov;
+            best_id = oid;
+        }
+    }
+    if (lane == 0) {
+        s_wmax[warp] = best_val;
+        s_wid[warp] = best_id;
+    }
+    __syncthreads();
+
+    if (tid < 8) {
+        float v = s_wmax[tid];
+        int64_t id = s_wid[tid];
+        #pragma unroll
+        for (int offset = 4; offset > 0; offset >>= 1) {
+            float ov = __shfl_down_sync(0xffu, v, offset);
+            int64_t oid = __shfl_down_sync(0xffu, id, offset);
+            if (ov > v || (ov == v && oid < id)) {
+                v = ov;
+                id = oid;
+            }
+        }
+        if (tid == 0) {
+            ws_max[blockIdx.x] = v;
+            ws_id[blockIdx.x] = id;
+        }
+    }
+
+    __shared__ int s_is_last;
+    __syncthreads();
+    if (tid == 0) {
+        __threadfence();
+        int prev = atomicAdd(cta_counter, 1);
+        int target = gridDim.x - 1;
+        s_is_last = (prev == target) ? 1 : 0;
+        if (prev == target) atomicExch(cta_counter, 0);
+    }
+    __syncthreads();
+    if (!s_is_last) return;
+
+    float cv = (tid < gridDim.x) ? ws_max[tid] : -INFINITY;
+    int64_t cid_tok = (tid < gridDim.x) ? ws_id[tid] : (1LL << 60);
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        float ov = __shfl_down_sync(0xffffffffu, cv, offset);
+        int64_t oid = __shfl_down_sync(0xffffffffu, cid_tok, offset);
+        if (ov > cv || (ov == cv && oid < cid_tok)) {
+            cv = ov;
+            cid_tok = oid;
+        }
+    }
+    if (lane == 0) {
+        s_wmax[warp] = cv;
+        s_wid[warp] = cid_tok;
+    }
+    __syncthreads();
+
+    if (tid < 8) {
+        float v = s_wmax[tid];
+        int64_t id = s_wid[tid];
+        #pragma unroll
+        for (int offset = 4; offset > 0; offset >>= 1) {
+            float ov = __shfl_down_sync(0xffu, v, offset);
+            int64_t oid = __shfl_down_sync(0xffu, id, offset);
+            if (ov > v || (ov == v && oid < id)) {
+                v = ov;
+                id = oid;
+            }
+        }
+        if (tid == 0) {
+            out_sampled[0] = id;
+            out_draft_col[0] = id;
+            if (keep_dirty_ptr != nullptr && cache_row >= 0) {
+                keep_dirty_ptr[cache_row] = 1;
+            }
+        }
+    }
+}
+
+extern "C" void launch_markov_fold_gumbel_cal_r1_sm80(
+    const void* latent,
+    const void* fold_w,
+    const void* fold_bias,
+    const void* base_logits,
+    const void* keep_ids,
+    const void* idx_map,
+    const void* temp_ptr,
+    const void* seeds_ptr,
+    const void* sample_pos_ptr,
+    const void* row_mapping_ptr,
+    const void* skip_flag_ptr,
+    const void* cal_alpha_ptr,
+    void* keep_dirty_ptr,
+    void* logits_cache,
+    void* ws_max,
+    void* ws_id,
+    void* cta_counter,
+    void* out_sampled,
+    void* out_draft_col,
+    int64_t cache_stride_0,
+    int64_t cache_stride_1,
+    int32_t step_col,
+    int32_t K_vocab,
+    float softcap,
+    float cal_alpha,
+    void* stream_ptr)
+{
+    cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+    int32_t n_ctas = (K_vocab + 255) >> 8;
+    markov_fold_gumbel_cal_r1_sm80_kernel<<<n_ctas, 256, 0, stream>>>(
+        static_cast<const uint4*>(latent),
+        static_cast<const uint4*>(fold_w),
+        static_cast<const uint4*>(fold_bias),
+        static_cast<const uint4*>(base_logits),
+        static_cast<const int64_t*>(keep_ids),
+        static_cast<const int64_t*>(idx_map),
+        static_cast<const float*>(temp_ptr),
+        static_cast<const int64_t*>(seeds_ptr),
+        static_cast<const int64_t*>(sample_pos_ptr),
+        static_cast<const int32_t*>(row_mapping_ptr),
+        static_cast<const int32_t*>(skip_flag_ptr),
+        static_cast<const float*>(cal_alpha_ptr),
+        static_cast<int32_t*>(keep_dirty_ptr),
+        static_cast<__nv_bfloat16*>(logits_cache),
+        static_cast<float*>(ws_max),
+        static_cast<int64_t*>(ws_id),
+        static_cast<int32_t*>(cta_counter),
+        static_cast<int64_t*>(out_sampled),
+        static_cast<int64_t*>(out_draft_col),
+        cache_stride_0, cache_stride_1, step_col, K_vocab, softcap, cal_alpha);
+}
+
+// Exact branchless FP8 E4M3 -> FP16 * 2^-8 + mma.m16n8k16.f32.f16.f16.f32 W8A16 GEMM
+__device__ __forceinline__ void r8_mma_m16n8k16_f16(
+    float& d0, float& d1, float& d2, float& d3,
+    uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
+    uint32_t b0, uint32_t b1)
+{
+    asm volatile(
+        "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
+        "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};\n"
+        : "+f"(d0), "+f"(d1), "+f"(d2), "+f"(d3)
+        : "r"(a0), "r"(a1), "r"(a2), "r"(a3), "r"(b0), "r"(b1)
+    );
+}
+
+__device__ __forceinline__ uint32_t r8_bf16x2_to_f16x2(uint32_t bf2_bits) {
+    float2 f2 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&bf2_bits));
+    __half2 h2 = __float22half2_rn(f2);
+    return *reinterpret_cast<const uint32_t*>(&h2);
+}
+
+__device__ __forceinline__ void r8_e4m3x4_to_f16x2x2(uint32_t packed4, uint32_t& b0, uint32_t& b1) {
+    uint32_t u01 = __byte_perm(packed4, 0u, 0x1404u);
+    uint32_t u23 = __byte_perm(packed4, 0u, 0x3424u);
+    b0 = (u01 & 0x80008000u) | ((u01 & 0x7F007F00u) >> 1);
+    b1 = (u23 & 0x80008000u) | ((u23 & 0x7F007F00u) >> 1);
+}
+
+__global__ void __launch_bounds__(128, 4) w8a16_e4m3_gemm_bf16_r8_kernel(
+    const __nv_bfloat16* __restrict__ X,      // [M, K] bf16 contiguous
+    const uint8_t* __restrict__ W_e4m3,       // [N, K] uint8 e4m3fn contiguous
+    const float* __restrict__ row_scale_256,  // [N] fp32 (= per-row scale * 256.0f)
+    __nv_bfloat16* __restrict__ Y,            // [M, N] bf16 contiguous
+    const int32_t M,
+    const int32_t N,
+    const int32_t K)
+{
+    constexpr int BN = 64;
+    constexpr int BK = 64;
+    constexpr int STAGES = 4;
+    __shared__ __align__(16) uint4 s_W[STAGES][64][4];  // 16 KiB (64 rows x 64 bytes/row)
+    __shared__ __align__(16) uint4 s_X[STAGES][16][8];  //  8 KiB (16 rows x 64 bf16/row)
+
+    const int tid = threadIdx.x;          // 0..127
+    const int warp_id = tid >> 5;         // 0..3
+    const int lane = tid & 31;            // 0..31
+    const int group_id = lane >> 2;       // 0..7
+    const int tid_in_grp = lane & 3;      // 0..3
+
+    const int n_base = static_cast<int>(blockIdx.x) * BN;
+    const int m_base = static_cast<int>(blockIdx.y) * 16;
+    const int k_tiles = K >> 6;
+
+    auto issue_stage = [&](int st, int kt) {
+        const int kb = kt * BK;
+        // 128 threads load 64 * 4 = 256 uint4s of W -> 2 uint4s per thread!
+        #pragma unroll
+        for (int u = 0; u < 2; ++u) {
+            int idx = tid + (u << 7); // 0..255
+            int r = idx >> 2;         // 0..63
+            int c = idx & 3;          // 0..3
+            int sc = c ^ (r & 3);
+            uint32_t dst = static_cast<uint32_t>(__cvta_generic_to_shared(&s_W[st][r][sc]));
+            r6_cp_async_cg_16B(dst, W_e4m3 + static_cast<int64_t>(n_base + r) * K + kb + (c << 4));
+        }
+        // 128 threads load 16 * 8 = 128 uint4s of X -> 1 uint4 per thread!
+        int xr = tid >> 3;  // 0..15
+        int xc = tid & 7;   // 0..7
+        int xsc = xc ^ (xr & 7);
+        if (m_base + xr < M) {
+            uint32_t dst_x = static_cast<uint32_t>(__cvta_generic_to_shared(&s_X[st][xr][xsc]));
+            r6_cp_async_ca_16B(dst_x, X + static_cast<int64_t>(m_base + xr) * K + kb + (xc << 3));
+        } else if (kt < (STAGES - 1)) {
+            s_X[st][xr][xsc] = make_uint4(0, 0, 0, 0);
+        }
+        r6_cp_async_commit();
+    };
+
+    const int preload = (k_tiles < (STAGES - 1)) ? k_tiles : (STAGES - 1);
+    for (int p = 0; p < preload; ++p) issue_stage(p, p);
+
+    float acc00 = 0.f, acc01 = 0.f, acc02 = 0.f, acc03 = 0.f;
+    float acc10 = 0.f, acc11 = 0.f, acc12 = 0.f, acc13 = 0.f;
+
+    const int w_r0 = (warp_id << 4) + group_id;
+    const int w_r1 = w_r0 + 8;
+    const int x_r0 = group_id;
+    const int x_r1 = group_id + 8;
+
+    for (int step = 0; step < k_tiles; ++step) {
+        int next_p = step + (STAGES - 1);
+        if (next_p < k_tiles) {
+            issue_stage(next_p % STAGES, next_p);
+            r6_cp_async_wait<STAGES - 1>();
+        } else {
+            r6_cp_async_wait<0>();
+        }
+        __syncthreads();
+
+        const int st = step % STAGES;
+        #pragma unroll
+        for (int kk = 0; kk < 4; ++kk) {
+            int c_lo = kk << 1;
+            int c_hi = c_lo + 1;
+            const uint32_t* x0_lo = reinterpret_cast<const uint32_t*>(&s_X[st][x_r0][c_lo ^ group_id]);
+            const uint32_t* x1_lo = reinterpret_cast<const uint32_t*>(&s_X[st][x_r1][c_lo ^ group_id]);
+            const uint32_t* x0_hi = reinterpret_cast<const uint32_t*>(&s_X[st][x_r0][c_hi ^ group_id]);
+            const uint32_t* x1_hi = reinterpret_cast<const uint32_t*>(&s_X[st][x_r1][c_hi ^ group_id]);
+
+            uint32_t a0 = r8_bf16x2_to_f16x2(x0_lo[tid_in_grp]);
+            uint32_t a1 = r8_bf16x2_to_f16x2(x1_lo[tid_in_grp]);
+            uint32_t a2 = r8_bf16x2_to_f16x2(x0_hi[tid_in_grp]);
+            uint32_t a3 = r8_bf16x2_to_f16x2(x1_hi[tid_in_grp]);
+
+            const uint16_t* w0_u16 = reinterpret_cast<const uint16_t*>(&s_W[st][w_r0][kk ^ (w_r0 & 3)]);
+            const uint16_t* w1_u16 = reinterpret_cast<const uint16_t*>(&s_W[st][w_r1][kk ^ (w_r1 & 3)]);
+
+            uint32_t p0 = static_cast<uint32_t>(w0_u16[tid_in_grp]) | (static_cast<uint32_t>(w0_u16[tid_in_grp + 4]) << 16);
+            uint32_t p1 = static_cast<uint32_t>(w1_u16[tid_in_grp]) | (static_cast<uint32_t>(w1_u16[tid_in_grp + 4]) << 16);
+            uint32_t b00, b01, b10, b11;
+            r8_e4m3x4_to_f16x2x2(p0, b00, b01);
+            r8_e4m3x4_to_f16x2x2(p1, b10, b11);
+
+            r8_mma_m16n8k16_f16(acc00, acc01, acc02, acc03, a0, a1, a2, a3, b00, b01);
+            r8_mma_m16n8k16_f16(acc10, acc11, acc12, acc13, a0, a1, a2, a3, b10, b11);
+        }
+        __syncthreads();
+    }
+
+    const int out_n0_base = n_base + (warp_id << 4) + (tid_in_grp << 1);
+    const int out_n1_base = out_n0_base + 8;
+    const int gm0 = m_base + group_id;
+    const int gm1 = gm0 + 8;
+
+    float s0_lo = row_scale_256[out_n0_base + 0];
+    float s0_hi = row_scale_256[out_n0_base + 1];
+    float s1_lo = row_scale_256[out_n1_base + 0];
+    float s1_hi = row_scale_256[out_n1_base + 1];
+
+    if (gm0 < M) {
+        *reinterpret_cast<__nv_bfloat162*>(Y + static_cast<int64_t>(gm0) * N + out_n0_base) =
+            __floats2bfloat162_rn(acc00 * s0_lo, acc01 * s0_hi);
+        *reinterpret_cast<__nv_bfloat162*>(Y + static_cast<int64_t>(gm0) * N + out_n1_base) =
+            __floats2bfloat162_rn(acc10 * s1_lo, acc11 * s1_hi);
+    }
+    if (gm1 < M) {
+        *reinterpret_cast<__nv_bfloat162*>(Y + static_cast<int64_t>(gm1) * N + out_n0_base) =
+            __floats2bfloat162_rn(acc02 * s0_lo, acc03 * s0_hi);
+        *reinterpret_cast<__nv_bfloat162*>(Y + static_cast<int64_t>(gm1) * N + out_n1_base) =
+            __floats2bfloat162_rn(acc12 * s1_lo, acc13 * s1_hi);
+    }
+}
+
+extern "C" void launch_w8a16_e4m3_gemm_bf16_r8(
+    const void* X,
+    const void* W_e4m3,
+    const void* row_scale_256,
+    void* Y,
+    int32_t M,
+    int32_t N,
+    int32_t K,
+    void* stream_ptr)
+{
+    if (M <= 0 || N <= 0 || K <= 0) return;
+    cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+    dim3 grid(static_cast<unsigned int>(N >> 6), static_cast<unsigned int>((M + 15) >> 4));
+    w8a16_e4m3_gemm_bf16_r8_kernel<<<grid, 128, 0, stream>>>(
+        static_cast<const __nv_bfloat16*>(X),
+        static_cast<const uint8_t*>(W_e4m3),
+        static_cast<const float*>(row_scale_256),
+        static_cast<__nv_bfloat16*>(Y),
+        M, N, K);
+}
+
+// ============================================================================
+// Round-8 Zero-Spill End-to-End Speculative RejectionSampler (SM80)
+// ============================================================================
+
+__device__ __forceinline__ int64_t r8_ld_idx(const void* ptr, int64_t idx, int is_i64) {
+    return is_i64
+        ? static_cast<const int64_t*>(ptr)[idx]
+        : static_cast<int64_t>(static_cast<const int32_t*>(ptr)[idx]);
+}
+
+__device__ __forceinline__ int64_t r8_draft_row(int64_t req_state_idx, const void* row_map_ptr, int row_map_is_i64) {
+    if (row_map_ptr == nullptr) return req_state_idx;
+    if (req_state_idx < 0) return -1;
+    return r8_ld_idx(row_map_ptr, req_state_idx, row_map_is_i64);
+}
+
+// Bit-exact 10-round Philox-4x32 matching Triton tl_rand32(..., includes_zero=False)
+__device__ __forceinline__ float r8_tl_rand32_no_zero(int64_t seed, int64_t offset) {
+    uint32_t c0 = static_cast<uint32_t>(static_cast<uint64_t>(offset));
+    uint32_t c1 = static_cast<uint32_t>(static_cast<uint64_t>(offset) >> 32);
+    uint32_t c2 = 0u, c3 = 0u;
+    uint32_t k0 = static_cast<uint32_t>(static_cast<uint64_t>(seed));
+    uint32_t k1 = static_cast<uint32_t>(static_cast<uint64_t>(seed) >> 32);
+    #pragma unroll
+    for (int r = 0; r < 10; ++r) {
+        uint32_t hi0 = __umulhi(0xD2511F53u, c0);
+        uint32_t lo0 = 0xD2511F53u * c0;
+        uint32_t hi1 = __umulhi(0xCD9E8D57u, c2);
+        uint32_t lo1 = 0xCD9E8D57u * c2;
+        c0 = hi1 ^ c1 ^ k0;
+        c1 = lo1;
+        c2 = hi0 ^ c3 ^ k1;
+        c3 = lo0;
+        k0 += 0x9E3779B9u;
+        k1 += 0xBB67AE85u;
+    }
+    int32_t x = static_cast<int32_t>(c0);
+    x = (x >> 31) ^ x;
+    const float scale = __int_as_float(0x2FFFFFFF);
+    return fmaxf(__fmul_rn(__int2float_rn(x), scale), scale);
+}
+
+// Bit-exact Murmur3 + degree-8 _log1p_neg_stable Gumbel noise matching vllm gumbel.py
+__device__ __forceinline__ float r8_gumbel_py_exact_noise(int64_t seed, int64_t pos, uint32_t key) {
+    uint32_t h = 0u;
+    h = r8_murmur3_mix(h, static_cast<uint32_t>(static_cast<uint64_t>(seed) & 0xFFFFFFFFULL));
+    h = r8_murmur3_mix(h, static_cast<uint32_t>((static_cast<uint64_t>(seed) >> 32) & 0xFFFFFFFFULL));
+    h = r8_murmur3_mix(h, static_cast<uint32_t>(static_cast<uint64_t>(pos) & 0xFFFFFFFFULL));
+    h = r8_murmur3_mix(h, key);
+    uint32_t random32 = r8_murmur3_fmix32(h ^ 16u);
+    int32_t hi16 = static_cast<int32_t>(random32 >> 16);
+    int32_t lo16 = static_cast<int32_t>(random32 & 0xFFFFu);
+    float u = static_cast<float>(hi16) * 1.52587890625e-05f
+            + (static_cast<float>(lo16) + 0.5f) * 2.3283064365386963e-10f;
+    float log1p_neg;
+    if (u < 0.25f) {
+        float poly = 1.0f / 8.0f;
+        poly = 1.0f / 7.0f + u * poly;
+        poly = 1.0f / 6.0f + u * poly;
+        poly = 1.0f / 5.0f + u * poly;
+        poly = 1.0f / 4.0f + u * poly;
+        poly = 1.0f / 3.0f + u * poly;
+        poly = 1.0f / 2.0f + u * poly;
+        poly = 1.0f + u * poly;
+        log1p_neg = -u * poly;
+    } else {
+        log1p_neg = logf(fmaxf(1.0f - u, 5.960464477539063e-08f));
+    }
+    return -logf(-log1p_neg);
+}
+
+__device__ __forceinline__ float r8_warp_lse32(float m, float s) {
+    float gmax = m;
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        gmax = fmaxf(gmax, __shfl_xor_sync(0xffffffffu, gmax, off));
+    }
+    float term = (gmax > -INFINITY) ? (s * expf(m - gmax)) : 0.0f;
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        term += __shfl_xor_sync(0xffffffffu, term, off);
+    }
+    return (gmax > -INFINITY) ? (gmax + logf(term)) : -INFINITY;
+}
+
+__device__ __forceinline__ float r8_cta256_max(float v, float* s_buf, int tid, int warp, int lane) {
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        v = fmaxf(v, __shfl_xor_sync(0xffffffffu, v, off));
+    }
+    if (lane == 0) s_buf[warp] = v;
+    __syncthreads();
+    float wv = (tid < 8) ? s_buf[tid] : -INFINITY;
+    if (warp == 0) {
+        #pragma unroll
+        for (int off = 4; off > 0; off >>= 1) {
+            wv = fmaxf(wv, __shfl_xor_sync(0xffffffffu, wv, off));
+        }
+        if (tid == 0) s_buf[0] = wv;
+    }
+    __syncthreads();
+    return s_buf[0];
+}
+
+__device__ __forceinline__ float r8_cta256_sum(float v, float* s_buf, int tid, int warp, int lane) {
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        v += __shfl_xor_sync(0xffffffffu, v, off);
+    }
+    if (lane == 0) s_buf[warp] = v;
+    __syncthreads();
+    float wv = (tid < 8) ? s_buf[tid] : 0.0f;
+    if (warp == 0) {
+        #pragma unroll
+        for (int off = 4; off > 0; off >>= 1) {
+            wv += __shfl_xor_sync(0xffffffffu, wv, off);
+        }
+    }
+    return wv;
+}
+
+__device__ __forceinline__ bool r8_better_val_id(float va, int32_t ida, float vb, int32_t idb) {
+    if (vb != vb) {
+        return (va == va) ? true : (idb < ida);
+    }
+    if (va != va) return false;
+    return (vb > va) || (vb == va && idb < ida);
+}
+
+template <bool T_BF16, bool D_BF16, bool HAS_DRAFT>
+__global__ void __launch_bounds__(256, 4) r8_rej_gather_and_local_stats_kernel(
+    int64_t* __restrict__ ws_t_argmax,
+    float* __restrict__ ws_t_max,
+    float* __restrict__ ws_t_sumexp,
+    float* __restrict__ ws_d_max,
+    float* __restrict__ ws_d_sumexp,
+    int32_t* __restrict__ ws_draft_sampled,
+    int64_t* __restrict__ ws_pos,
+    const void* __restrict__ target_logits,
+    const int64_t target_stride,
+    const void* __restrict__ draft_logits,
+    const int64_t draft_s0,
+    const int64_t draft_s1,
+    const void* __restrict__ row_map,
+    const void* __restrict__ expanded_idx_mapping,
+    const int32_t* __restrict__ expanded_local_pos,
+    const float* __restrict__ temp_ptr,
+    const void* __restrict__ input_ids,
+    const int64_t* __restrict__ positions,
+    const void* __restrict__ logits_indices,
+    const int32_t* __restrict__ prefill_len,
+    const int32_t vocab_size,
+    const int32_t num_logits,
+    const int32_t vocab_num_blocks,
+    const int32_t do_gather,
+    const int32_t exp_idx_is_i64,
+    const int32_t row_map_is_i64,
+    const int32_t input_ids_is_i64,
+    const int32_t logits_idx_is_i64)
+{
+    __shared__ float s_val[8];
+    __shared__ int32_t s_id[8];
+
+    const int64_t logit_idx = static_cast<int64_t>(blockIdx.x);
+    const int32_t block_idx = static_cast<int32_t>(blockIdx.y);
+    const int tid = threadIdx.x;
+    const int warp = tid >> 5;
+    const int lane = tid & 31;
+
+    const int32_t draft_step_idx = expanded_local_pos[logit_idx];
+    const int64_t req_state_idx = r8_ld_idx(expanded_idx_mapping, logit_idx, exp_idx_is_i64);
+
+    if (do_gather != 0 && block_idx == 0 && tid == 0) {
+        int64_t tok_idx = r8_ld_idx(logits_indices, logit_idx, logits_idx_is_i64);
+        int64_t tok_id = r8_ld_idx(input_ids, tok_idx, input_ids_is_i64);
+        int64_t p = positions[tok_idx];
+        int32_t pf_len = (req_state_idx >= 0) ? prefill_len[req_state_idx] : 0;
+        bool is_ph = (draft_step_idx > 0) && ((p - static_cast<int64_t>(draft_step_idx)) < static_cast<int64_t>(pf_len));
+        ws_draft_sampled[logit_idx] = is_ph ? -1 : static_cast<int32_t>(tok_id);
+        ws_pos[logit_idx] = p;
+    }
+
+    const int32_t next_lpos = (logit_idx + 1 < num_logits) ? expanded_local_pos[logit_idx + 1] : 0;
+    if (next_lpos == 0) return;
+
+    const float temp = (req_state_idx >= 0) ? temp_ptr[req_state_idx] : 0.0f;
+    const int32_t base_col = block_idx * 8192;
+    const int64_t out_off = logit_idx * vocab_num_blocks + block_idx;
+
+    if (temp == 0.0f) {
+        float best_val = -INFINITY;
+        int32_t best_id = base_col + tid;
+        const int64_t row_off = logit_idx * target_stride;
+        #pragma unroll
+        for (int k = 0; k < 32; ++k) {
+            int32_t col = base_col + (k << 8) + tid;
+            if (col < vocab_size) {
+                float v = T_BF16
+                    ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[row_off + col])
+                    : static_cast<const float*>(target_logits)[row_off + col];
+                if (r8_better_val_id(best_val, best_id, v, col)) {
+                    best_val = v;
+                    best_id = col;
+                }
+            }
+        }
+        #pragma unroll
+        for (int off = 16; off > 0; off >>= 1) {
+            float ov = __shfl_down_sync(0xffffffffu, best_val, off);
+            int32_t oid = __shfl_down_sync(0xffffffffu, best_id, off);
+            if (r8_better_val_id(best_val, best_id, ov, oid)) {
+                best_val = ov;
+                best_id = oid;
+            }
+        }
+        if (lane == 0) {
+            s_val[warp] = best_val;
+            s_id[warp] = best_id;
+        }
+        __syncthreads();
+        if (tid < 8) {
+            float v = s_val[tid];
+            int32_t id = s_id[tid];
+            #pragma unroll
+            for (int off = 4; off > 0; off >>= 1) {
+                float ov = __shfl_down_sync(0xffu, v, off);
+                int32_t oid = __shfl_down_sync(0xffu, id, off);
+                if (r8_better_val_id(v, id, ov, oid)) {
+                    v = ov;
+                    id = oid;
+                }
+            }
+            if (tid == 0) {
+                ws_t_argmax[out_off] = static_cast<int64_t>(id);
+                ws_t_max[out_off] = v;
+            }
+        }
+        return;
+    }
+
+    {
+        float tv[32];
+        float tmax = -INFINITY;
+        const int64_t row_off = logit_idx * target_stride;
+        #pragma unroll
+        for (int k = 0; k < 32; ++k) {
+            int32_t col = base_col + (k << 8) + tid;
+            float v = -INFINITY;
+            if (col < vocab_size) {
+                float raw = T_BF16
+                    ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[row_off + col])
+                    : static_cast<const float*>(target_logits)[row_off + col];
+                v = raw / temp;
+            }
+            tv[k] = v;
+            tmax = fmaxf(tmax, v);
+        }
+        float blk_tmax = r8_cta256_max(tmax, s_val, tid, warp, lane);
+        float tsum = 0.0f;
+        if (blk_tmax > -INFINITY) {
+            #pragma unroll
+            for (int k = 0; k < 32; ++k) {
+                if (tv[k] > -INFINITY) {
+                    tsum += expf(tv[k] - blk_tmax);
+                }
+            }
+        }
+        float blk_tsum = r8_cta256_sum(tsum, s_val, tid, warp, lane);
+        if (tid == 0) {
+            ws_t_max[out_off] = blk_tmax;
+            ws_t_sumexp[out_off] = (blk_tmax > -INFINITY) ? blk_tsum : 0.0f;
+        }
+    }
+
+    if constexpr (HAS_DRAFT) {
+        __syncthreads();
+        float dv[32];
+        float dmax = -INFINITY;
+        int64_t crow = r8_draft_row(req_state_idx, row_map, row_map_is_i64);
+        if (crow < 0) crow = 0;
+        const int64_t drow_off = crow * draft_s0 + static_cast<int64_t>(draft_step_idx) * draft_s1;
+        #pragma unroll
+        for (int k = 0; k < 32; ++k) {
+            int32_t col = base_col + (k << 8) + tid;
+            float v = -INFINITY;
+            if (col < vocab_size) {
+                float raw = D_BF16
+                    ? __bfloat162float(static_cast<const __nv_bfloat16*>(draft_logits)[drow_off + col])
+                    : static_cast<const float*>(draft_logits)[drow_off + col];
+                if (raw > -INFINITY) v = raw / temp;
+            }
+            dv[k] = v;
+            dmax = fmaxf(dmax, v);
+        }
+        float blk_dmax = r8_cta256_max(dmax, s_val, tid, warp, lane);
+        float dsum = 0.0f;
+        if (blk_dmax > -INFINITY) {
+            #pragma unroll
+            for (int k = 0; k < 32; ++k) {
+                if (dv[k] > -INFINITY) {
+                    dsum += expf(dv[k] - blk_dmax);
+                }
+            }
+        }
+        float blk_dsum = r8_cta256_sum(dsum, s_val, tid, warp, lane);
+        if (tid == 0) {
+            ws_d_max[out_off] = blk_dmax;
+            ws_d_sumexp[out_off] = (blk_dmax > -INFINITY) ? blk_dsum : 0.0f;
+        }
+    }
+}
+
+template <bool T_BF16, bool D_BF16, bool HAS_DRAFT>
+__global__ void __launch_bounds__(32) r8_rej_cum_log_p_kernel(
+    float* __restrict__ ws_cum_log_p,
+    const void* __restrict__ target_logits,
+    const int64_t target_stride,
+    const float* __restrict__ ws_t_max,
+    const float* __restrict__ ws_t_sumexp,
+    const void* __restrict__ draft_sampled_ptr,
+    const void* __restrict__ draft_logits,
+    const int64_t draft_s0,
+    const int64_t draft_s1,
+    const void* __restrict__ row_map,
+    const float* __restrict__ ws_d_max,
+    const float* __restrict__ ws_d_sumexp,
+    const int32_t* __restrict__ cu_num_logits,
+    const void* __restrict__ idx_mapping,
+    const float* __restrict__ temp_ptr,
+    const int32_t vocab_num_blocks,
+    const int32_t idx_map_is_i64,
+    const int32_t row_map_is_i64,
+    const int32_t draft_sampled_is_i64)
+{
+    const int32_t req_idx = static_cast<int32_t>(blockIdx.x);
+    const int lane = threadIdx.x;
+    const int64_t req_state_idx = r8_ld_idx(idx_mapping, req_idx, idx_map_is_i64);
+    const int64_t start_idx = cu_num_logits[req_idx];
+    const int64_t end_idx = cu_num_logits[req_idx + 1];
+    const int64_t num_draft = end_idx - start_idx - 1;
+    const float temp = (req_state_idx >= 0) ? temp_ptr[req_state_idx] : 0.0f;
+    if (temp == 0.0f) return;
+
+    int64_t crow = 0;
+    if constexpr (HAS_DRAFT) {
+        crow = r8_draft_row(req_state_idx, row_map, row_map_is_i64);
+        if (crow < 0) crow = 0;
+    }
+
+    float log_p = 0.0f;
+    for (int64_t step = 0; step < num_draft; ++step) {
+        int64_t logit_idx = start_idx + step;
+        int64_t dtok = r8_ld_idx(draft_sampled_ptr, logit_idx + 1, draft_sampled_is_i64);
+        if (dtok >= 0) {
+            float tm = (lane < vocab_num_blocks) ? ws_t_max[logit_idx * vocab_num_blocks + lane] : -INFINITY;
+            float ts = (lane < vocab_num_blocks) ? ws_t_sumexp[logit_idx * vocab_num_blocks + lane] : 0.0f;
+            float t_lse = r8_warp_lse32(tm, ts);
+            float t_val = T_BF16
+                ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[logit_idx * target_stride + dtok])
+                : static_cast<const float*>(target_logits)[logit_idx * target_stride + dtok];
+            float t_lp = (t_val / temp) - t_lse;
+            float d_lp = 0.0f;
+            if constexpr (HAS_DRAFT) {
+                float dm = (lane < vocab_num_blocks) ? ws_d_max[logit_idx * vocab_num_blocks + lane] : -INFINITY;
+                float ds = (lane < vocab_num_blocks) ? ws_d_sumexp[logit_idx * vocab_num_blocks + lane] : 0.0f;
+                float d_lse = r8_warp_lse32(dm, ds);
+                float d_val = D_BF16
+                    ? __bfloat162float(static_cast<const __nv_bfloat16*>(draft_logits)[crow * draft_s0 + step * draft_s1 + dtok])
+                    : static_cast<const float*>(draft_logits)[crow * draft_s0 + step * draft_s1 + dtok];
+                d_lp = (d_val / temp) - d_lse;
+            }
+            log_p = fminf(log_p + (t_lp - d_lp), 0.0f);
+        }
+        if (lane == 0) ws_cum_log_p[logit_idx] = log_p;
+    }
+}
+
+template <bool T_BF16, bool D_BF16>
+__global__ void __launch_bounds__(256, 4) r8_rej_local_res_mass_kernel(
+    float* __restrict__ ws_res_mass,
+    const float* __restrict__ ws_cum_log_p,
+    const void* __restrict__ target_logits,
+    const int64_t target_stride,
+    const float* __restrict__ ws_t_max,
+    const float* __restrict__ ws_t_sumexp,
+    const void* __restrict__ draft_logits,
+    const int64_t draft_s0,
+    const int64_t draft_s1,
+    const void* __restrict__ row_map,
+    const float* __restrict__ ws_d_max,
+    const float* __restrict__ ws_d_sumexp,
+    const void* __restrict__ draft_sampled_ptr,
+    const void* __restrict__ expanded_idx_mapping,
+    const int32_t* __restrict__ expanded_local_pos,
+    const float* __restrict__ temp_ptr,
+    const int32_t vocab_size,
+    const int32_t num_logits,
+    const int32_t vocab_num_blocks,
+    const int32_t exp_idx_is_i64,
+    const int32_t row_map_is_i64,
+    const int32_t draft_sampled_is_i64)
+{
+    __shared__ float s_buf[8];
+    __shared__ float s_tlse, s_dlse;
+
+    const int64_t logit_idx = static_cast<int64_t>(blockIdx.x);
+    const int32_t block_idx = static_cast<int32_t>(blockIdx.y);
+    const int tid = threadIdx.x;
+    const int warp = tid >> 5;
+    const int lane = tid & 31;
+
+    const int32_t draft_step_idx = expanded_local_pos[logit_idx];
+    const int32_t next_lpos = (logit_idx + 1 < num_logits) ? expanded_local_pos[logit_idx + 1] : 0;
+    if (draft_step_idx == 0 || next_lpos == 0) return;
+    if (r8_ld_idx(draft_sampled_ptr, logit_idx + 1, draft_sampled_is_i64) < 0) return;
+
+    const int64_t req_state_idx = r8_ld_idx(expanded_idx_mapping, logit_idx, exp_idx_is_i64);
+    const float temp = (req_state_idx >= 0) ? temp_ptr[req_state_idx] : 0.0f;
+    if (temp == 0.0f) return;
+
+    if (warp == 0) {
+        float tm = (lane < vocab_num_blocks) ? ws_t_max[logit_idx * vocab_num_blocks + lane] : -INFINITY;
+        float ts = (lane < vocab_num_blocks) ? ws_t_sumexp[logit_idx * vocab_num_blocks + lane] : 0.0f;
+        float tlse = r8_warp_lse32(tm, ts);
+        float dm = (lane < vocab_num_blocks) ? ws_d_max[logit_idx * vocab_num_blocks + lane] : -INFINITY;
+        float ds = (lane < vocab_num_blocks) ? ws_d_sumexp[logit_idx * vocab_num_blocks + lane] : 0.0f;
+        float dlse = r8_warp_lse32(dm, ds);
+        if (lane == 0) {
+            s_tlse = tlse;
+            s_dlse = dlse;
+        }
+    }
+    __syncthreads();
+
+    const float tlse = s_tlse;
+    const float dlse = s_dlse;
+    const float p = expf(ws_cum_log_p[logit_idx - 1]);
+    int64_t crow = r8_draft_row(req_state_idx, row_map, row_map_is_i64);
+    if (crow < 0) crow = 0;
+    const int64_t trow_off = logit_idx * target_stride;
+    const int64_t drow_off = crow * draft_s0 + static_cast<int64_t>(draft_step_idx) * draft_s1;
+    const int32_t base_col = block_idx * 8192;
+
+    float acc = 0.0f;
+    #pragma unroll
+    for (int k = 0; k < 32; ++k) {
+        int32_t col = base_col + (k << 8) + tid;
+        if (col < vocab_size) {
+            float traw = T_BF16
+                ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[trow_off + col])
+                : static_cast<const float*>(target_logits)[trow_off + col];
+            float draw = D_BF16
+                ? __bfloat162float(static_cast<const __nv_bfloat16*>(draft_logits)[drow_off + col])
+                : static_cast<const float*>(draft_logits)[drow_off + col];
+            float mb = (traw > -INFINITY) ? expf((traw / temp) - tlse) : 0.0f;
+            float ms = (draw > -INFINITY) ? expf((draw / temp) - dlse) : 0.0f;
+            acc += fmaxf(p * mb - ms, 0.0f);
+        }
+    }
+    float total = r8_cta256_sum(acc, s_buf, tid, warp, lane);
+    if (tid == 0) {
+        ws_res_mass[logit_idx * vocab_num_blocks + block_idx] = total;
+    }
+}
+
+template <bool T_BF16, bool D_BF16, bool HAS_DRAFT, bool USE_BLOCK_VERIF>
+__global__ void __launch_bounds__(32) r8_rej_verify_kernel(
+    int64_t* __restrict__ out_sampled,
+    const int64_t sampled_stride,
+    int32_t* __restrict__ out_num_sampled,
+    int32_t* __restrict__ out_num_rejected,
+    int32_t* __restrict__ ws_rejected_step,
+    float* __restrict__ ws_t_rej_lse,
+    float* __restrict__ ws_d_rej_lse,
+    const void* __restrict__ target_logits,
+    const int64_t target_stride,
+    const int64_t* __restrict__ ws_t_argmax,
+    const float* __restrict__ ws_t_max,
+    const float* __restrict__ ws_t_sumexp,
+    const void* __restrict__ draft_sampled_ptr,
+    const void* __restrict__ draft_logits,
+    const int64_t draft_s0,
+    const int64_t draft_s1,
+    const void* __restrict__ row_map,
+    const float* __restrict__ ws_d_max,
+    const float* __restrict__ ws_d_sumexp,
+    const int32_t* __restrict__ cu_num_logits,
+    const void* __restrict__ idx_mapping,
+    const float* __restrict__ temp_ptr,
+    const int64_t* __restrict__ seeds_ptr,
+    const int64_t* __restrict__ pos_ptr,
+    const float* __restrict__ ws_cum_log_p,
+    const float* __restrict__ ws_res_mass,
+    const int32_t* __restrict__ seq_lens_ptr,
+    const int32_t* __restrict__ prefill_len_ptr,
+    const int32_t vocab_num_blocks,
+    const int32_t do_gather,
+    const int32_t idx_map_is_i64,
+    const int32_t row_map_is_i64,
+    const int32_t draft_sampled_is_i64)
+{
+    const int32_t req_idx = static_cast<int32_t>(blockIdx.x);
+    const int lane = threadIdx.x;
+    const int64_t req_state_idx = r8_ld_idx(idx_mapping, req_idx, idx_map_is_i64);
+    const int64_t start_idx = cu_num_logits[req_idx];
+    const int64_t end_idx = cu_num_logits[req_idx + 1];
+    const int64_t num_draft_tokens = end_idx - start_idx - 1;
+    const int64_t seed = (req_state_idx >= 0) ? seeds_ptr[req_state_idx] : 0LL;
+    const float temp = (req_state_idx >= 0) ? temp_ptr[req_state_idx] : 0.0f;
+    const bool is_greedy = (temp == 0.0f);
+
+    int64_t crow = 0;
+    if constexpr (HAS_DRAFT) {
+        crow = r8_draft_row(req_state_idx, row_map, row_map_is_i64);
+        if (crow < 0) crow = 0;
+    }
+
+    int64_t accepted_length = 0;
+    float target_lse = 0.0f;
+    float draft_lse = 0.0f;
+    bool verifying = true;
+
+    for (int64_t i = 0; i < num_draft_tokens; ++i) {
+        const int64_t logit_idx = start_idx + i;
+        const int64_t raw_draft = r8_ld_idx(draft_sampled_ptr, logit_idx + 1, draft_sampled_is_i64);
+        const bool is_valid_draft = (raw_draft >= 0);
+        const int64_t draft_tok = is_valid_draft ? raw_draft : 0;
+        if (!is_greedy) {
+            verifying = verifying && is_valid_draft;
+        }
+        if (verifying) {
+            int64_t target_argmax = 0;
+            bool accepted = false;
+            const int64_t p = pos_ptr[logit_idx];
+            const int64_t step_seed = USE_BLOCK_VERIF ? (seed ^ (i << 32)) : seed;
+            const float u = r8_tl_rand32_no_zero(step_seed, p);
+
+            if (is_greedy) {
+                float mv = -INFINITY;
+                int32_t mb = (lane < vocab_num_blocks) ? lane : 0x7fffffff;
+                if (lane < vocab_num_blocks) {
+                    float raw_mv = ws_t_max[logit_idx * vocab_num_blocks + lane];
+                    mv = (raw_mv != raw_mv) ? -INFINITY : raw_mv;
+                }
+                #pragma unroll
+                for (int off = 16; off > 0; off >>= 1) {
+                    float omv = __shfl_xor_sync(0xffffffffu, mv, off);
+                    int32_t omb = __shfl_xor_sync(0xffffffffu, mb, off);
+                    if (omv > mv || (omv == mv && omb < mb)) {
+                        mv = omv;
+                        mb = omb;
+                    }
+                }
+                target_argmax = ws_t_argmax[logit_idx * vocab_num_blocks + mb];
+                accepted = (target_argmax == draft_tok) && is_valid_draft;
+            } else if constexpr (USE_BLOCK_VERIF) {
+                float prefix_joint_ratio = expf(ws_cum_log_p[logit_idx]);
+                int64_t next_draft = (i < num_draft_tokens - 1)
+                    ? r8_ld_idx(draft_sampled_ptr, logit_idx + 2, draft_sampled_is_i64)
+                    : -1;
+                float h;
+                if (next_draft >= 0) {
+                    float res_mass;
+                    if constexpr (HAS_DRAFT) {
+                        float part = (lane < vocab_num_blocks) ? ws_res_mass[(logit_idx + 1) * vocab_num_blocks + lane] : 0.0f;
+                        #pragma unroll
+                        for (int off = 16; off > 0; off >>= 1) {
+                            part += __shfl_xor_sync(0xffffffffu, part, off);
+                        }
+                        res_mass = part;
+                    } else {
+                        float tm = (lane < vocab_num_blocks) ? ws_t_max[(logit_idx + 1) * vocab_num_blocks + lane] : -INFINITY;
+                        float ts = (lane < vocab_num_blocks) ? ws_t_sumexp[(logit_idx + 1) * vocab_num_blocks + lane] : 0.0f;
+                        float tlse_next = r8_warp_lse32(tm, ts);
+                        float t_val = T_BF16
+                            ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[(logit_idx + 1) * target_stride + next_draft])
+                            : static_cast<const float*>(target_logits)[(logit_idx + 1) * target_stride + next_draft];
+                        float mb = expf((t_val / temp) - tlse_next);
+                        res_mass = prefix_joint_ratio * (1.0f - mb);
+                    }
+                    float denom = res_mass + 1.0f - prefix_joint_ratio;
+                    h = (denom > 0.0f) ? (res_mass / denom) : 1.0f;
+                } else {
+                    h = prefix_joint_ratio;
+                }
+                if (u <= h) accepted_length = i + 1;
+                if (lane == 0) out_sampled[req_idx * sampled_stride + i] = draft_tok;
+            } else {
+                float tm = (lane < vocab_num_blocks) ? ws_t_max[logit_idx * vocab_num_blocks + lane] : -INFINITY;
+                float ts = (lane < vocab_num_blocks) ? ws_t_sumexp[logit_idx * vocab_num_blocks + lane] : 0.0f;
+                float step_tlse = r8_warp_lse32(tm, ts);
+                float t_logit = -INFINITY;
+                if (is_valid_draft) {
+                    float traw = T_BF16
+                        ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[logit_idx * target_stride + draft_tok])
+                        : static_cast<const float*>(target_logits)[logit_idx * target_stride + draft_tok];
+                    t_logit = traw / temp;
+                }
+                float t_lp = t_logit - step_tlse;
+                float d_lp = 0.0f;
+                float step_dlse = 0.0f;
+                if constexpr (HAS_DRAFT) {
+                    float dm = (lane < vocab_num_blocks) ? ws_d_max[logit_idx * vocab_num_blocks + lane] : -INFINITY;
+                    float ds = (lane < vocab_num_blocks) ? ws_d_sumexp[logit_idx * vocab_num_blocks + lane] : 0.0f;
+                    step_dlse = r8_warp_lse32(dm, ds);
+                    float d_logit = -INFINITY;
+                    if (is_valid_draft) {
+                        float draw = D_BF16
+                            ? __bfloat162float(static_cast<const __nv_bfloat16*>(draft_logits)[crow * draft_s0 + i * draft_s1 + draft_tok])
+                            : static_cast<const float*>(draft_logits)[crow * draft_s0 + i * draft_s1 + draft_tok];
+                        d_logit = draw / temp;
+                    }
+                    d_lp = d_logit - step_dlse;
+                }
+                target_lse = step_tlse;
+                draft_lse = step_dlse;
+                accepted = (t_lp > (logf(u) + d_lp));
+            }
+
+            if (!USE_BLOCK_VERIF || is_greedy) {
+                verifying = accepted;
+                if (accepted) accepted_length += 1;
+                if (lane == 0) {
+                    out_sampled[req_idx * sampled_stride + i] = (is_greedy && !accepted) ? target_argmax : draft_tok;
+                }
+            }
+        }
+    }
+
+    if constexpr (USE_BLOCK_VERIF) {
+        if (!is_greedy && accepted_length < num_draft_tokens) {
+            int64_t rej_idx = start_idx + accepted_length;
+            float tm = (lane < vocab_num_blocks) ? ws_t_max[rej_idx * vocab_num_blocks + lane] : -INFINITY;
+            float ts = (lane < vocab_num_blocks) ? ws_t_sumexp[rej_idx * vocab_num_blocks + lane] : 0.0f;
+            target_lse = r8_warp_lse32(tm, ts);
+            if constexpr (HAS_DRAFT) {
+                float dm = (lane < vocab_num_blocks) ? ws_d_max[rej_idx * vocab_num_blocks + lane] : -INFINITY;
+                float ds = (lane < vocab_num_blocks) ? ws_d_sumexp[rej_idx * vocab_num_blocks + lane] : 0.0f;
+                draft_lse = r8_warp_lse32(dm, ds);
+            }
+        }
+    }
+
+    if (lane == 0) {
+        ws_rejected_step[req_idx] = static_cast<int32_t>(accepted_length);
+        ws_t_rej_lse[req_idx] = target_lse;
+        ws_d_rej_lse[req_idx] = draft_lse;
+        int32_t ns_raw = static_cast<int32_t>(accepted_length + 1);
+        if (do_gather != 0) {
+            int32_t pf_len = (req_state_idx >= 0) ? prefill_len_ptr[req_state_idx] : 0;
+            bool is_chunked = (seq_lens_ptr[req_idx] < pf_len);
+            int32_t ns = is_chunked ? 0 : ns_raw;
+            int32_t nr = is_chunked ? 0 : (static_cast<int32_t>(end_idx - start_idx) - ns);
+            out_num_sampled[req_idx] = ns;
+            out_num_rejected[req_idx] = nr;
+        } else {
+            out_num_sampled[req_idx] = ns_raw;
+        }
+    }
+}
+
+template <bool T_BF16, bool D_BF16, bool HAS_DRAFT, bool USE_BLOCK_VERIF>
+__global__ void __launch_bounds__(256, 4) r8_rej_resample_and_insert_kernel(
+    int64_t* __restrict__ out_sampled,
+    const int64_t sampled_stride,
+    int64_t* __restrict__ ws_r_argmax,
+    float* __restrict__ ws_r_max,
+    int32_t* __restrict__ ws_r_cnt,
+    const void* __restrict__ target_logits,
+    const int64_t target_stride,
+    const float* __restrict__ ws_t_rej_lse,
+    const void* __restrict__ draft_logits,
+    const int64_t draft_s0,
+    const int64_t draft_s1,
+    const void* __restrict__ row_map,
+    const float* __restrict__ ws_d_rej_lse,
+    const int32_t* __restrict__ ws_rejected_step,
+    const int32_t* __restrict__ cu_num_logits,
+    const void* __restrict__ expanded_idx_mapping,
+    const void* __restrict__ draft_sampled_ptr,
+    const float* __restrict__ temp_ptr,
+    const int64_t* __restrict__ seeds_ptr,
+    const int64_t* __restrict__ pos_ptr,
+    const float* __restrict__ ws_cum_log_p,
+    const int32_t vocab_size,
+    const int32_t resample_num_blocks,
+    const int32_t exp_idx_is_i64,
+    const int32_t row_map_is_i64,
+    const int32_t draft_sampled_is_i64)
+{
+    __shared__ float s_val[8];
+    __shared__ int32_t s_id[8];
+    __shared__ int s_is_last;
+
+    const int32_t req_idx = static_cast<int32_t>(blockIdx.x);
+    const int32_t block_idx = static_cast<int32_t>(blockIdx.y);
+    const int tid = threadIdx.x;
+    const int warp = tid >> 5;
+    const int lane = tid & 31;
+
+    const int64_t resample_idx = ws_rejected_step[req_idx];
+    const int64_t start_idx = cu_num_logits[req_idx];
+    const int64_t end_idx = cu_num_logits[req_idx + 1];
+    const int64_t resample_token_idx = start_idx + resample_idx;
+    const int64_t req_state_idx = r8_ld_idx(expanded_idx_mapping, resample_token_idx, exp_idx_is_i64);
+    const bool is_valid_req = (req_state_idx >= 0);
+
+    const float temp = is_valid_req ? temp_ptr[req_state_idx] : 0.0f;
+    const bool is_bonus = (resample_token_idx == end_idx - 1);
+    if (temp == 0.0f && !is_bonus) return;
+
+    const int64_t rejected_draft_tok = (!is_bonus)
+        ? r8_ld_idx(draft_sampled_ptr, resample_token_idx + 1, draft_sampled_is_i64)
+        : 0;
+    const bool is_valid_rejected_draft = (rejected_draft_tok >= 0);
+
+    const int64_t seed = is_valid_req ? seeds_ptr[req_state_idx] : 0LL;
+    const int64_t p = pos_ptr[resample_token_idx];
+    const float t_lse = ws_t_rej_lse[req_idx];
+    const float d_lse = ws_d_rej_lse[req_idx];
+    float log_p_tau = 0.0f;
+    if constexpr (USE_BLOCK_VERIF) {
+        if (resample_idx > 0) {
+            log_p_tau = ws_cum_log_p[resample_token_idx - 1];
+        }
+    }
+    int64_t crow = 0;
+    if constexpr (HAS_DRAFT) {
+        crow = r8_draft_row(req_state_idx, row_map, row_map_is_i64);
+        if (crow < 0) crow = 0;
+    }
+
+    const int32_t base_col = block_idx * 1024;
+    const int64_t trow_off = resample_token_idx * target_stride;
+    const int64_t drow_off = crow * draft_s0 + resample_idx * draft_s1;
+
+    float best_val = -INFINITY;
+    int32_t best_id = base_col + tid;
+
+    #pragma unroll
+    for (int k = 0; k < 4; ++k) {
+        int32_t col = base_col + (k << 8) + tid;
+        if (col < vocab_size) {
+            float t_val = T_BF16
+                ? __bfloat162float(static_cast<const __nv_bfloat16*>(target_logits)[trow_off + col])
+                : static_cast<const float*>(target_logits)[trow_off + col];
+            if (temp != 0.0f) t_val = t_val / temp;
+
+            float res_logit;
+            if (is_bonus || !is_valid_rejected_draft) {
+                res_logit = t_val;
+            } else if constexpr (HAS_DRAFT) {
+                float d_val = D_BF16
+                    ? __bfloat162float(static_cast<const __nv_bfloat16*>(draft_logits)[drow_off + col])
+                    : static_cast<const float*>(draft_logits)[drow_off + col];
+                float t_lp = (t_val - t_lse) + log_p_tau;
+                if (d_val > -INFINITY) {
+                    float d_lp = (d_val / temp) - d_lse;
+                    float ratio = expf(d_lp - t_lp);
+                    res_logit = (ratio < 1.0f) ? (t_lp + log1pf(-ratio)) : -INFINITY;
+                } else {
+                    res_logit = t_lp;
+                }
+            } else {
+                res_logit = (static_cast<int64_t>(col) != rejected_draft_tok) ? t_val : -INFINITY;
+            }
+
+            float score = (temp != 0.0f)
+                ? (res_logit + r8_gumbel_py_exact_noise(seed, p, static_cast<uint32_t>(col)))
+                : res_logit;
+            if (r8_better_val_id(best_val, best_id, score, col)) {
+                best_val = score;
+                best_id = col;
+            }
+        }
+    }
+
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        float ov = __shfl_down_sync(0xffffffffu, best_val, off);
+        int32_t oid = __shfl_down_sync(0xffffffffu, best_id, off);
+        if (r8_better_val_id(best_val, best_id, ov, oid)) {
+            best_val = ov;
+            best_id = oid;
+        }
+    }
+    if (lane == 0) {
+        s_val[warp] = best_val;
+        s_id[warp] = best_id;
+    }
+    __syncthreads();
+
+    if (tid < 8) {
+        float v = s_val[tid];
+        int32_t id = s_id[tid];
+        #pragma unroll
+        for (int off = 4; off > 0; off >>= 1) {
+            float ov = __shfl_down_sync(0xffu, v, off);
+            int32_t oid = __shfl_down_sync(0xffu, id, off);
+            if (r8_better_val_id(v, id, ov, oid)) {
+                v = ov;
+                id = oid;
+            }
+        }
+        if (tid == 0) {
+            ws_r_max[req_idx * resample_num_blocks + block_idx] = v;
+            ws_r_argmax[req_idx * resample_num_blocks + block_idx] = static_cast<int64_t>(id);
+        }
+    }
+
+    __syncthreads();
+    if (tid == 0) {
+        __threadfence();
+        int prev = atomicAdd(&ws_r_cnt[req_idx], 1);
+        int target = static_cast<int>(gridDim.y) - 1;
+        s_is_last = (prev == target) ? 1 : 0;
+        if (prev == target) atomicExch(&ws_r_cnt[req_idx], 0);
+    }
+    __syncthreads();
+    if (!s_is_last) return;
+
+    float mv = -INFINITY;
+    int32_t mb = (tid < resample_num_blocks) ? tid : 0x7fffffff;
+    if (tid < resample_num_blocks) {
+        float raw_mv = ws_r_max[req_idx * resample_num_blocks + tid];
+        mv = (raw_mv != raw_mv) ? -INFINITY : raw_mv;
+    }
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        float omv = __shfl_down_sync(0xffffffffu, mv, off);
+        int32_t omb = __shfl_down_sync(0xffffffffu, mb, off);
+        if (omv > mv || (omv == mv && omb < mb)) {
+            mv = omv;
+            mb = omb;
+        }
+    }
+    if (lane == 0) {
+        s_val[warp] = mv;
+        s_id[warp] = mb;
+    }
+    __syncthreads();
+    if (tid < 8) {
+        float v = s_val[tid];
+        int32_t b = s_id[tid];
+        #pragma unroll
+        for (int off = 4; off > 0; off >>= 1) {
+            float ov = __shfl_down_sync(0xffu, v, off);
+            int32_t ob = __shfl_down_sync(0xffu, b, off);
+            if (ov > v || (ov == v && ob < b)) {
+                v = ov;
+                b = ob;
+            }
+        }
+        if (tid == 0) {
+            out_sampled[req_idx * sampled_stride + resample_idx] =
+                ws_r_argmax[req_idx * resample_num_blocks + b];
+        }
+    }
+}
+
+template <bool T_BF16, bool D_BF16, bool HAS_DRAFT, bool USE_BLOCK_VERIF>
+static void dispatch_r8_rej_pipeline(
+    int64_t* out_sampled,
+    int64_t sampled_stride,
+    int32_t* out_num_sampled,
+    int32_t* out_num_rejected,
+    int64_t* ws_t_argmax,
+    float* ws_t_max,
+    float* ws_t_sumexp,
+    float* ws_d_max,
+    float* ws_d_sumexp,
+    float* ws_cum_log_p,
+    float* ws_res_mass,
+    int32_t* ws_rejected_step,
+    float* ws_t_rej_lse,
+    float* ws_d_rej_lse,
+    int64_t* ws_r_argmax,
+    float* ws_r_max,
+    int32_t* ws_r_cnt,
+    int32_t* ws_draft_sampled,
+    int64_t* ws_pos,
+    const void* target_logits,
+    int64_t target_stride,
+    const void* draft_logits,
+    int64_t draft_s0,
+    int64_t draft_s1,
+    const void* row_map,
+    const void* draft_sampled_in,
+    const int64_t* pos_in,
+    const int32_t* cu_num_logits,
+    const void* idx_mapping,
+    const void* expanded_idx_mapping,
+    const int32_t* expanded_local_pos,
+    const float* temp_ptr,
+    const int64_t* seeds_ptr,
+    const void* input_ids,
+    const int64_t* positions,
+    const void* logits_indices,
+    const int32_t* prefill_len,
+    const int32_t* seq_lens,
+    int32_t num_reqs,
+    int32_t num_logits,
+    int32_t vocab_size,
+    int32_t vocab_num_blocks,
+    int32_t resample_num_blocks,
+    int32_t do_gather,
+    int32_t idx_map_is_i64,
+    int32_t exp_idx_is_i64,
+    int32_t row_map_is_i64,
+    int32_t input_ids_is_i64,
+    int32_t logits_idx_is_i64,
+    int32_t draft_sampled_is_i64,
+    cudaStream_t stream)
+{
+    dim3 stats_grid(static_cast<unsigned int>(num_logits), static_cast<unsigned int>(vocab_num_blocks));
+    r8_rej_gather_and_local_stats_kernel<T_BF16, D_BF16, HAS_DRAFT><<<stats_grid, 256, 0, stream>>>(
+        ws_t_argmax, ws_t_max, ws_t_sumexp, ws_d_max, ws_d_sumexp,
+        ws_draft_sampled, ws_pos,
+        target_logits, target_stride,
+        draft_logits, draft_s0, draft_s1, row_map,
+        expanded_idx_mapping, expanded_local_pos, temp_ptr,
+        input_ids, positions, logits_indices, prefill_len,
+        vocab_size, num_logits, vocab_num_blocks,
+        do_gather, exp_idx_is_i64, row_map_is_i64, input_ids_is_i64, logits_idx_is_i64);
+
+    const void* eff_draft_sampled = (do_gather != 0) ? static_cast<const void*>(ws_draft_sampled) : draft_sampled_in;
+    const int64_t* eff_pos = (do_gather != 0) ? ws_pos : pos_in;
+    const int32_t eff_ds_i64 = (do_gather != 0) ? 0 : draft_sampled_is_i64;
+
+    if constexpr (USE_BLOCK_VERIF) {
+        r8_rej_cum_log_p_kernel<T_BF16, D_BF16, HAS_DRAFT><<<static_cast<unsigned int>(num_reqs), 32, 0, stream>>>(
+            ws_cum_log_p, target_logits, target_stride, ws_t_max, ws_t_sumexp,
+            eff_draft_sampled, draft_logits, draft_s0, draft_s1, row_map, ws_d_max, ws_d_sumexp,
+            cu_num_logits, idx_mapping, temp_ptr, vocab_num_blocks,
+            idx_map_is_i64, row_map_is_i64, eff_ds_i64);
+        if constexpr (HAS_DRAFT) {
+            r8_rej_local_res_mass_kernel<T_BF16, D_BF16><<<stats_grid, 256, 0, stream>>>(
+                ws_res_mass, ws_cum_log_p, target_logits, target_stride, ws_t_max, ws_t_sumexp,
+                draft_logits, draft_s0, draft_s1, row_map, ws_d_max, ws_d_sumexp,
+                eff_draft_sampled, expanded_idx_mapping, expanded_local_pos, temp_ptr,
+                vocab_size, num_logits, vocab_num_blocks,
+                exp_idx_is_i64, row_map_is_i64, eff_ds_i64);
+        }
+    }
+
+    r8_rej_verify_kernel<T_BF16, D_BF16, HAS_DRAFT, USE_BLOCK_VERIF><<<static_cast<unsigned int>(num_reqs), 32, 0, stream>>>(
+        out_sampled, sampled_stride, out_num_sampled, out_num_rejected,
+        ws_rejected_step, ws_t_rej_lse, ws_d_rej_lse,
+        target_logits, target_stride, ws_t_argmax, ws_t_max, ws_t_sumexp,
+        eff_draft_sampled, draft_logits, draft_s0, draft_s1, row_map, ws_d_max, ws_d_sumexp,
+        cu_num_logits, idx_mapping, temp_ptr, seeds_ptr, eff_pos,
+        ws_cum_log_p, ws_res_mass, seq_lens, prefill_len,
+        vocab_num_blocks, do_gather, idx_map_is_i64, row_map_is_i64, eff_ds_i64);
+
+    dim3 res_grid(static_cast<unsigned int>(num_reqs), static_cast<unsigned int>(resample_num_blocks));
+    r8_rej_resample_and_insert_kernel<T_BF16, D_BF16, HAS_DRAFT, USE_BLOCK_VERIF><<<res_grid, 256, 0, stream>>>(
+        out_sampled, sampled_stride, ws_r_argmax, ws_r_max, ws_r_cnt,
+        target_logits, target_stride, ws_t_rej_lse,
+        draft_logits, draft_s0, draft_s1, row_map, ws_d_rej_lse,
+        ws_rejected_step, cu_num_logits, expanded_idx_mapping,
+        eff_draft_sampled, temp_ptr, seeds_ptr, eff_pos, ws_cum_log_p,
+        vocab_size, resample_num_blocks,
+        exp_idx_is_i64, row_map_is_i64, eff_ds_i64);
+}
+
+extern "C" void launch_sm80_rejection_sampler_r8(
+    void* out_sampled,
+    int64_t sampled_stride,
+    void* out_num_sampled,
+    void* out_num_rejected,
+    void* ws_t_argmax,
+    void* ws_t_max,
+    void* ws_t_sumexp,
+    void* ws_d_max,
+    void* ws_d_sumexp,
+    void* ws_cum_log_p,
+    void* ws_res_mass,
+    void* ws_rejected_step,
+    void* ws_t_rej_lse,
+    void* ws_d_rej_lse,
+    void* ws_r_argmax,
+    void* ws_r_max,
+    void* ws_r_cnt,
+    void* ws_draft_sampled,
+    void* ws_pos,
+    const void* target_logits,
+    int64_t target_stride,
+    const void* draft_logits,
+    int64_t draft_s0,
+    int64_t draft_s1,
+    const void* row_map,
+    const void* draft_sampled_in,
+    const void* pos_in,
+    const void* cu_num_logits,
+    const void* idx_mapping,
+    const void* expanded_idx_mapping,
+    const void* expanded_local_pos,
+    const void* temp_ptr,
+    const void* seeds_ptr,
+    const void* input_ids,
+    const void* positions,
+    const void* logits_indices,
+    const void* prefill_len,
+    const void* seq_lens,
+    int32_t num_reqs,
+    int32_t num_logits,
+    int32_t vocab_size,
+    int32_t vocab_num_blocks,
+    int32_t resample_num_blocks,
+    int32_t target_is_bf16,
+    int32_t draft_is_bf16,
+    int32_t has_draft,
+    int32_t use_block_verif,
+    int32_t do_gather,
+    int32_t idx_map_is_i64,
+    int32_t exp_idx_is_i64,
+    int32_t row_map_is_i64,
+    int32_t input_ids_is_i64,
+    int32_t logits_idx_is_i64,
+    int32_t draft_sampled_is_i64,
+    void* stream_ptr)
+{
+    if (num_reqs <= 0 || num_logits <= 0 || vocab_size <= 0) return;
+    cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+    int mode = ((target_is_bf16 ? 1 : 0) << 3)
+             | ((draft_is_bf16 ? 1 : 0) << 2)
+             | ((has_draft ? 1 : 0) << 1)
+             | (use_block_verif ? 1 : 0);
+
+    #define R8_REJ_CASE(M_BITS, TB, DB, HD, BV) \
+        case M_BITS: \
+            dispatch_r8_rej_pipeline<TB, DB, HD, BV>( \
+                static_cast<int64_t*>(out_sampled), sampled_stride, \
+                static_cast<int32_t*>(out_num_sampled), static_cast<int32_t*>(out_num_rejected), \
+                static_cast<int64_t*>(ws_t_argmax), static_cast<float*>(ws_t_max), static_cast<float*>(ws_t_sumexp), \
+                static_cast<float*>(ws_d_max), static_cast<float*>(ws_d_sumexp), \
+                static_cast<float*>(ws_cum_log_p), static_cast<float*>(ws_res_mass), \
+                static_cast<int32_t*>(ws_rejected_step), static_cast<float*>(ws_t_rej_lse), static_cast<float*>(ws_d_rej_lse), \
+                static_cast<int64_t*>(ws_r_argmax), static_cast<float*>(ws_r_max), static_cast<int32_t*>(ws_r_cnt), \
+                static_cast<int32_t*>(ws_draft_sampled), static_cast<int64_t*>(ws_pos), \
+                target_logits, target_stride, draft_logits, draft_s0, draft_s1, row_map, \
+                draft_sampled_in, static_cast<const int64_t*>(pos_in), \
+                static_cast<const int32_t*>(cu_num_logits), idx_mapping, expanded_idx_mapping, \
+                static_cast<const int32_t*>(expanded_local_pos), \
+                static_cast<const float*>(temp_ptr), static_cast<const int64_t*>(seeds_ptr), \
+                input_ids, static_cast<const int64_t*>(positions), logits_indices, \
+                static_cast<const int32_t*>(prefill_len), static_cast<const int32_t*>(seq_lens), \
+                num_reqs, num_logits, vocab_size, vocab_num_blocks, resample_num_blocks, \
+                do_gather, idx_map_is_i64, exp_idx_is_i64, row_map_is_i64, \
+                input_ids_is_i64, logits_idx_is_i64, draft_sampled_is_i64, stream); \
+            break;
+
+    switch (mode) {
+        R8_REJ_CASE( 0, false, false, false, false)
+        R8_REJ_CASE( 1, false, false, false, true)
+        R8_REJ_CASE( 2, false, false, true,  false)
+        R8_REJ_CASE( 3, false, false, true,  true)
+        R8_REJ_CASE( 4, false, true,  false, false)
+        R8_REJ_CASE( 5, false, true,  false, true)
+        R8_REJ_CASE( 6, false, true,  true,  false)
+        R8_REJ_CASE( 7, false, true,  true,  true)
+        R8_REJ_CASE( 8, true,  false, false, false)
+        R8_REJ_CASE( 9, true,  false, false, true)
+        R8_REJ_CASE(10, true,  false, true,  false)
+        R8_REJ_CASE(11, true,  false, true,  true)
+        R8_REJ_CASE(12, true,  true,  false, false)
+        R8_REJ_CASE(13, true,  true,  false, true)
+        R8_REJ_CASE(14, true,  true,  true,  false)
+        R8_REJ_CASE(15, true,  true,  true,  true)
+    }
+    #undef R8_REJ_CASE
+}
+
+

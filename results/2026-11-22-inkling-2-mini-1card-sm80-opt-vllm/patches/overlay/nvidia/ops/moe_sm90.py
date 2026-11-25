@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 # Row block size when no Humming tuning range covers the row count.
 _DEFAULT_BLOCK_M = 64
+_HUMMING_STATIC_WS: dict[tuple[int, str, int], torch.Tensor] = {}
 
 
 def _install_sm80_humming_situ_epilogue() -> None:
@@ -318,8 +319,8 @@ class HummingExperts:
                     return _tuning[-1][2]
 
                 tiny_b = [x for x in tuning if 0 < x[1] <= 16]
-                c_prefill_hi = _up_cfg(32768)
-                c_pf4k = _mk_cfg([128, 256, 64], [64, 64, 64], 3, 1, evict=False)
+                c_prefill_hi = _mk_cfg([64, 256, 64], [32, 64, 64], 4, 1, evict=False)
+                c_pf4k = _mk_cfg([128, 256, 64], [64, 64, 64], 2, 1, evict=False)
                 if nvfp4:
                     c_m48_w13 = _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True)
                     c_m48_w2 = _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=False)
@@ -329,7 +330,7 @@ class HummingExperts:
                             [
                                 16,
                                 256,
-                                _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3, evict=False),
+                                _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3, evict=True),
                             ],
                             [256, 912, c_m48_w13],
                             [
@@ -359,7 +360,7 @@ class HummingExperts:
                             [16384, 1 << 30, c_pf4k],
                         ]
                 else:
-                    c_m48_w13 = _mk_cfg([8, 256, 128], [8, 64, 64], 3, 3, evict=True)
+                    c_m48_w13 = _mk_cfg([8, 256, 128], [8, 64, 64], 3, 2, evict=True)
                     c_m48_w2 = _mk_cfg([8, 256, 128], [8, 64, 64], 4, 2, evict=True)
                     c_pf512 = _mk_cfg([32, 128, 64], [32, 32, 64], 5, 2, evict=False)
                     if name == "w13":
@@ -367,7 +368,7 @@ class HummingExperts:
                             [
                                 16,
                                 256,
-                                _mk_cfg([8, 64, 128], [8, 32, 64], 4, 2, evict=False),
+                                _mk_cfg([8, 64, 128], [8, 32, 64], 3, 4, evict=True),
                             ],
                             [256, 912, c_m48_w13],
                             [
@@ -384,7 +385,7 @@ class HummingExperts:
                             [
                                 16,
                                 256,
-                                _mk_cfg([8, 128, 64], [8, 32, 64], 4, 3, evict=False),
+                                _mk_cfg([8, 128, 64], [8, 32, 64], 4, 3, evict=True),
                             ],
                             [256, 912, c_m48_w2],
                             [
@@ -409,6 +410,15 @@ class HummingExperts:
             }
         )
         self.locks = torch.zeros(2048, dtype=torch.int32, device=weight.device)
+        if is_sm80():
+            d_idx = weight.device.index or 0
+            for role in ("w13", "w2"):
+                sn = self.configs[role].shape_n
+                key = (d_idx, role, sn)
+                if key not in _HUMMING_STATIC_WS:
+                    _HUMMING_STATIC_WS[key] = torch.empty(
+                        (512, sn), dtype=torch.bfloat16, device=weight.device
+                    )
 
     def _block_m(self, name: str, rows: int) -> int:
         for lower, upper, config in self.tunings[name]:
@@ -430,9 +440,20 @@ class HummingExperts:
 
         config = self.configs[name]
         tensors = self.tensors[name]
-        out = torch.empty(
-            (rows, config.shape_n), dtype=torch.bfloat16, device=inputs.device
-        )
+        out: torch.Tensor | None = None
+        if is_sm80() and 0 < rows <= 512:
+            if name == "w13" or (
+                name == "w2" and torch.cuda.is_current_stream_capturing()
+            ):
+                ws_buf = _HUMMING_STATIC_WS.get(
+                    (inputs.device.index or 0, name, config.shape_n)
+                )
+                if ws_buf is not None:
+                    out = ws_buf[:rows]
+        if out is None:
+            out = torch.empty(
+                (rows, config.shape_n), dtype=torch.bfloat16, device=inputs.device
+            )
         sorted_ids, expert_ids, num_tokens_padded = alignment
         return humming_forward(
             config,

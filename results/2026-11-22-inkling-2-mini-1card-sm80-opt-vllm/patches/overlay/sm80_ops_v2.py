@@ -40,6 +40,7 @@ _MFGEC_WS: dict[
     tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
 ] = {}
 _BLEND9_WS: dict[int, tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+_REJ_R8_WS: dict[tuple[int, int], tuple[dict[str, torch.Tensor], tuple[int, ...]]] = {}
 
 
 def _resolve_so_path() -> str:
@@ -460,6 +461,71 @@ def _get_ext_lib() -> ctypes.CDLL | None:
                 + [f32, f32, vp]
             )
             lib.launch_combine_conv_mix_r7_pf_2304.restype = i32
+
+        if hasattr(lib, "launch_logits_softcap_bf16_r8"):
+            i64 = ctypes.c_int64
+            lib.launch_logits_softcap_bf16_r8.argtypes = [
+                vp,
+                vp,
+                i64,
+                i32,
+                i32,
+                f32,
+                i32,
+                vp,
+            ]
+            lib.launch_logits_softcap_bf16_r8.restype = None
+
+        if hasattr(lib, "launch_logits_softcap_fp32_r8"):
+            i64 = ctypes.c_int64
+            lib.launch_logits_softcap_fp32_r8.argtypes = [
+                vp,
+                vp,
+                i64,
+                i32,
+                i32,
+                f32,
+                vp,
+            ]
+            lib.launch_logits_softcap_fp32_r8.restype = None
+
+        if hasattr(lib, "launch_select_and_align_r8_t96_sm80"):
+            lib.launch_select_and_align_r8_t96_sm80.argtypes = (
+                [vp] * 13 + [i32] * 4 + [f32, i32, vp]
+            )
+            lib.launch_select_and_align_r8_t96_sm80.restype = None
+
+        if hasattr(lib, "launch_markov_fold_gumbel_cal_r1_sm80"):
+            i64 = ctypes.c_int64
+            lib.launch_markov_fold_gumbel_cal_r1_sm80.argtypes = (
+                [vp] * 19 + [i64, i64, i32, i32, f32, f32, vp]
+            )
+            lib.launch_markov_fold_gumbel_cal_r1_sm80.restype = None
+
+        if hasattr(lib, "launch_w8a16_e4m3_gemm_bf16_r8"):
+            lib.launch_w8a16_e4m3_gemm_bf16_r8.argtypes = [
+                vp,
+                vp,
+                vp,
+                vp,
+                i32,
+                i32,
+                i32,
+                vp,
+            ]
+            lib.launch_w8a16_e4m3_gemm_bf16_r8.restype = None
+
+        if hasattr(lib, "launch_sm80_rejection_sampler_r8"):
+            i64 = ctypes.c_int64
+            lib.launch_sm80_rejection_sampler_r8.argtypes = (
+                [vp, i64]
+                + [vp] * 17
+                + [vp, i64, vp, i64, i64]
+                + [vp] * 14
+                + [i32] * 16
+                + [vp]
+            )
+            lib.launch_sm80_rejection_sampler_r8.restype = None
 
         _EXT_LIB = lib
     return _EXT_LIB
@@ -1556,6 +1622,8 @@ def select_and_align_r6_128(
     if ext is None or not hasattr(ext, "launch_select_and_align_r6_128_sm80"):
         return None
     t = x.shape[0]
+    if t <= 0 or t > 16:
+        return None
     n = t * 8
     max_pad = (
         min(n * block_size, n + 128 * (block_size - 1))
@@ -1603,6 +1671,177 @@ def select_and_align_r6_128(
         st,
     )
     return ids, weights, src2dst, sorted_ids, expert_ids, num_post_pad
+
+
+def sm80_logits_softcap_bf16(
+    logits_in: torch.Tensor,
+    org_vocab_size: int,
+    softcap: float,
+    exact_3pass: bool = True,
+) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_logits_softcap_bf16_r8"):
+        return None
+    if logits_in.dtype != torch.bfloat16 or logits_in.ndim != 2 or logits_in.stride(1) != 1:
+        return None
+    m = logits_in.shape[0]
+    v = min(int(org_vocab_size), logits_in.shape[1])
+    out = torch.empty((m, v), dtype=torch.bfloat16, device=logits_in.device)
+    if m > 0 and v > 0:
+        ext.launch_logits_softcap_bf16_r8(
+            logits_in.data_ptr(),
+            out.data_ptr(),
+            int(logits_in.stride(0)),
+            m,
+            v,
+            float(softcap),
+            1 if exact_3pass else 0,
+            _stream(logits_in.device),
+        )
+    return out
+
+
+def sm80_logits_softcap_fp32(
+    logits_in: torch.Tensor,
+    org_vocab_size: int,
+    softcap: float,
+    inplace: bool = False,
+) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_logits_softcap_fp32_r8"):
+        return None
+    if logits_in.dtype != torch.float32 or logits_in.ndim != 2 or logits_in.stride(1) != 1:
+        return None
+    m = logits_in.shape[0]
+    v = min(int(org_vocab_size), logits_in.shape[1])
+    if inplace and logits_in.shape[1] == v and logits_in.stride(0) == v:
+        out = logits_in
+    else:
+        out = torch.empty((m, v), dtype=torch.float32, device=logits_in.device)
+    if m > 0 and v > 0:
+        ext.launch_logits_softcap_fp32_r8(
+            logits_in.data_ptr(),
+            out.data_ptr(),
+            int(logits_in.stride(0)),
+            m,
+            v,
+            float(softcap),
+            _stream(logits_in.device),
+        )
+    return out
+
+
+def markov_fold_gumbel_cal_r1(
+    latent: torch.Tensor,
+    fold_weight: torch.Tensor,
+    fold_bias: torch.Tensor,
+    base_logits_1d: torch.Tensor,
+    keep_ids: torch.Tensor,
+    idx_map_step: torch.Tensor,
+    temperature: torch.Tensor,
+    seeds: torch.Tensor,
+    sample_pos_step: torch.Tensor,
+    row_mapping: torch.Tensor | None,
+    logits_cache: torch.Tensor,
+    step_col: int,
+    softcap: float,
+    out_draft_col: torch.Tensor,
+    cal_alpha: float = 1.0,
+    cal_alpha_tensor: torch.Tensor | None = None,
+    skip_flag: torch.Tensor | None = None,
+    keep_dirty: torch.Tensor | None = None,
+) -> torch.Tensor:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_markov_fold_gumbel_cal_r1_sm80"):
+        return markov_fold_gumbel_cache_r1(
+            latent,
+            fold_weight,
+            fold_bias,
+            base_logits_1d,
+            keep_ids,
+            idx_map_step,
+            temperature,
+            seeds,
+            sample_pos_step,
+            row_mapping,
+            logits_cache,
+            step_col,
+            softcap,
+            out_draft_col,
+            skip_flag=skip_flag,
+            keep_dirty=keep_dirty,
+        )
+    dev = latent.device
+    d_idx = dev.index or 0
+    ws = _MFGC_WS.get(d_idx)
+    if ws is None:
+        ws = (
+            torch.empty((256,), dtype=torch.float32, device=dev),
+            torch.empty((256,), dtype=torch.int64, device=dev),
+            torch.zeros((1,), dtype=torch.int32, device=dev),
+        )
+        _MFGC_WS[d_idx] = ws
+    ws_max, ws_id, ctr = ws
+    out_sampled = torch.empty((1,), dtype=torch.int64, device=dev)
+    ext.launch_markov_fold_gumbel_cal_r1_sm80(
+        latent.data_ptr(),
+        fold_weight.data_ptr(),
+        fold_bias.data_ptr(),
+        base_logits_1d.data_ptr(),
+        keep_ids.data_ptr(),
+        idx_map_step.data_ptr(),
+        temperature.data_ptr(),
+        seeds.data_ptr(),
+        sample_pos_step.data_ptr(),
+        _ptr(row_mapping),
+        _ptr(skip_flag),
+        _ptr(cal_alpha_tensor),
+        _ptr(keep_dirty),
+        logits_cache.data_ptr(),
+        ws_max.data_ptr(),
+        ws_id.data_ptr(),
+        ctr.data_ptr(),
+        out_sampled.data_ptr(),
+        out_draft_col.data_ptr(),
+        logits_cache.stride(0),
+        logits_cache.stride(1),
+        int(step_col),
+        int(fold_weight.shape[0]),
+        float(softcap),
+        float(cal_alpha),
+        _stream(dev),
+    )
+    return out_sampled
+
+
+def w8a16_e4m3_gemm_bf16_r8(
+    x: torch.Tensor,
+    w_e4m3: torch.Tensor,
+    row_scale_256: torch.Tensor,
+) -> torch.Tensor | None:
+    ext = _get_ext_lib()
+    if ext is None or not hasattr(ext, "launch_w8a16_e4m3_gemm_bf16_r8"):
+        return None
+    lead = x.shape[:-1]
+    k = x.shape[-1]
+    x2 = x if (x.ndim == 2 and x.is_contiguous()) else x.reshape(-1, k).contiguous()
+    m = x2.shape[0]
+    n = w_e4m3.shape[0]
+    if m > 96 or (n & 63) != 0 or (k & 63) != 0:
+        return None
+    out = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
+    if m > 0:
+        ext.launch_w8a16_e4m3_gemm_bf16_r8(
+            x2.data_ptr(),
+            w_e4m3.data_ptr(),
+            row_scale_256.data_ptr(),
+            out.data_ptr(),
+            m,
+            n,
+            k,
+            _stream(x.device),
+        )
+    return out.view(*lead, n)
 
 
 def select_and_align_32cta_128(
@@ -1953,3 +2192,190 @@ def set_l2_persisting_window(
             ptr, nbytes, limit_bytes, float(hit_ratio), _stream(dev)
         )
     )
+
+
+def has_sm80_rejection_r8() -> bool:
+    ext = _get_ext_lib()
+    return ext is not None and hasattr(ext, "launch_sm80_rejection_sampler_r8")
+
+
+def _get_rej_r8_ws(
+    dev: torch.device,
+    st: int,
+    num_logits: int,
+    num_reqs: int,
+    vocab_num_blocks: int,
+    resample_num_blocks: int,
+) -> tuple[int, ...]:
+    key = (dev.index or 0, st)
+    entry = _REJ_R8_WS.get(key)
+    max_l = max(num_logits, 1536)
+    max_r = max(num_reqs, 256)
+    max_vb = max(vocab_num_blocks, 32)
+    max_rb = max(resample_num_blocks, 256)
+    if (
+        entry is None
+        or entry[0]["t_argmax"].shape[0] < num_logits
+        or entry[0]["t_argmax"].shape[1] < vocab_num_blocks
+        or entry[0]["r_argmax"].shape[0] < num_reqs
+        or entry[0]["r_argmax"].shape[1] < resample_num_blocks
+    ):
+        ws = {
+            "t_argmax": torch.empty((max_l, max_vb), dtype=torch.int64, device=dev),
+            "t_max": torch.empty((max_l, max_vb), dtype=torch.float32, device=dev),
+            "t_sumexp": torch.empty((max_l, max_vb), dtype=torch.float32, device=dev),
+            "d_max": torch.empty((max_l, max_vb), dtype=torch.float32, device=dev),
+            "d_sumexp": torch.empty((max_l, max_vb), dtype=torch.float32, device=dev),
+            "cum_log_p": torch.empty((max_l,), dtype=torch.float32, device=dev),
+            "res_mass": torch.empty((max_l, max_vb), dtype=torch.float32, device=dev),
+            "rej_step": torch.empty((max_r,), dtype=torch.int32, device=dev),
+            "t_rej_lse": torch.empty((max_r,), dtype=torch.float32, device=dev),
+            "d_rej_lse": torch.empty((max_r,), dtype=torch.float32, device=dev),
+            "r_argmax": torch.empty((max_r, max_rb), dtype=torch.int64, device=dev),
+            "r_max": torch.empty((max_r, max_rb), dtype=torch.float32, device=dev),
+            "r_cnt": torch.zeros((max_r,), dtype=torch.int32, device=dev),
+            "draft_sampled": torch.empty((max_l,), dtype=torch.int32, device=dev),
+            "pos": torch.empty((max_l,), dtype=torch.int64, device=dev),
+        }
+        ptrs = (
+            ws["t_argmax"].data_ptr(),
+            ws["t_max"].data_ptr(),
+            ws["t_sumexp"].data_ptr(),
+            ws["d_max"].data_ptr(),
+            ws["d_sumexp"].data_ptr(),
+            ws["cum_log_p"].data_ptr(),
+            ws["res_mass"].data_ptr(),
+            ws["rej_step"].data_ptr(),
+            ws["t_rej_lse"].data_ptr(),
+            ws["d_rej_lse"].data_ptr(),
+            ws["r_argmax"].data_ptr(),
+            ws["r_max"].data_ptr(),
+            ws["r_cnt"].data_ptr(),
+            ws["draft_sampled"].data_ptr(),
+            ws["pos"].data_ptr(),
+        )
+        entry = (ws, ptrs)
+        _REJ_R8_WS[key] = entry
+    return entry[1]
+
+
+def sm80_rejection_sample_r8(
+    *,
+    target_logits: torch.Tensor,
+    draft_logits: torch.Tensor | None,
+    row_mapping: torch.Tensor | None,
+    cu_num_logits: torch.Tensor,
+    idx_mapping: torch.Tensor,
+    expanded_idx_mapping: torch.Tensor,
+    expanded_local_pos: torch.Tensor,
+    temperature: torch.Tensor,
+    seeds: torch.Tensor,
+    num_speculative_steps: int,
+    use_block_verification: bool = False,
+    do_gather: bool = True,
+    input_ids: torch.Tensor | None = None,
+    positions: torch.Tensor | None = None,
+    logits_indices: torch.Tensor | None = None,
+    prefill_len: torch.Tensor | None = None,
+    seq_lens: torch.Tensor | None = None,
+    draft_sampled: torch.Tensor | None = None,
+    pos: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    ext = _EXT_LIB or _get_ext_lib()
+    assert ext is not None
+    dev = target_logits.device
+    st = _stream(dev)
+    num_reqs = cu_num_logits.shape[0] - 1
+    num_logits, vocab_size = target_logits.shape
+    has_draft = draft_logits is not None
+    draft_s0 = draft_logits.stride(0) if has_draft else 0
+    draft_s1 = draft_logits.stride(1) if has_draft else 0
+    if has_draft and draft_logits.shape[-1] < vocab_size:
+        vocab_size = draft_logits.shape[-1]
+    vocab_num_blocks = (vocab_size + 8191) >> 13
+    resample_num_blocks = (vocab_size + 1023) >> 10
+    (
+        p_t_argmax,
+        p_t_max,
+        p_t_sumexp,
+        p_d_max,
+        p_d_sumexp,
+        p_cum_log_p,
+        p_res_mass,
+        p_rej_step,
+        p_t_rej_lse,
+        p_d_rej_lse,
+        p_r_argmax,
+        p_r_max,
+        p_r_cnt,
+        p_ds,
+        p_pos,
+    ) = _get_rej_r8_ws(
+        dev, st, num_logits, num_reqs, vocab_num_blocks, resample_num_blocks
+    )
+    cols = num_speculative_steps + 1
+    out_sampled = torch.empty((num_reqs, cols), dtype=torch.int64, device=dev)
+    out_num_sampled = torch.empty((num_reqs,), dtype=torch.int32, device=dev)
+    out_num_rejected = (
+        torch.empty((num_reqs,), dtype=torch.int32, device=dev) if do_gather else None
+    )
+    t_bf16 = 1 if target_logits.dtype is torch.bfloat16 else 0
+    d_bf16 = 1 if (has_draft and draft_logits.dtype is torch.bfloat16) else 0
+    ext.launch_sm80_rejection_sampler_r8(
+        out_sampled.data_ptr(),
+        cols,
+        out_num_sampled.data_ptr(),
+        0 if out_num_rejected is None else out_num_rejected.data_ptr(),
+        p_t_argmax,
+        p_t_max,
+        p_t_sumexp,
+        p_d_max,
+        p_d_sumexp,
+        p_cum_log_p,
+        p_res_mass,
+        p_rej_step,
+        p_t_rej_lse,
+        p_d_rej_lse,
+        p_r_argmax,
+        p_r_max,
+        p_r_cnt,
+        p_ds,
+        p_pos,
+        target_logits.data_ptr(),
+        target_logits.stride(0),
+        0 if draft_logits is None else draft_logits.data_ptr(),
+        draft_s0,
+        draft_s1,
+        0 if row_mapping is None else row_mapping.data_ptr(),
+        0 if draft_sampled is None else draft_sampled.data_ptr(),
+        0 if pos is None else pos.data_ptr(),
+        cu_num_logits.data_ptr(),
+        idx_mapping.data_ptr(),
+        expanded_idx_mapping.data_ptr(),
+        expanded_local_pos.data_ptr(),
+        temperature.data_ptr(),
+        seeds.data_ptr(),
+        0 if input_ids is None else input_ids.data_ptr(),
+        0 if positions is None else positions.data_ptr(),
+        0 if logits_indices is None else logits_indices.data_ptr(),
+        0 if prefill_len is None else prefill_len.data_ptr(),
+        0 if seq_lens is None else seq_lens.data_ptr(),
+        num_reqs,
+        num_logits,
+        vocab_size,
+        vocab_num_blocks,
+        resample_num_blocks,
+        t_bf16,
+        d_bf16,
+        1 if has_draft else 0,
+        1 if use_block_verification else 0,
+        1 if do_gather else 0,
+        1 if idx_mapping.dtype is torch.int64 else 0,
+        1 if expanded_idx_mapping.dtype is torch.int64 else 0,
+        1 if (row_mapping is not None and row_mapping.dtype is torch.int64) else 0,
+        1 if (input_ids is not None and input_ids.dtype is torch.int64) else 0,
+        1 if (logits_indices is not None and logits_indices.dtype is torch.int64) else 0,
+        1 if (draft_sampled is not None and draft_sampled.dtype is torch.int64) else 0,
+        st,
+    )
+    return out_sampled, out_num_sampled, out_num_rejected

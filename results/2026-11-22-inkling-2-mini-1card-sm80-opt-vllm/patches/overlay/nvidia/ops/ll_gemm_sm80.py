@@ -9,13 +9,14 @@ from typing import NamedTuple
 
 import torch
 
-from vllm.triton_utils import tl, triton
+from vllm.triton_utils import tl, tldevice, triton
 from vllm.utils.platform_utils import num_compute_units
 from vllm.utils.torch_utils import current_stream
 
 from . import is_sm80
 
 MAX_M = 16
+MAX_QKV_M = 128
 MAX_BATCHED_M = 64
 _MP = 16
 _MAX_TILES = 8192
@@ -31,6 +32,7 @@ def _ll_gemm_kernel(
     C,
     M,
     N,
+    OUT_N,
     K,
     SXB,
     SXM,
@@ -38,11 +40,13 @@ def _ll_gemm_kernel(
     SWN,
     SYB,
     SYM,
+    softcap,
     BN: tl.constexpr,
     BK: tl.constexpr,
     K_PER_SPLIT: tl.constexpr,
     SPLIT: tl.constexpr,
     MP: tl.constexpr,
+    HAS_SOFTCAP: tl.constexpr,
 ):
     pid_n = tl.program_id(0)
     b = tl.program_id(1)
@@ -82,10 +86,12 @@ def _ll_gemm_kernel(
     if is_last:
         if Bias is not None:
             acc += tl.load(Bias + cols, cols < N, other=0).to(tl.float32)[None, :]
+        if HAS_SOFTCAP:
+            acc = softcap * tldevice.tanh(tl.div_rn(acc, softcap))
         tl.store(
             Y + (b * SYB + rows[:, None] * SYM + cols[None, :]),
             acc.to(Y.dtype.element_ty),
-            (rows[:, None] < M) & (cols[None, :] < N),
+            (rows[:, None] < M) & (cols[None, :] < OUT_N),
         )
 
 
@@ -111,7 +117,8 @@ def _qkv_bmm_kernel(
     MP: tl.constexpr,
 ):
     pid_n = tl.program_id(0)
-    rows = tl.arange(0, MP)
+    pid_m = tl.program_id(1)
+    rows = pid_m * MP + tl.arange(0, MP)
     cols = pid_n * BN + tl.arange(0, BN)
     c0 = pid_n * BN
     c1 = c0 + BN - 1
@@ -202,6 +209,7 @@ def _qkv_dyn_bmm_kernel(
 ):
     """5-way fused low-M GEMM (single K-loop, 0 spills): QKV segments + k_dyn + v_dyn."""
     pid = tl.program_id(0)
+    pid_m = tl.program_id(1)
     is_dyn = pid >= NB0 + NB1 + NB2
     if pid < NB0:
         X, SX = XQ, SXQ
@@ -231,7 +239,7 @@ def _qkv_dyn_bmm_kernel(
 
     cols = lo + local * BN + tl.arange(0, BN)
     cmask = cols < hi
-    rows = tl.arange(0, MP)
+    rows = pid_m * MP + tl.arange(0, MP)
     ks = tl.arange(0, BK)
     w_ptrs = WP + cols[None, :].to(tl.int64) * SW_U + ks[:, None]
     x_ptrs = X + rows[:, None] * SX + ks[None, :]
@@ -281,6 +289,10 @@ def _config(nb: int, n: int, k: int) -> _Config:
     # tile/split schedule (BN=128 on 8600x2304 = 68 CTAs = 44.0 us) while
     # eliminating per-step torch.empty allocations via _partials_workspace.
     if num_sms <= 80:
+        if nb == 1 and n == 2304 and k == 3072:
+            return _Config(32, bk, 2, 12 * bk, 4, 4)
+        if nb == 1 and n == 2304 and k == 6144:
+            return _Config(32, bk, 2, 24 * bk, 4, 5)
         for bn in (16, 32, 64):
             if nb * triton.cdiv(n, bn) > _MAX_TILES:
                 continue
@@ -290,9 +302,13 @@ def _config(nb: int, n: int, k: int) -> _Config:
                 split = triton.cdiv(k_tiles, tiles_per_split)
                 if split >= 2:
                     return _Config(bn, bk, split, tiles_per_split * bk, 4, 4)
-        if nb == 1 and 4608 < n < 16384:
-            bn = 128
-        elif n >= 16384 or (nb == 1 and n > 2048):
+        if nb == 1 and n == 12288:
+            return _Config(32, bk, 1, k_tiles * bk, 2, 5)
+        if nb == 1 and 9472 < n < 12288:
+            return _Config(64, bk, 1, k_tiles * bk, 8, 3)
+        if nb == 1 and 4608 < n <= 9472:
+            return _Config(128, bk, 1, k_tiles * bk, 4, 4)
+        if n >= 16384 or (nb == 1 and n > 2048):
             bn = 64
         else:
             bn = 32
@@ -342,18 +358,23 @@ def _partials_workspace(
 
 
 def _ll_gemm(
-    x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor | None, out: torch.Tensor
+    x: torch.Tensor,
+    w: torch.Tensor,
+    bias: torch.Tensor | None,
+    out: torch.Tensor,
+    softcap: float = 0.0,
 ) -> None:
     nb, m, k = x.shape
     n = w.shape[1]
+    out_n = out.shape[2]
     max_m = MAX_BATCHED_M if nb > 1 else MAX_M
     mp = 16 if m <= 16 else (32 if m <= 32 else 64)
     assert 0 < m <= max_m and w.shape == (nb, n, k)
     assert x.stride(2) == w.stride(2) == 1
     assert bias is None or (bias.shape == (n,) and bias.stride(0) == 1)
-    assert out.shape == (nb, m, n) and out.stride(2) == 1
+    assert out.shape == (nb, m, out_n) and out.stride(2) == 1 and out_n <= n
     cfg = _config(nb, n, k)
-    n_tiles = triton.cdiv(n, cfg.bn)
+    n_tiles = triton.cdiv(out_n, cfg.bn)
     partials = counter = None
     stream_id = current_stream().cuda_stream
     if cfg.split > 1:
@@ -372,6 +393,7 @@ def _ll_gemm(
         counter,
         m,
         n,
+        out_n,
         k,
         x.stride(0),
         x.stride(1),
@@ -379,11 +401,13 @@ def _ll_gemm(
         w.stride(1),
         out.stride(0),
         out.stride(1),
+        float(softcap),
         BN=cfg.bn,
         BK=cfg.bk,
         K_PER_SPLIT=cfg.k_per_split,
         SPLIT=cfg.split,
         MP=mp,
+        HAS_SOFTCAP=(softcap > 0.0),
         num_warps=cfg.num_warps,
         num_stages=num_stages,
     )
@@ -415,7 +439,14 @@ def sm80_qkv_bmm(
     m, k = x_q.shape
     n = w.shape[0]
     s1, s2 = k_start, v_start
-    bn = 64 if (s1 >= 64 and s1 + 64 <= s2 <= n) else 32
+    if 4096 <= n <= 9472 and s1 >= 128 and s1 + 128 <= s2 <= n:
+        bn, nw, ns = 128, 8, 3
+    elif n > 9472:
+        bn, nw, ns = 32, 4, 4
+    elif s1 >= 64 and s1 + 64 <= s2 <= n:
+        bn, nw, ns = 64, 4, 4
+    else:
+        bn, nw, ns = 32, 4, 4
     assert 0 < m <= MAX_M and w.shape == (n, k)
     assert all(x.shape == (m, k) and x.stride(1) == 1 for x in xs)
     assert w.stride(1) == 1 and s1 > 0 and s1 + bn <= s2 <= n
@@ -439,8 +470,8 @@ def sm80_qkv_bmm(
         BN=bn,
         BK=128,
         MP=_MP,
-        num_warps=4,
-        num_stages=4,
+        num_warps=nw,
+        num_stages=ns,
     )
     return out
 
@@ -454,7 +485,13 @@ def use_sm80_qkv_dyn_bmm(
     wv_dyn: torch.Tensor,
 ) -> bool:
     return (
-        use_sm80_qkv_bmm(x_q, x_k, x_v, w)
+        x_q.is_cuda
+        and x_q.ndim == 2
+        and (0 < x_q.shape[0] <= MAX_M or 44 <= x_q.shape[0] <= MAX_QKV_M)
+        and x_q.shape == x_k.shape == x_v.shape
+        and x_q.dtype == x_k.dtype == x_v.dtype == w.dtype == torch.bfloat16
+        and x_q.stride(1) == x_k.stride(1) == x_v.stride(1) == w.stride(1) == 1
+        and is_sm80()
         and wk_dyn.is_cuda
         and wv_dyn.is_cuda
         and wk_dyn.device == wv_dyn.device == x_q.device
@@ -486,7 +523,8 @@ def sm80_qkv_dyn_bmm(
     s1, s2 = k_start, v_start
     n0, n1, n2 = s1, s2 - s1, n - s2
     bn = 64 if (n0 >= 64 and n1 >= 64 and n2 >= 64) else 32
-    assert 0 < m <= MAX_M and w.shape == (n, k)
+    mp = 16 if m <= 16 else (32 if m <= 32 else 64)
+    assert 0 < m <= MAX_QKV_M and w.shape == (n, k)
     assert all(x.shape == (m, k) and x.stride(1) == 1 for x in xs)
     assert w.stride(1) == 1 and s1 > 0 and s1 < s2 <= n
     assert wk_dyn.shape == (n_dyn, k) and wv_dyn.shape == (n_dyn, k)
@@ -495,7 +533,7 @@ def sm80_qkv_dyn_bmm(
     yk_dyn = torch.empty((m, n_dyn), dtype=x_q.dtype, device=x_q.device)
     yv_dyn = torch.empty((m, n_dyn), dtype=x_q.dtype, device=x_q.device)
     nb0, nb1, nb2 = triton.cdiv(n0, bn), triton.cdiv(n1, bn), triton.cdiv(n2, bn)
-    _qkv_dyn_bmm_kernel[(nb0 + nb1 + nb2 + 2,)](
+    _qkv_dyn_bmm_kernel[(nb0 + nb1 + nb2 + 2, triton.cdiv(m, mp))](
         x_q,
         x_k,
         x_v,
@@ -525,7 +563,7 @@ def sm80_qkv_dyn_bmm(
         nb2,
         BN=bn,
         BK=128,
-        MP=_MP,
+        MP=mp,
         num_warps=4,
         num_stages=3,
     )
@@ -538,20 +576,23 @@ def sm80_bf16_ll_gemm(
     bias: torch.Tensor | None = None,
     out_dtype: torch.dtype | None = None,
     out: torch.Tensor | None = None,
+    softcap: float = 0.0,
+    out_n: int | None = None,
 ) -> torch.Tensor:
     n = weight.shape[-2]
+    eff_n = min(n, int(out_n)) if out_n is not None else n
     if weight.ndim == 3:
         if out is None:
-            out = x.new_empty((*x.shape[:2], n), dtype=out_dtype or x.dtype)
-        _ll_gemm(x, weight, bias, out)
+            out = x.new_empty((*x.shape[:2], eff_n), dtype=out_dtype or x.dtype)
+        _ll_gemm(x, weight, bias, out, softcap=softcap)
         return out
     lead = x.shape[:-1]
     x2 = x.reshape(-1, x.shape[-1])
     if out is None:
-        out = x.new_empty((x2.shape[0], n), dtype=out_dtype or x.dtype)
+        out = x.new_empty((x2.shape[0], eff_n), dtype=out_dtype or x.dtype)
     if x2.shape[0]:
-        _ll_gemm(x2[None], weight[None], bias, out.view(-1, n)[None])
-    return out.view(*lead, n)
+        _ll_gemm(x2[None], weight[None], bias, out.view(-1, eff_n)[None], softcap=softcap)
+    return out.view(*lead, eff_n)
 
 
 def use_sm80_bf16_ll_gemm(

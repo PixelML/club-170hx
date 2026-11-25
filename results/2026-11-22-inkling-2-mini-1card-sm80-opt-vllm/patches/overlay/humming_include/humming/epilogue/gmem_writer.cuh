@@ -221,7 +221,7 @@ public:
         uint32_t gmem_offset = gmem_row * ((ProblemShape::N - PadShape::N) / 8) + gmem_col;
         if constexpr (!Ctx::kHasBias && !kUseStreamK && std::is_same<ElementC, BFloat16>::value) {
           if (ctx.params.bias != nullptr) {
-            const float gamma = reinterpret_cast<const float *>(ctx.params.bias)[gmem_row];
+            const float gamma = __ldg(reinterpret_cast<const float *>(ctx.params.bias) + gmem_row);
             float y0 = inkling_situ_f32(static_cast<uint32_t>(val.x), gamma);
             float y1 = inkling_situ_f32(static_cast<uint32_t>(val.y), gamma);
             float y2 = inkling_situ_f32(static_cast<uint32_t>(val.z), gamma);

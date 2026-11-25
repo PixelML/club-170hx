@@ -20,8 +20,8 @@ n_rounds = len(sb)
 fig, (ax1, ax2, ax3) = plt.subplots(
     1,
     3,
-    figsize=(20.2, 5.7) if n_rounds >= 8 else ((18.8, 5.6) if n_rounds >= 7 else (17.2, 5.5)),
-    gridspec_kw={"width_ratios": [1.22, 1.34, 1.20] if n_rounds >= 8 else ([1.18, 1.32, 1.16] if n_rounds >= 7 else [1.14, 1.34, 1.12])},
+    figsize=(24.0, 5.9) if n_rounds >= 9 else ((20.2, 5.7) if n_rounds >= 8 else ((18.8, 5.6) if n_rounds >= 7 else (17.2, 5.5))),
+    gridspec_kw={"width_ratios": [1.30, 1.34, 1.28] if n_rounds >= 9 else ([1.22, 1.34, 1.20] if n_rounds >= 8 else ([1.18, 1.32, 1.16] if n_rounds >= 7 else [1.14, 1.34, 1.12]))},
 )
 
 # Panel 1: 6-prompt single-user decode progression (T=0.6)
@@ -50,7 +50,7 @@ for i, (m, pk) in enumerate(zip(c1_meds, c1_peaks)):
         fontsize=6.5 if n_rounds >= 7 else (6.9 if n_rounds >= 6 else 7.5),
         fontweight="bold" if i == n_rounds - 1 else "normal",
     )
-ax1.set_xticks(xs1, [r["label"] for r in sb], fontsize=5.6 if n_rounds >= 7 else (5.9 if n_rounds >= 6 else 7.0))
+ax1.set_xticks(xs1, [r["label"] for r in sb], fontsize=5.2 if n_rounds >= 9 else (5.6 if n_rounds >= 7 else (5.9 if n_rounds >= 6 else 7.0)))
 ax1.set_ylabel("decode tok/s, 1 user, 6-prompt median (T=0.6)")
 ax1.set_title("Hill-climb c=1 decode (262K ctx)")
 ax1.set_ylim(0, 272)
@@ -105,14 +105,14 @@ for i, (m, pk) in enumerate(zip(c16_meds, c16_peaks)):
     gain = f"\n(+{sb[i]['c16_gain_pct']:.1f}%)" if i > 0 else ""
     ax3.text(
         i,
-        max(m, pk) + 10.0,
+        max(m, pk) + 15.0,
         f"{m:.1f}{gain}",
         ha="center",
         va="bottom",
         fontsize=6.5 if n_rounds >= 7 else (6.9 if n_rounds >= 6 else 7.5),
         fontweight="bold" if i == n_rounds - 1 else "normal",
     )
-ax3.set_xticks(xs1, [r["label"] for r in sb], fontsize=5.6 if n_rounds >= 7 else (5.9 if n_rounds >= 6 else 7.0))
+ax3.set_xticks(xs1, [r["label"] for r in sb], fontsize=5.2 if n_rounds >= 9 else (5.6 if n_rounds >= 7 else (5.9 if n_rounds >= 6 else 7.0)))
 ax3.set_ylabel("aggregate output tok/s, 16 concurrent users")
 ax3.set_title("Unified server c=16 throughput")
 ax3.set_ylim(0, 835)
@@ -122,7 +122,7 @@ ax3.legend(fontsize=7.2, loc="upper left")
 champ = sb[-1]
 fig.suptitle(
     f"Inkling-2-Mini on 1x stock CMP 170HX (SM80, 140 W, 262,144 ctx) — "
-    f"{sb[0]['c1_med']:.1f} → {champ['c1_med']:.2f} tok/s c=1, {sb[0]['c16_med']:.1f} → {champ['c16_med']:.1f} tok/s c=16 (measured 2026-11-24)",
+    f"{sb[0]['c1_med']:.1f} → {champ['c1_med']:.2f} tok/s c=1, {sb[0]['c16_med']:.1f} → {champ['c16_med']:.1f} tok/s c=16 (measured 2026-11-25)",
     fontsize=11,
 )
 fig.tight_layout()

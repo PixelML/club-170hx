@@ -608,6 +608,12 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
         self.f_rnn = torch.zeros(
             self.max_num_reqs, config.hidden_size, dtype=self.dtype, device=device
         )
+        self._zero_markov_state = torch.zeros(
+            self.max_num_reqs, config.markov_rank, dtype=self.dtype, device=device
+        )
+        self._sm80_tp1 = (
+            is_sm80() and vllm_config.parallel_config.tensor_parallel_size == 1
+        )
 
         # HBM-ring Hybrid SuffixDecoding + DSpark (4 MiB HBM, 0 host sync)
         self._req_states = req_states
@@ -701,6 +707,37 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
             self._suf_skip_flag.zero_()
             self._suf_keep_dirty.fill_(1)
             self._suf_just_scrubbed.zero_()
+
+    def _eff_k_for_batch(self, num_reqs: int, n_spec: int) -> int:
+        spec_cfg = self.vllm_config.speculative_config
+        if (
+            self._sm80_tp1
+            and n_spec >= 2
+            and spec_cfg is not None
+            and spec_cfg.uses_dynamic_speculative_decoding()
+        ):
+            if os.environ.get("VLLM_SM80_DYN_SPEC") == "1":
+                if num_reqs >= 7:
+                    return min(
+                        max(1, int(os.environ.get("VLLM_SM80_C16_SPEC_K", "1"))),
+                        n_spec,
+                    )
+                if 3 <= num_reqs <= 6:
+                    return min(2, n_spec)
+                return n_spec
+            # Match speculative_config.num_speculative_tokens_per_batch_size for num_reqs >= 3
+            # so c=16 (k=2) runs ONLY 2 Markov batch steps + 32 base_logits rows instead of 4 + 64!
+            from vllm.v1.spec_decode.dynamic.utils import build_dynamic_sd_schedule_lookup
+
+            if getattr(self, "_static_batch_sd_lookup", None) is None:
+                self._static_batch_sd_lookup = build_dynamic_sd_schedule_lookup(
+                    spec_cfg.num_speculative_tokens_per_batch_size,
+                    vllm_max_batch_size=max(self.max_num_reqs, 256),
+                    vllm_num_speculative_tokens=n_spec,
+                )
+            if 3 <= num_reqs < len(self._static_batch_sd_lookup):
+                return min(max(1, self._static_batch_sd_lookup[num_reqs]), n_spec)
+        return n_spec
 
     def on_requests_finished(self, finished_req_ids: Iterable[str]) -> None:
         super().on_requests_finished(finished_req_ids)
@@ -958,6 +995,26 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
             self._d2t_scatter_index = model.keep_ids
         return model
 
+    def _store_hidden_states(
+        self,
+        num_tokens: int,
+        last_hidden_states: torch.Tensor,
+        aux_hidden_states: list[torch.Tensor] | None,
+        num_graph_tokens: int = 0,
+    ) -> None:
+        if num_tokens <= 0:
+            return
+        if self._aux_staging is None and aux_hidden_states:
+            torch.cat(
+                [h[:num_tokens] for h in aux_hidden_states],
+                dim=-1,
+                out=self.hidden_states[:num_tokens],
+            )
+            return
+        super()._store_hidden_states(
+            num_tokens, last_hidden_states, aux_hidden_states, num_graph_tokens
+        )
+
     def prepare_context_anchor(
         self,
         num_reqs: int,
@@ -965,19 +1022,53 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
         num_rejected: torch.Tensor | None,
     ) -> None:
         assert num_rejected is not None
+        if (
+            is_sm80()
+            and getattr(self.model.model, "dflare_ws", None) is not None
+            and len(self.model.model.layers) == 3
+            and os.environ.get("VLLM_SM80_NO_FUSED_FRNN") != "1"
+        ):
+            self.model._pending_frnn = (
+                self.hidden_states,
+                num_reqs,
+                query_start_loc,
+                num_rejected,
+                self.f_rnn[:num_reqs],
+            )
+            return
         ends = query_start_loc[1 : num_reqs + 1] - num_rejected[:num_reqs]
         rows = self.hidden_states[(ends - 1).clamp_min(0).long()]
         self.f_rnn[:num_reqs] = self.model.compute_f_rnn(rows)
 
     def _sample_sequential(self, num_reqs: int, head_hidden: torch.Tensor) -> None:
+        pending_frnn = getattr(self.model, "_pending_frnn", None)
+        if pending_frnn is not None:
+            self.model._pending_frnn = None
+            frnn_base, nr, qsl, num_rej, out_frnn_buf = pending_frnn
+            ends = qsl[1 : nr + 1] - num_rej[:nr]
+            rows = frnn_base[(ends - 1).clamp_min(0).long()]
+            out_frnn_buf.copy_(self.model.compute_f_rnn(rows))
         n_spec = self.num_speculative_steps
-        num_sample = num_reqs * n_spec
-        hidden = head_hidden[self.sample_indices[:num_sample]]
-        base_logits = self.model.compute_base_logits(hidden).view(num_reqs, n_spec, -1)
+        eff_k = self._eff_k_for_batch(num_reqs, n_spec)
+        num_all = num_reqs * n_spec
+        if eff_k < n_spec:
+            s_idx = (
+                self.sample_indices[:num_all]
+                .view(num_reqs, n_spec)[:, :eff_k]
+                .reshape(-1)
+            )
+            idx_map = self.sample_idx_mapping[:num_all].view(num_reqs, n_spec)[
+                :, :eff_k
+            ]
+            sample_pos = self.sample_pos[:num_all].view(num_reqs, n_spec)[:, :eff_k]
+        else:
+            s_idx = self.sample_indices[:num_all]
+            idx_map = self.sample_idx_mapping[:num_all].view(num_reqs, n_spec)
+            sample_pos = self.sample_pos[:num_all].view(num_reqs, n_spec)
+        hidden = head_hidden[s_idx]
+        base_logits = self.model.compute_base_logits(hidden).view(num_reqs, eff_k, -1)
         context = self.model.model.markov_head.context(hidden, self.f_rnn[:num_reqs])
-        idx_map = self.sample_idx_mapping[:num_sample].view(num_reqs, n_spec)
-        sample_pos = self.sample_pos[:num_sample].view(num_reqs, n_spec)
-        state = hidden.new_zeros(num_reqs, self.model.config.markov_rank)
+        state = self._zero_markov_state[:num_reqs]
         prev = self.input_buffers.input_ids[self._anchor_idx[:num_reqs]]
         keep_ids = self._d2t_scatter_index
         if is_sm80() and keep_ids is not None:
@@ -1019,7 +1110,7 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
                         if (self._hybrid_suffix_enabled and est is None)
                         else None
                     )
-                    for i in range(n_spec):
+                    for i in range(eff_k):
                         state, latent = markov_rnn_gate_256(
                             state,
                             prev,
@@ -1101,7 +1192,7 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
                     sample_pos,
                     self.draft_logits.values,
                     self.model.config.final_logit_softcapping,
-                    self.draft_tokens[:num_reqs],
+                    self.draft_tokens[:num_reqs, :eff_k],
                     row_mapping=self.draft_logits.row_mapping,
                 )
                 return
@@ -1109,7 +1200,7 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
             if self._hybrid_suffix_enabled and self.draft_logits is not None:
                 self._suf_keep_dirty.fill_(1)
 
-            for i in range(n_spec):
+            for i in range(eff_k):
                 state, logits = self.model.markov_step_logits(
                     state, prev, context[i], base_logits[:, i]
                 )
@@ -1144,7 +1235,7 @@ class Inkling2DSparkSpeculator(DSparkSpeculator):
                 self.draft_tokens[:num_reqs, i] = prev
             return
 
-        for i in range(n_spec):
+        for i in range(eff_k):
             state, bias = self.model.markov_step(state, prev, context[i])
             if self.draft_logits is None:
                 prev = self.model.markov_argmax(base_logits[:, i], bias)

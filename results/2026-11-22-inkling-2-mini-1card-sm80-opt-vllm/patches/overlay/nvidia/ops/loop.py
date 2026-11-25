@@ -12,7 +12,7 @@ import torch
 
 from vllm.triton_utils import tl, tldevice, triton
 
-from vllm.models.inkling2.sm80_ops_v2 import blend_rms_norm_2304, pair_rms_norm_2304
+from . import is_sm80
 from .norm import rsqrt
 
 
@@ -47,7 +47,9 @@ def pair_rms_norm(dest: torch.Tensor, message: torch.Tensor) -> torch.Tensor:
     assert dest.shape == message.shape and message.is_contiguous()
     assert dest.stride(1) == d and dest.stride(2) == 1
     assert dest.dtype == message.dtype == torch.float32
-    if d == 2304 and num_tokens > 0:
+    if is_sm80() and d == 2304 and num_tokens > 0:
+        from ...sm80_ops_v2 import pair_rms_norm_2304
+
         return pair_rms_norm_2304(dest, message)
     out = message.new_empty((num_streams, num_tokens, 2 * d), dtype=torch.bfloat16)
     if num_tokens:
@@ -114,7 +116,9 @@ def blend_rms_norm(
     assert gain_forget.shape == (num_streams, num_tokens, 2 * d)
     assert gain_forget.is_contiguous() and gain_forget.dtype == torch.float32
     assert norm_weight.shape == (num_streams, d) and norm_weight.stride(1) == 1
-    if d == 2304 and num_tokens > 0:
+    if is_sm80() and d == 2304 and num_tokens > 0:
+        from ...sm80_ops_v2 import blend_rms_norm_2304
+
         return blend_rms_norm_2304(dest, message, gain_forget, norm_weight, norm_eps)
     out = message.new_empty((num_streams, num_tokens, d), dtype=torch.bfloat16)
     if num_tokens:

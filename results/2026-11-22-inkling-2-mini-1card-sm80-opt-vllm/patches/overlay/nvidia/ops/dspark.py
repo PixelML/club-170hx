@@ -72,6 +72,8 @@ def _mix_rmsnorm_4x_kernel(
     WEIGHT,
     OUT_CTX,
     OUT_FRNN,
+    QSL,
+    NUM_REJ,
     ctx_row_stride,
     frnn_row_stride,
     alpha_s0,
@@ -79,10 +81,12 @@ def _mix_rmsnorm_4x_kernel(
     w_s0,
     out_ctx_s0,
     M_CTX,
+    MAX_FRNN_ROWS,
     TAPS: tl.constexpr,
     HIDDEN: tl.constexpr,
     EPS: tl.constexpr,
     BLOCK: tl.constexpr,
+    HAS_INDEXED_FRNN: tl.constexpr,
 ):
     pid = tl.program_id(0).to(tl.int64)
     h = tl.arange(0, BLOCK)
@@ -125,8 +129,16 @@ def _mix_rmsnorm_4x_kernel(
         )
     else:
         r = pid - M_CTX
+        if HAS_INDEXED_FRNN:
+            q_end = tl.load(QSL + r + 1).to(tl.int64)
+            n_rej = tl.load(NUM_REJ + r).to(tl.int64)
+            anchor = tl.minimum(
+                tl.maximum(0, q_end - n_rej - 1), MAX_FRNN_ROWS - 1
+            )
+            row_ptr = FRNN + anchor * frnn_row_stride
+        else:
+            row_ptr = FRNN + r * frnn_row_stride
         m3 = tl.zeros((BLOCK,), tl.float32)
-        row_ptr = FRNN + r * frnn_row_stride
         for tap in tl.static_range(TAPS):
             x = tl.load(row_ptr + tap * HIDDEN + h, mask=mask, other=0.0).to(
                 tl.float32
@@ -148,6 +160,11 @@ def sm80_mix_rmsnorm_4x(
     fuse_alpha: torch.Tensor,
     dflare_ws: torch.Tensor,
     eps: float,
+    *,
+    qsl: torch.Tensor | None = None,
+    num_rej: torch.Tensor | None = None,
+    out_frnn_buf: torch.Tensor | None = None,
+    num_reqs: int = 0,
 ) -> tuple[list[torch.Tensor], torch.Tensor | None]:
     """Fused 4-way DSpark context mix + RMSNorm in a single read of `ctx_states`."""
     m_ctx = ctx_states.shape[0]
@@ -158,19 +175,37 @@ def sm80_mix_rmsnorm_4x(
         if ctx_states.ndim == 2
         else ctx_states.contiguous().view(m_ctx, taps * hidden)
     )
-    m_frnn = 0 if frnn_rows is None else frnn_rows.shape[0]
-    if frnn_rows is not None:
+    has_indexed = (
+        frnn_rows is not None
+        and qsl is not None
+        and num_rej is not None
+        and out_frnn_buf is not None
+    )
+    if has_indexed:
+        assert frnn_rows is not None and out_frnn_buf is not None
+        max_frnn_rows = frnn_rows.shape[0]
+        frnn2 = (
+            frnn_rows.view(max_frnn_rows, taps * hidden)
+            if frnn_rows.ndim == 2
+            else frnn_rows.contiguous().view(max_frnn_rows, taps * hidden)
+        )
+        m_frnn = num_reqs
+        out_frnn = out_frnn_buf
+    elif frnn_rows is not None:
+        m_frnn = frnn_rows.shape[0]
+        max_frnn_rows = m_frnn
         frnn2 = (
             frnn_rows.view(m_frnn, taps * hidden)
             if frnn_rows.ndim == 2
             else frnn_rows.contiguous().view(m_frnn, taps * hidden)
         )
+        out_frnn = ctx_states.new_empty((m_frnn, hidden))
     else:
+        m_frnn = 0
+        max_frnn_rows = 1
         frnn2 = ctx2
+        out_frnn = None
     out_ctx = ctx_states.new_empty((3, m_ctx, hidden))
-    out_frnn = (
-        ctx_states.new_empty((m_frnn, hidden)) if frnn_rows is not None else None
-    )
     total_rows = m_ctx + m_frnn
     if total_rows:
         _mix_rmsnorm_4x_kernel[(total_rows,)](
@@ -180,6 +215,8 @@ def sm80_mix_rmsnorm_4x(
             dflare_ws,
             out_ctx,
             out_frnn if out_frnn is not None else out_ctx,
+            qsl if has_indexed else out_ctx,
+            num_rej if has_indexed else out_ctx,
             ctx2.stride(0),
             frnn2.stride(0),
             fuse_alpha.stride(0),
@@ -187,10 +224,12 @@ def sm80_mix_rmsnorm_4x(
             dflare_ws.stride(0),
             out_ctx.stride(0),
             m_ctx,
+            max(max_frnn_rows, 1),
             TAPS=taps,
             HIDDEN=hidden,
             EPS=eps,
             BLOCK=triton.next_power_of_2(hidden),
+            HAS_INDEXED_FRNN=has_indexed,
             num_warps=8,
         )
     return [out_ctx[0], out_ctx[1], out_ctx[2]], out_frnn

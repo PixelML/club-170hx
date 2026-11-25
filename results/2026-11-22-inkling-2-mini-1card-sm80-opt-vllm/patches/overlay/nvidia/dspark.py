@@ -6,6 +6,8 @@ recurrent (`rnn_hidden`) Markov head. Numerics follow the reference
 implementation's draft (flashinfer RMSNorms, bf16 logits)."""
 
 from collections.abc import Iterable
+import json
+import os
 from typing import cast
 
 import torch
@@ -54,8 +56,171 @@ from .ops.dspark import (
 )
 from .ops.linear import linear
 from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+from .ops.moe_sm90 import _install_sm80_humming_situ_epilogue
 from .ops.norm import rsqrt as _rsqrt
 from .ops.sconv import _fp32_to_e4m3fn_u8
+
+_DSPARK_HUMMING_LOCKS: dict[torch.device, torch.Tensor] = {}
+
+
+class HummingDenseLinear:
+    """Lossless-target Humming GemmType.DENSE quantized linear for SM80 DSpark."""
+
+    def __init__(self, weight_bf16: torch.Tensor, mode: str) -> None:
+        _install_sm80_humming_situ_epilogue()
+        import humming.dtypes as hd
+        from humming.config import GemmType
+        from humming.schema import HummingInputSchema, HummingWeightSchema
+        from humming.transform import prepare_and_transform_humming_tensors
+        from humming.tune import get_heuristics_config
+        from humming.utils.weight import quantize_weight
+        from vllm.utils.platform_utils import num_compute_units
+
+        assert weight_bf16.ndim == 2 and weight_bf16.dtype == torch.bfloat16
+        n, k = weight_bf16.shape
+        device = weight_bf16.device
+        self.shape_n = n
+        self.shape_k = k
+
+        if mode == "nvfp4":
+            dt, sdt, gs, s2t = hd.float4e2m1, hd.float8e4m3, 16, "tensor"
+        elif mode == "mxfp8":
+            dt, sdt, gs, s2t = hd.float8e4m3, hd.float8e8m0, 32, None
+        else:
+            raise ValueError(f"Unsupported HummingDenseLinear mode: {mode}")
+
+        qw, ws, _zp, gs2 = quantize_weight(
+            weight_bf16,
+            dtype=dt,
+            scale_dtype=sdt,
+            group_size=gs,
+            has_zero_point=False,
+            weight_scale_2_type=s2t,
+            pack=True,
+        )
+        tensors: dict[str, torch.Tensor] = {"weight": qw, "weight_scale": ws}
+        if gs2 is not None:
+            tensors["weight_scale_2"] = gs2.reshape(-1)
+        wschema = HummingWeightSchema(
+            b_dtype=dt,
+            bs_dtype=sdt,
+            weight_scale_group_size=gs,
+            weight_scale_type="group",
+            weight_scale_2_type=s2t or "none",
+            has_zero_point=False,
+        )
+        self.config, self.tensors = prepare_and_transform_humming_tensors(
+            tensors=tensors,
+            shape_n=n,
+            shape_k=k,
+            pad_n_to_multiple=256,
+            pad_k_to_multiple=128,
+            input_schema=HummingInputSchema(),
+            weight_schema=wschema,
+            num_experts=0,
+            torch_dtype=torch.bfloat16,
+            device=device,
+        )
+        tuning = get_heuristics_config(
+            layer_config=self.config,
+            use_f16_accum=False,
+            use_batch_invariant=False,
+            gemm_type=GemmType.DENSE,
+        )
+        for _, _, kc in tuning:
+            kc["use_stream_k"] = False
+
+        if is_sm80():
+            sm_count = num_compute_units()
+
+            def _mk_cfg(b_sh, w_sh, stg, cta):
+                return {
+                    "block_shape": b_sh,
+                    "warp_shape": w_sh,
+                    "use_stream_k": False,
+                    "use_f16_accum": False,
+                    "num_sms": sm_count,
+                    "num_stages": stg,
+                    "num_ctas_per_sm": cta,
+                    "output_chunk_rows": 0,
+                    "use_pdl": False,
+                    "evict_weights_first": False,
+                    "mma_type": "mma",
+                    "use_tma_a": False,
+                    "use_tma_c": False,
+                    "use_tma_as": False,
+                    "use_tma_as2": False,
+                }
+
+            if mode == "nvfp4" and n >= 12288:
+                c_sm = _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3)
+                rest = [
+                    [max(lo, 16), hi, kc]
+                    for lo, hi, kc in tuning
+                    if hi <= 0 or hi > 16
+                ]
+                if n == 12288:
+                    c_m64 = _mk_cfg([64, 256, 64], [64, 64, 64], 3, 2)
+                    patched = []
+                    for lo, hi, kc in rest:
+                        eff_hi = hi if hi > 0 else (1 << 30)
+                        if lo < 64 <= eff_hi and eff_hi > 48:
+                            if lo < 48:
+                                patched.append([lo, 48, kc])
+                            patched.append([max(lo, 48), 64, c_m64])
+                            if eff_hi > 64:
+                                patched.append([64, eff_hi, kc])
+                        else:
+                            patched.append([lo, eff_hi, kc])
+                    rest = patched
+                tuning = [[0, 16, c_sm]] + rest
+            elif mode == "mxfp8" and n >= 32768:
+                c_sm = _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3)
+                rest = [
+                    [max(lo, 16), hi if hi > 0 else (1 << 30), kc]
+                    for lo, hi, kc in tuning
+                    if hi <= 0 or hi > 16
+                ]
+                tuning = [[0, 16, c_sm]] + rest
+
+        self.tuning_str = json.dumps(tuning)
+        self.compute_config = json.dumps(
+            {
+                "use_batch_invariant": False,
+                "use_f16_accum": False,
+                "gemm_type": GemmType.DENSE.value,
+            }
+        )
+        locks = _DSPARK_HUMMING_LOCKS.get(device)
+        if locks is None:
+            locks = torch.zeros(2048, dtype=torch.int32, device=device)
+            _DSPARK_HUMMING_LOCKS[device] = locks
+        self.locks = locks
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        from humming.forward import humming_forward
+
+        orig_shape = x.shape[:-1]
+        x2d = x.reshape(-1, self.shape_k)
+        if x2d.shape[0] == 0:
+            return x.new_empty((*orig_shape, self.shape_n))
+        if not x2d.is_contiguous():
+            x2d = x2d.contiguous()
+        out = torch.empty(
+            (x2d.shape[0], self.shape_n), dtype=torch.bfloat16, device=x2d.device
+        )
+        humming_forward(
+            self.config,
+            inputs=x2d,
+            weight=self.tensors["weight"],
+            weight_scale=self.tensors.get("weight_scale"),
+            weight_scale_2=self.tensors.get("weight_scale_2"),
+            outputs=out,
+            locks=self.locks,
+            compute_config=self.compute_config,
+            tuning_config=self.tuning_str,
+        )
+        return out.view(*orig_shape, self.shape_n)
 
 
 @_triton.jit
@@ -451,7 +616,8 @@ class Inkling2DraftSelfAttention(nn.Module):
     def forward(
         self, positions: torch.Tensor, x: torch.Tensor, cos_sin_cache: torch.Tensor
     ) -> torch.Tensor:
-        qkv = linear(x, self.qkv_proj.weight)
+        qkv_h = getattr(self, "qkv_humming", None)
+        qkv = qkv_h(x) if qkv_h is not None else linear(x, self.qkv_proj.weight)
         md = self._metadata()
         sm80_fused = (
             is_sm80()
@@ -541,7 +707,8 @@ class Inkling2DraftSelfAttention(nn.Module):
             )
         else:
             out = q.new_zeros((q.shape[0], self.q_size))
-        return linear(out, self.o_proj.weight)
+        o_h = getattr(self, "o_humming", None)
+        return o_h(out) if o_h is not None else linear(out, self.o_proj.weight)
 
     def store_context_kv(
         self,
@@ -551,6 +718,34 @@ class Inkling2DraftSelfAttention(nn.Module):
         slot_mapping: torch.Tensor | None,
     ) -> None:
         kv = linear(context, self.kv_proj_ctx.weight)
+        if (
+            is_sm80()
+            and slot_mapping is not None
+            and self.attn.kv_cache.numel() > 0
+            and slot_mapping.shape[0] >= kv.shape[0]
+            and (self.head_dim & (self.head_dim - 1)) == 0
+        ):
+            if kv.shape[0]:
+                key_cache, value_cache = self._split_kv_cache()
+                _k_norm_rope_write_kv_kernel[(kv.shape[0], self.num_kv_heads)](
+                    kv,
+                    self.k_norm_ctx.weight,
+                    cos_sin_cache,
+                    positions,
+                    key_cache,
+                    value_cache,
+                    slot_mapping[: kv.shape[0]],
+                    kv.stride(0),
+                    self.kv_size,
+                    key_cache.stride(0),
+                    key_cache.stride(1),
+                    key_cache.stride(2),
+                    BS=key_cache.shape[1],
+                    D=self.head_dim,
+                    EPS=self.eps,
+                    num_warps=4,
+                )
+            return
         k, v = kv.split([self.kv_size, self.kv_size], -1)
         k = self.k_norm_ctx(k.reshape(-1, self.head_dim))
         k = k.view(-1, self.num_kv_heads, self.head_dim)
@@ -578,8 +773,11 @@ class Inkling2DraftMLP(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = silu_and_mul(linear(x, self.gate_up_proj.weight))
-        return linear(x, self.down_proj.weight)
+        gu_h = getattr(self, "gate_up_humming", None)
+        gu = gu_h(x) if gu_h is not None else linear(x, self.gate_up_proj.weight)
+        x = silu_and_mul(gu)
+        dn_h = getattr(self, "down_humming", None)
+        return dn_h(x) if dn_h is not None else linear(x, self.down_proj.weight)
 
 
 class Inkling2DraftLayer(nn.Module):
@@ -741,7 +939,7 @@ class Inkling2DSparkDecoder(nn.Module):
         ids = input_ids.view(-1, block)
         if (
             is_sm80()
-            and ids.shape[0] > 1
+            and ids.shape[0] >= 1
             and getattr(self.embed_tokens, "tp_size", 1) == 1
             and hasattr(self.embed_tokens, "weight")
             and hasattr(self.embed_norm, "weight")
@@ -839,6 +1037,7 @@ class Inkling2DSparkModel(nn.Module):
         head.rnn_bias = torch.empty_like(head.rnn_proj.bias, dtype=torch.float32)
         self.keep_ids: torch.Tensor | None = None
         self.pruned_lm_weight: torch.Tensor | None = None
+        self.pruned_lm_humming: HummingDenseLinear | None = None
         pruned_vocab = 49152
         if (
             is_sm80()
@@ -869,13 +1068,62 @@ class Inkling2DSparkModel(nn.Module):
         assert self.lm_head is not None
         head = self.model.markov_head
         assert head.rnn_bias is not None
-        if self.keep_ids is not None and self.pruned_lm_weight is not None:
-            self.pruned_lm_weight.copy_(
-                self.lm_head.weight.index_select(0, self.keep_ids)
-            )
-            head.fold(self.pruned_lm_weight)
+        quant_mode = (
+            "bf16"
+            if os.environ.get("VLLM_SM80_NO_HUMMING_DSPARK") == "1"
+            else os.environ.get("VLLM_SM80_DSPARK_QUANT", "bf16").strip().lower()
+        )
+        use_humming_dspark = (
+            is_sm80()
+            and get_tensor_model_parallel_world_size() == 1
+            and quant_mode in ("hybrid", "nvfp4", "mxfp8")
+        )
+        if self.keep_ids is not None:
+            if use_humming_dspark:
+                tmp_pruned = self.lm_head.weight.index_select(0, self.keep_ids)
+                head.fold(tmp_pruned)
+                lm_mode = "nvfp4" if quant_mode in ("hybrid", "nvfp4") else "mxfp8"
+                self.pruned_lm_humming = HummingDenseLinear(tmp_pruned, lm_mode)
+                del tmp_pruned
+                if self.pruned_lm_weight is not None:
+                    self.pruned_lm_weight = None
+            elif self.pruned_lm_weight is not None:
+                self.pruned_lm_weight.copy_(
+                    self.lm_head.weight.index_select(0, self.keep_ids)
+                )
+                head.fold(self.pruned_lm_weight)
         else:
             head.fold(self.lm_head.weight)
+        if use_humming_dspark:
+            bb_mode = "mxfp8" if quant_mode in ("hybrid", "mxfp8") else "nvfp4"
+            freed = False
+            for layer in self.model.layers:
+                sa = layer.self_attn
+                mlp = layer.mlp
+                if sa.qkv_proj.weight.numel() > 0:
+                    sa.qkv_humming = HummingDenseLinear(sa.qkv_proj.weight.data, bb_mode)
+                    sa.qkv_proj.weight.data = sa.qkv_proj.weight.data.new_empty(0)
+                    freed = True
+                if sa.o_proj.weight.numel() > 0:
+                    sa.o_humming = HummingDenseLinear(sa.o_proj.weight.data, bb_mode)
+                    sa.o_proj.weight.data = sa.o_proj.weight.data.new_empty(0)
+                    freed = True
+                if mlp.gate_up_proj.weight.numel() > 0:
+                    mlp.gate_up_humming = HummingDenseLinear(
+                        mlp.gate_up_proj.weight.data, bb_mode
+                    )
+                    mlp.gate_up_proj.weight.data = mlp.gate_up_proj.weight.data.new_empty(
+                        0
+                    )
+                    freed = True
+                if mlp.down_proj.weight.numel() > 0:
+                    mlp.down_humming = HummingDenseLinear(
+                        mlp.down_proj.weight.data, bb_mode
+                    )
+                    mlp.down_proj.weight.data = mlp.down_proj.weight.data.new_empty(0)
+                    freed = True
+            if freed:
+                torch.cuda.empty_cache()
         head.rnn_bias.copy_(head.rnn_proj.bias)
         if is_sm80():
             head.rnn_w_step = head.rnn_proj.weight[
@@ -906,15 +1154,32 @@ class Inkling2DSparkModel(nn.Module):
         context_positions: torch.Tensor,
         context_slot_mappings: list[torch.Tensor | None] | None = None,
     ) -> None:
+        pending_frnn = getattr(self, "_pending_frnn", None)
+        if pending_frnn is not None:
+            self._pending_frnn = None
         dflare_ws = getattr(self.model, "dflare_ws", None)
         if is_sm80() and dflare_ws is not None and len(self.model.layers) == 3:
-            contexts, _ = sm80_mix_rmsnorm_4x(
-                context_states,
-                None,
-                self.model.fuse_alpha,
-                dflare_ws,
-                self.config.rms_norm_eps,
-            )
+            if pending_frnn is not None:
+                frnn_base, num_reqs, qsl, num_rej, out_frnn_buf = pending_frnn
+                contexts, _ = sm80_mix_rmsnorm_4x(
+                    context_states,
+                    frnn_base,
+                    self.model.fuse_alpha,
+                    dflare_ws,
+                    self.config.rms_norm_eps,
+                    qsl=qsl,
+                    num_rej=num_rej,
+                    out_frnn_buf=out_frnn_buf,
+                    num_reqs=num_reqs,
+                )
+            else:
+                contexts, _ = sm80_mix_rmsnorm_4x(
+                    context_states,
+                    None,
+                    self.model.fuse_alpha,
+                    dflare_ws,
+                    self.config.rms_norm_eps,
+                )
             for i, layer in enumerate(self.model.layers):
                 layer.self_attn.store_context_kv(
                     contexts[i],
@@ -923,6 +1188,11 @@ class Inkling2DSparkModel(nn.Module):
                     None if context_slot_mappings is None else context_slot_mappings[i],
                 )
             return
+        if pending_frnn is not None:
+            frnn_base, num_reqs, qsl, num_rej, out_frnn_buf = pending_frnn
+            ends = qsl[1 : num_reqs + 1] - num_rej[:num_reqs]
+            rows = frnn_base[(ends - 1).clamp_min(0).long()]
+            out_frnn_buf.copy_(self.compute_f_rnn(rows))
         for i, layer in enumerate(self.model.layers):
             context = self.model.mix(context_states, i, layer.dflare_norm)
             layer.self_attn.store_context_kv(
@@ -946,6 +1216,8 @@ class Inkling2DSparkModel(nn.Module):
 
     def compute_base_logits(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """TP-local bf16 base logits (bf16 GEMM, or pruned vocab on SM80 TP=1)."""
+        if self.pruned_lm_humming is not None:
+            return self.pruned_lm_humming(hidden_states)
         assert self.lm_head is not None
         w = (
             self.pruned_lm_weight

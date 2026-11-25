@@ -101,6 +101,8 @@ if (R / "round6-spec.json").is_file():
     ROUNDS.append(json.loads((R / "round6-spec.json").read_text(encoding="utf-8")))
 if (R / "round7-spec.json").is_file():
     ROUNDS.append(json.loads((R / "round7-spec.json").read_text(encoding="utf-8")))
+if (R / "round8-spec.json").is_file():
+    ROUNDS.append(json.loads((R / "round8-spec.json").read_text(encoding="utf-8")))
 
 # PR #90 published reference on the +200 MHz SM offset card @ 32K context (for side-by-side context)
 PR90_PUBLISHED_OFFSET_CARD = {

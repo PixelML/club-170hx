@@ -60,8 +60,8 @@ fi
 
 if [ -d "$CONTAINER_PKG" ]; then
   # Mode A: Inside the vllm/vllm-openai container (e.g. Vast.ai / RunPod)
-  echo "[onstart] Detected container environment; installing SM80 Round-7 Best stack + compiling libsm80_fast_v6.so + libsm80_r6_ext.so..."
-  bash "$EXP_DIR/patches/install-sm80-r7.sh" "$CONTAINER_PKG"
+  echo "[onstart] Detected container environment; installing SM80 Round-8 Best stack + compiling libsm80_fast_v6.so + libsm80_r6_ext.so..."
+  bash "$EXP_DIR/patches/install-sm80-r8.sh" "$CONTAINER_PKG"
 
   if [ ! -L /root/.humming ]; then
     cp -rn /root/.humming/* "$WORK_DIR/cache/humming/" 2>/dev/null || true
@@ -92,13 +92,13 @@ if [ -d "$CONTAINER_PKG" ]; then
     --compilation-config="$CUDAGRAPH_CFG" \
     --speculative-config="$SPEC_CFG" \
     "${KV_EXTRA[@]}" \
-    > "$WORK_DIR/out/vllm-r7.log" 2>&1 &
+    > "$WORK_DIR/out/vllm-r8.log" 2>&1 &
   SRV_PID=$!
 else
   # Mode B: Host with Docker
   echo "[onstart] Host mode detected; pulling $IMG and launching via run-vllm-r3.sh..."
   docker pull "$IMG"
-  WORK_DIR="$WORK_DIR" MODEL_DIR="$MODEL_DIR" bash "$SCRIPT_DIR/run-vllm-r3.sh" "$GPU_IDX" "$PORT" r7 "${KV_EXTRA[@]}"
+  WORK_DIR="$WORK_DIR" MODEL_DIR="$MODEL_DIR" bash "$SCRIPT_DIR/run-vllm-r3.sh" "$GPU_IDX" "$PORT" r8 "${KV_EXTRA[@]}"
   SRV_PID=""
 fi
 

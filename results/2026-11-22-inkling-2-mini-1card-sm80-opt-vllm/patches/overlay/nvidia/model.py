@@ -35,7 +35,6 @@ from vllm.model_executor.models.interfaces import (
     MultiModalEmbeddings,
     SupportsEagle3,
     SupportsEncoderCudaGraph,
-    SupportsKVCacheGrouping,
     SupportsLoRA,
     SupportsMultiModal,
 )
@@ -72,8 +71,8 @@ from .moe import Inkling2MoE, QuantFormat
 from .ops.allreduce import Inkling2AllReduceWorkspace
 from .ops.attention import compute_log_scaling_tau
 from .ops.attn_res import attn_res
-from .ops.gemv import sm12x_bf16_gemv, use_sm12x_bf16_gemv
 from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+from .ops.ll_gemm_sm120 import sm12x_bf16_ll_gemm, use_sm12x_bf16_ll_gemm
 from .ops.norm import rms_norm
 from .ops.seq_parallel import SeqParallel
 from .sconv import ATTN_STREAM, MLP_STREAM, Inkling2ShortConv, conv_metadata
@@ -81,7 +80,38 @@ from .vision import Inkling2VisionEncoder, VisionMetadata
 
 
 class Inkling2LogitsProcessor(LogitsProcessor):
-    """Use low-M projection for M<=4 prefill parity and cuBLAS for M>=5 decode while preserving vocab gathering and softcaps."""
+    """Use the low-M projection while preserving vocab gathering and softcaps."""
+
+    def forward(
+        self,
+        lm_head: VocabParallelEmbedding,
+        hidden_states: torch.Tensor,
+        embedding_bias: torch.Tensor | None = None,
+        skip_gather: bool = False,
+    ) -> torch.Tensor | None:
+        from .ops import is_sm80
+
+        if (
+            is_sm80()
+            and not self.logits_as_input
+            and not skip_gather
+            and lm_head.tp_size == 1
+            and self.soft_cap is not None
+            and self.scale == 1.0
+            and hidden_states.dtype == torch.bfloat16
+            and hidden_states.ndim == 2
+            and hidden_states.shape[0] > 32
+            and self.head_dtype == torch.float32
+        ):
+            from ..sm80_ops_v2 import sm80_logits_softcap_fp32
+
+            raw = self._apply_head(lm_head, hidden_states, embedding_bias)
+            capped = sm80_logits_softcap_fp32(
+                raw, self.org_vocab_size, self.soft_cap
+            )
+            if capped is not None:
+                return capped
+        return super().forward(lm_head, hidden_states, embedding_bias, skip_gather)
 
     def _apply_head(self, lm_head, hidden_states, embedding_bias):
         from vllm.model_executor.layers.linear import UnquantizedLinearMethod
@@ -89,18 +119,26 @@ class Inkling2LogitsProcessor(LogitsProcessor):
             UnquantizedEmbeddingMethod,
         )
 
-        if (
-            self.head_dtype == torch.float32
-            and isinstance(
-                lm_head.quant_method,
-                (UnquantizedEmbeddingMethod, UnquantizedLinearMethod),
-            )
-            and hidden_states.shape[0] <= 4
-            and use_sm80_bf16_ll_gemm(hidden_states, lm_head.weight, embedding_bias)
+        if self.head_dtype == torch.float32 and isinstance(
+            lm_head.quant_method,
+            (UnquantizedEmbeddingMethod, UnquantizedLinearMethod),
         ):
-            return sm80_bf16_ll_gemm(
-                hidden_states, lm_head.weight, embedding_bias, out_dtype=torch.float32
-            )
+            if use_sm12x_bf16_ll_gemm(hidden_states, lm_head.weight, embedding_bias):
+                return sm12x_bf16_ll_gemm(
+                    hidden_states,
+                    lm_head.weight,
+                    embedding_bias,
+                    out_dtype=torch.float32,
+                )
+            if hidden_states.shape[0] <= 4 and use_sm80_bf16_ll_gemm(
+                hidden_states, lm_head.weight, embedding_bias
+            ):
+                return sm80_bf16_ll_gemm(
+                    hidden_states,
+                    lm_head.weight,
+                    embedding_bias,
+                    out_dtype=torch.float32,
+                )
         return super()._apply_head(lm_head, hidden_states, embedding_bias)
 
 
@@ -518,33 +556,8 @@ class Inkling2ForConditionalGeneration(
     SupportsMultiModal,
     SupportsEagle3,
     SupportsEncoderCudaGraph,
-    SupportsKVCacheGrouping,
     SupportsLoRA,
 ):
-    @classmethod
-    def get_kv_cache_groups(
-        cls,
-        vllm_config: VllmConfig,
-        layer_configs: dict[str, Any],
-    ) -> list[Any]:
-        import os
-        from vllm.v1.core.kv_cache_planning import (
-            get_kv_cache_groups,
-            unify_kv_cache_spec_page_size,
-        )
-
-        if os.environ.get("VLLM_INKLING2_KV_GROUPING", "0") != "1":
-            return get_kv_cache_groups(vllm_config, layer_configs)
-        draft = {n: c for n, c in layer_configs.items() if c.is_draft}
-        target = {n: c for n, c in layer_configs.items() if not c.is_draft}
-        layout = vllm_config.cache_config.get_resolved_kv_cache_layout()
-        if not draft or not target or layout.is_block_outermost:
-            return get_kv_cache_groups(vllm_config, layer_configs)
-        configs = unify_kv_cache_spec_page_size(target | draft)
-        return get_kv_cache_groups(
-            vllm_config, {n: configs[n] for n in target}
-        ) + get_kv_cache_groups(vllm_config, {n: configs[n] for n in draft})
-
     # LoRA (``lora.py``): adapters use the checkpoint's module names.
     packed_modules_mapping = PACKED_MODULES_MAPPING
     embedding_modules: dict[str, str] = {}
