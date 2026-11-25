@@ -1,0 +1,56 @@
+{
+  "gates": {
+    "1_load_models": {
+      "ok": true,
+      "models": [
+        "inkling"
+      ]
+    },
+    "2_chat_short": {
+      "ok": true,
+      "finish_reason": "stop",
+      "content": "Hello, friend, how are you?"
+    },
+    "3_reasoning": {
+      "ok": true,
+      "finish_reason": "stop",
+      "reasoning_chars": 205,
+      "content": "1610"
+    },
+    "4_tools_roundtrip": {
+      "ok": true,
+      "tool_call": {
+        "name": "get_rack_telemetry",
+        "arguments": "{\"rack_id\":\"R-17\"}"
+      },
+      "final_content": "Rack R-17 is at exactly **23.4 \u00b0C** (power draw 8.7 kW)."
+    },
+    "5_concurrent_long_soak": {
+      "ok": true,
+      "wall_seconds": 5.38,
+      "total_prompt_tokens": 335655,
+      "streams": [
+        {
+          "stream": 0,
+          "prompt_tokens": 167788,
+          "completion_tokens": 204,
+          "finish_reason": "stop",
+          "needle_expected": "KITE-900-754401",
+          "needle_hit": true,
+          "seconds": 4.04,
+          "content_head": "KITE-900-754401\nFresnel lenses use concentric grooves to refract light into a narrow, intense beam that can be seen over long distances at sea. They achieve this with a much thinner, lighter, and more"
+        },
+        {
+          "stream": 1,
+          "prompt_tokens": 167867,
+          "completion_tokens": 317,
+          "finish_reason": "stop",
+          "needle_expected": "KITE-901-552166",
+          "needle_hit": true,
+          "seconds": 5.35,
+          "content_head": "KITE-901-552166\nFresnel lenses use concentric grooves to refract light into a narrow, intense beam that can be seen over long distances. They are lighter and thinner than traditional spherical lenses "
+        }
+      ]
+    }
+  }
+}

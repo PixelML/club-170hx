@@ -1,0 +1,1307 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+"""Inkling2 DSpark draft (`mtp.safetensors`): an anchor plus mask block run
+through a small dense transformer over DFlare-mixed target-feature K/V, then a
+recurrent (`rnn_hidden`) Markov head. Numerics follow the reference
+implementation's draft (flashinfer RMSNorms, bf16 logits)."""
+
+from collections.abc import Iterable
+import json
+import os
+from typing import cast
+
+import torch
+from torch import nn
+
+from vllm.config import VllmConfig, get_current_vllm_config
+from vllm.distributed import (
+    get_tensor_model_parallel_world_size,
+    get_tp_group,
+    tensor_model_parallel_all_gather,
+    tensor_model_parallel_all_reduce,
+)
+from vllm.forward_context import get_forward_context
+from vllm.model_executor.layers.attention import Attention
+from vllm.model_executor.layers.linear import (
+    MergedColumnParallelLinear,
+    QKVParallelLinear,
+    ReplicatedLinear,
+    RowParallelLinear,
+)
+from vllm.model_executor.layers.rotary_embedding import get_rope
+from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+from vllm.platforms import current_platform
+from vllm.triton_utils import tl as _tl
+from vllm.triton_utils import triton as _triton
+from vllm.utils.torch_utils import canonicalize_singleton_dim_strides
+from vllm.v1.attention.backends.flash_attn import (
+    FlashAttentionBackend,
+    FlashAttentionImpl,
+    FlashAttentionMetadata,
+)
+from vllm.v1.worker.gpu.sample.greedy_argmax import greedy_argmax
+
+from ..configs import Inkling2DSparkConfig
+from ..speculator_config import Inkling2DSparkSpeculatorConfig
+from .ops import is_sm80
+from .ops.attention import block_decode_attention, plan_decode_attention
+from .ops.dspark import (
+    add_softcap,
+    markov_gate,
+    mix_rmsnorm,
+    qk_norm_rope_,
+    rope_,
+    silu_and_mul,
+    sm80_mix_rmsnorm_4x,
+)
+from .ops.linear import linear
+from .ops.ll_gemm_sm80 import sm80_bf16_ll_gemm, use_sm80_bf16_ll_gemm
+from .ops.moe_sm90 import _install_sm80_humming_situ_epilogue
+from .ops.norm import rsqrt as _rsqrt
+from .ops.sconv import _fp32_to_e4m3fn_u8
+
+_DSPARK_HUMMING_LOCKS: dict[torch.device, torch.Tensor] = {}
+
+
+class HummingDenseLinear:
+    """Lossless-target Humming GemmType.DENSE quantized linear for SM80 DSpark."""
+
+    def __init__(self, weight_bf16: torch.Tensor, mode: str) -> None:
+        _install_sm80_humming_situ_epilogue()
+        import humming.dtypes as hd
+        from humming.config import GemmType
+        from humming.schema import HummingInputSchema, HummingWeightSchema
+        from humming.transform import prepare_and_transform_humming_tensors
+        from humming.tune import get_heuristics_config
+        from humming.utils.weight import quantize_weight
+        from vllm.utils.platform_utils import num_compute_units
+
+        assert weight_bf16.ndim == 2 and weight_bf16.dtype == torch.bfloat16
+        n, k = weight_bf16.shape
+        device = weight_bf16.device
+        self.shape_n = n
+        self.shape_k = k
+
+        if mode == "nvfp4":
+            dt, sdt, gs, s2t = hd.float4e2m1, hd.float8e4m3, 16, "tensor"
+        elif mode == "mxfp8":
+            dt, sdt, gs, s2t = hd.float8e4m3, hd.float8e8m0, 32, None
+        else:
+            raise ValueError(f"Unsupported HummingDenseLinear mode: {mode}")
+
+        qw, ws, _zp, gs2 = quantize_weight(
+            weight_bf16,
+            dtype=dt,
+            scale_dtype=sdt,
+            group_size=gs,
+            has_zero_point=False,
+            weight_scale_2_type=s2t,
+            pack=True,
+        )
+        tensors: dict[str, torch.Tensor] = {"weight": qw, "weight_scale": ws}
+        if gs2 is not None:
+            tensors["weight_scale_2"] = gs2.reshape(-1)
+        wschema = HummingWeightSchema(
+            b_dtype=dt,
+            bs_dtype=sdt,
+            weight_scale_group_size=gs,
+            weight_scale_type="group",
+            weight_scale_2_type=s2t or "none",
+            has_zero_point=False,
+        )
+        self.config, self.tensors = prepare_and_transform_humming_tensors(
+            tensors=tensors,
+            shape_n=n,
+            shape_k=k,
+            pad_n_to_multiple=256,
+            pad_k_to_multiple=128,
+            input_schema=HummingInputSchema(),
+            weight_schema=wschema,
+            num_experts=0,
+            torch_dtype=torch.bfloat16,
+            device=device,
+        )
+        tuning = get_heuristics_config(
+            layer_config=self.config,
+            use_f16_accum=False,
+            use_batch_invariant=False,
+            gemm_type=GemmType.DENSE,
+        )
+        for _, _, kc in tuning:
+            kc["use_stream_k"] = False
+
+        if is_sm80():
+            sm_count = num_compute_units()
+
+            def _mk_cfg(b_sh, w_sh, stg, cta):
+                return {
+                    "block_shape": b_sh,
+                    "warp_shape": w_sh,
+                    "use_stream_k": False,
+                    "use_f16_accum": False,
+                    "num_sms": sm_count,
+                    "num_stages": stg,
+                    "num_ctas_per_sm": cta,
+                    "output_chunk_rows": 0,
+                    "use_pdl": False,
+                    "evict_weights_first": False,
+                    "mma_type": "mma",
+                    "use_tma_a": False,
+                    "use_tma_c": False,
+                    "use_tma_as": False,
+                    "use_tma_as2": False,
+                }
+
+            if mode == "nvfp4" and n >= 12288:
+                c_sm = _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3)
+                rest = [
+                    [max(lo, 16), hi, kc]
+                    for lo, hi, kc in tuning
+                    if hi <= 0 or hi > 16
+                ]
+                if n == 12288:
+                    c_m64 = _mk_cfg([64, 256, 64], [64, 64, 64], 3, 2)
+                    patched = []
+                    for lo, hi, kc in rest:
+                        eff_hi = hi if hi > 0 else (1 << 30)
+                        if lo < 64 <= eff_hi and eff_hi > 48:
+                            if lo < 48:
+                                patched.append([lo, 48, kc])
+                            patched.append([max(lo, 48), 64, c_m64])
+                            if eff_hi > 64:
+                                patched.append([64, eff_hi, kc])
+                        else:
+                            patched.append([lo, eff_hi, kc])
+                    rest = patched
+                tuning = [[0, 16, c_sm]] + rest
+            elif mode == "mxfp8" and n >= 32768:
+                c_sm = _mk_cfg([8, 128, 64], [8, 32, 64], 5, 3)
+                rest = [
+                    [max(lo, 16), hi if hi > 0 else (1 << 30), kc]
+                    for lo, hi, kc in tuning
+                    if hi <= 0 or hi > 16
+                ]
+                tuning = [[0, 16, c_sm]] + rest
+
+        self.tuning_str = json.dumps(tuning)
+        self.compute_config = json.dumps(
+            {
+                "use_batch_invariant": False,
+                "use_f16_accum": False,
+                "gemm_type": GemmType.DENSE.value,
+            }
+        )
+        locks = _DSPARK_HUMMING_LOCKS.get(device)
+        if locks is None:
+            locks = torch.zeros(2048, dtype=torch.int32, device=device)
+            _DSPARK_HUMMING_LOCKS[device] = locks
+        self.locks = locks
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        from humming.forward import humming_forward
+
+        orig_shape = x.shape[:-1]
+        x2d = x.reshape(-1, self.shape_k)
+        if x2d.shape[0] == 0:
+            return x.new_empty((*orig_shape, self.shape_n))
+        if not x2d.is_contiguous():
+            x2d = x2d.contiguous()
+        out = torch.empty(
+            (x2d.shape[0], self.shape_n), dtype=torch.bfloat16, device=x2d.device
+        )
+        humming_forward(
+            self.config,
+            inputs=x2d,
+            weight=self.tensors["weight"],
+            weight_scale=self.tensors.get("weight_scale"),
+            weight_scale_2=self.tensors.get("weight_scale_2"),
+            outputs=out,
+            locks=self.locks,
+            compute_config=self.compute_config,
+            tuning_config=self.tuning_str,
+        )
+        return out.view(*orig_shape, self.shape_n)
+
+
+@_triton.jit
+def _dspark_write_kv_kernel(
+    K,
+    V,
+    KC,
+    VC,
+    Slots,
+    k_st,
+    k_sh,
+    v_st,
+    v_sh,
+    kc_sb,
+    kc_so,
+    kc_sh,
+    BS: _tl.constexpr,
+    H: _tl.constexpr,
+    D: _tl.constexpr,
+):
+    t = _tl.program_id(0)
+    slot = _tl.load(Slots + t).to(_tl.int64)
+    valid = slot >= 0
+    safe_slot = _tl.maximum(slot, 0)
+    blk = safe_slot // BS
+    off = safe_slot % BS
+    h = _tl.arange(0, H)[:, None]
+    d = _tl.arange(0, D)[None, :]
+    kv_k = _tl.load(K + t * k_st + h * k_sh + d, mask=valid, other=0.0)
+    kv_v = _tl.load(V + t * v_st + h * v_sh + d, mask=valid, other=0.0)
+    dst = blk * kc_sb + off * kc_so + h * kc_sh + d
+    if KC.dtype.element_ty == _tl.uint8:
+        _tl.store(KC + dst, _fp32_to_e4m3fn_u8(kv_k.to(_tl.float32)), mask=valid)
+        _tl.store(VC + dst, _fp32_to_e4m3fn_u8(kv_v.to(_tl.float32)), mask=valid)
+    else:
+        _tl.store(KC + dst, kv_k, mask=valid)
+        _tl.store(VC + dst, kv_v, mask=valid)
+
+
+@_triton.jit
+def _k_norm_rope_write_kv_kernel(
+    KV,
+    K_WEIGHT,
+    COS_SIN,
+    POS,
+    KC,
+    VC,
+    Slots,
+    kv_stride,
+    kv_size,
+    kc_sb,
+    kc_so,
+    kc_sh,
+    BS: _tl.constexpr,
+    D: _tl.constexpr,
+    EPS: _tl.constexpr,
+):
+    t = _tl.program_id(0).to(_tl.int64)
+    h = _tl.program_id(1).to(_tl.int64)
+    slot = _tl.load(Slots + t).to(_tl.int64)
+    if slot < 0:
+        return
+    pos = _tl.load(POS + t).to(_tl.int64)
+    HALF: _tl.constexpr = D // 2
+    half_ar = _tl.arange(0, HALF)
+    d_ar = _tl.arange(0, D)
+    cos = _tl.load(COS_SIN + pos * D + half_ar).to(_tl.float32)
+    sin = _tl.load(COS_SIN + pos * D + HALF + half_ar).to(_tl.float32)
+
+    k_ptr = KV + t * kv_stride + h * D
+    k_full = _tl.load(k_ptr + d_ar).to(_tl.float32)
+    ms = _tl.sum(k_full * k_full, 0) / D
+    inv = 1.0 / _tl.sqrt(ms + EPS)
+    k1 = _tl.load(k_ptr + half_ar).to(_tl.float32)
+    k2 = _tl.load(k_ptr + HALF + half_ar).to(_tl.float32)
+    w1 = _tl.load(K_WEIGHT + half_ar).to(_tl.float32)
+    w2 = _tl.load(K_WEIGHT + HALF + half_ar).to(_tl.float32)
+    x1 = (k1 * inv * w1).to(_tl.bfloat16).to(_tl.float32)
+    x2 = (k2 * inv * w2).to(_tl.bfloat16).to(_tl.float32)
+    o1 = x1 * cos - x2 * sin
+    o2 = x2 * cos + x1 * sin
+
+    v_ptr = KV + t * kv_stride + kv_size + h * D
+    v1 = _tl.load(v_ptr + half_ar)
+    v2 = _tl.load(v_ptr + HALF + half_ar)
+
+    blk = slot // BS
+    off = slot % BS
+    dst = blk * kc_sb + off * kc_so + h * kc_sh
+    if KC.dtype.element_ty == _tl.uint8:
+        _tl.store(KC + dst + half_ar, _fp32_to_e4m3fn_u8(o1.to(_tl.bfloat16).to(_tl.float32)))
+        _tl.store(KC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(o2.to(_tl.bfloat16).to(_tl.float32)))
+        _tl.store(VC + dst + half_ar, _fp32_to_e4m3fn_u8(v1.to(_tl.float32)))
+        _tl.store(VC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(v2.to(_tl.float32)))
+    else:
+        _tl.store(KC + dst + half_ar, o1.to(_tl.bfloat16))
+        _tl.store(KC + dst + HALF + half_ar, o2.to(_tl.bfloat16))
+        _tl.store(VC + dst + half_ar, v1)
+        _tl.store(VC + dst + HALF + half_ar, v2)
+
+
+@_triton.jit
+def _qk_norm_rope_write_kv_kernel(
+    QKV,
+    Q_WEIGHT,
+    K_WEIGHT,
+    COS_SIN,
+    POS,
+    KC,
+    VC,
+    Slots,
+    qkv_stride,
+    q_size,
+    kv_size,
+    kc_sb,
+    kc_so,
+    kc_sh,
+    BS: _tl.constexpr,
+    NHQ: _tl.constexpr,
+    D: _tl.constexpr,
+    EPS: _tl.constexpr,
+):
+    t = _tl.program_id(0).to(_tl.int64)
+    h = _tl.program_id(1)
+    pos = _tl.load(POS + t).to(_tl.int64)
+    HALF: _tl.constexpr = D // 2
+    half_ar = _tl.arange(0, HALF)
+    d_ar = _tl.arange(0, D)
+    cos = _tl.load(COS_SIN + pos * D + half_ar).to(_tl.float32)
+    sin = _tl.load(COS_SIN + pos * D + HALF + half_ar).to(_tl.float32)
+
+    is_q = h < NHQ
+    col0 = _tl.where(is_q, h * D, q_size + (h - NHQ) * D).to(_tl.int64)
+    row = QKV + t * qkv_stride + col0
+    w_ptr = _tl.where(is_q, Q_WEIGHT.to(_tl.int64), K_WEIGHT.to(_tl.int64)).to(
+        _tl.pointer_type(_tl.bfloat16)
+    )
+    x_full = _tl.load(row + d_ar).to(_tl.float32)
+    ms = _tl.sum(x_full * x_full, 0) / D
+    inv = 1.0 / _tl.sqrt(ms + EPS)
+    x1_in = _tl.load(row + half_ar).to(_tl.float32)
+    x2_in = _tl.load(row + HALF + half_ar).to(_tl.float32)
+    w1 = _tl.load(w_ptr + half_ar).to(_tl.float32)
+    w2 = _tl.load(w_ptr + HALF + half_ar).to(_tl.float32)
+    x1 = (x1_in * inv * w1).to(_tl.bfloat16).to(_tl.float32)
+    x2 = (x2_in * inv * w2).to(_tl.bfloat16).to(_tl.float32)
+    o1 = x1 * cos - x2 * sin
+    o2 = x2 * cos + x1 * sin
+    if is_q:
+        _tl.store(row + half_ar, o1.to(_tl.bfloat16))
+        _tl.store(row + HALF + half_ar, o2.to(_tl.bfloat16))
+    else:
+        slot = _tl.load(Slots + t).to(_tl.int64)
+        if slot >= 0:
+            kh = (h - NHQ).to(_tl.int64)
+            v_ptr = QKV + t * qkv_stride + q_size + kv_size + kh * D
+            v1 = _tl.load(v_ptr + half_ar)
+            v2 = _tl.load(v_ptr + HALF + half_ar)
+            blk = slot // BS
+            off = slot % BS
+            dst = blk * kc_sb + off * kc_so + kh * kc_sh
+            if KC.dtype.element_ty == _tl.uint8:
+                _tl.store(KC + dst + half_ar, _fp32_to_e4m3fn_u8(o1.to(_tl.bfloat16).to(_tl.float32)))
+                _tl.store(KC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(o2.to(_tl.bfloat16).to(_tl.float32)))
+                _tl.store(VC + dst + half_ar, _fp32_to_e4m3fn_u8(v1.to(_tl.float32)))
+                _tl.store(VC + dst + HALF + half_ar, _fp32_to_e4m3fn_u8(v2.to(_tl.float32)))
+            else:
+                _tl.store(KC + dst + half_ar, o1.to(_tl.bfloat16))
+                _tl.store(KC + dst + HALF + half_ar, o2.to(_tl.bfloat16))
+                _tl.store(VC + dst + half_ar, v1)
+                _tl.store(VC + dst + HALF + half_ar, v2)
+
+
+@_triton.jit
+def _dspark_embed_block_kernel(
+    IDS,
+    EMBED_W,
+    NORM_W,
+    MASK_EMBED,
+    OUT,
+    ids_s0,
+    ids_s1,
+    embed_s0,
+    BLOCK_SIZE: _tl.constexpr,
+    HIDDEN: _tl.constexpr,
+    BLOCK_H: _tl.constexpr,
+    EPS: _tl.constexpr,
+):
+    b = _tl.program_id(0).to(_tl.int64)
+    p = _tl.program_id(1).to(_tl.int64)
+    h = _tl.arange(0, BLOCK_H)
+    mask = h < HIDDEN
+    out_ptr = OUT + (b * BLOCK_SIZE + p) * HIDDEN + h
+    if p == 0:
+        tok = _tl.load(IDS + b * ids_s0).to(_tl.int64)
+        e = _tl.load(EMBED_W + tok * embed_s0 + h, mask=mask, other=0.0).to(_tl.float32)
+        rstd = _rsqrt(_tl.div_rn(_tl.sum(e * e), HIDDEN) + EPS)
+        nw = _tl.load(NORM_W + h, mask=mask, other=0.0).to(_tl.float32)
+        _tl.store(out_ptr, (e * rstd * nw).to(OUT.dtype.element_ty), mask=mask)
+    else:
+        m = _tl.load(MASK_EMBED + h, mask=mask, other=0.0)
+        _tl.store(out_ptr, m, mask=mask)
+
+
+class _RMSNorm(nn.Module):
+    def __init__(self, hidden_size: int, eps: float) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size), requires_grad=False)
+        self.eps = eps
+
+    def forward(
+        self, x: torch.Tensor, residual: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        from flashinfer.norm import fused_add_rmsnorm, rmsnorm
+
+        if residual is None:
+            return rmsnorm(x, self.weight, self.eps)
+        # In place: residual += x; x = norm(residual), from the unrounded sum.
+        fused_add_rmsnorm(x, residual, self.weight, self.eps)
+        return x
+
+
+def all_reduce_add_rmsnorm(
+    x: torch.Tensor, residual: torch.Tensor, norm: _RMSNorm
+) -> torch.Tensor:
+    """In place: `residual += all_reduce(x); x = norm(residual)`.
+
+    Batches that the TP group's FlashInfer MNNVL all-reduce takes run its
+    fused all-reduce + residual add + RMSNorm on the same workspace (the
+    same rank-order fp32 sum, rounded once to bf16); the norm then reads the
+    bf16 residual. Others all-reduce, then add and normalize.
+    """
+    fi_ar = getattr(get_tp_group().device_communicator, "fi_ar_comm", None)
+    if fi_ar is None or not fi_ar.should_use_fi_ar(x):
+        return norm(tensor_model_parallel_all_reduce(x), residual)
+    from vllm.compilation.passes.fusion.allreduce_rms_fusion import (
+        flashinfer_comm,
+        flashinfer_trtllm_fused_allreduce_norm,
+    )
+    from vllm.distributed.device_communicators.flashinfer_all_reduce import (
+        get_fi_ar_workspace,
+    )
+
+    workspace = get_fi_ar_workspace(
+        fi_ar.world_size,
+        fi_ar.rank,
+        fi_ar.max_num_tokens,
+        x.shape[1],
+        x.dtype,
+        fi_ar.group,
+    )
+    assert flashinfer_comm is not None and workspace is not None
+    assert workspace.backend == "mnnvl"
+    assert x.dtype == residual.dtype == norm.weight.dtype == torch.bfloat16
+    assert x.shape == residual.shape and residual.is_contiguous()
+    flashinfer_trtllm_fused_allreduce_norm(
+        allreduce_in=x,
+        residual=residual,
+        rms_gamma=norm.weight,
+        rms_eps=norm.eps,
+        world_size=fi_ar.world_size,
+        launch_with_pdl=True,
+        fp32_acc=True,
+        max_token_num=fi_ar.max_num_tokens,
+        pattern_code=flashinfer_comm.AllReduceFusionPattern.kARResidualRMSNorm,
+    )
+    return x
+
+
+class Inkling2DraftSelfAttention(nn.Module):
+    """Bidirectional block attention over context K/V (from target features)
+    and the block itself; local layers see `sliding_window_size` positions
+    before the block start."""
+
+    def __init__(
+        self, config: Inkling2DSparkConfig, is_local: bool, prefix: str
+    ) -> None:
+        super().__init__()
+        tp_size = get_tensor_model_parallel_world_size()
+        assert tp_size <= config.num_key_value_heads
+        hidden, self.head_dim = config.hidden_size, config.head_dim
+        self.num_heads = config.num_attention_heads // tp_size
+        self.num_kv_heads = config.num_key_value_heads // tp_size
+        self.q_size = self.num_heads * self.head_dim
+        self.kv_size = self.num_kv_heads * self.head_dim
+        self.eps = config.rms_norm_eps
+        self.block = config.draft_block_size
+        self.is_local = is_local
+        self.qkv_proj = QKVParallelLinear(
+            hidden,
+            self.head_dim,
+            config.num_attention_heads,
+            config.num_key_value_heads,
+            bias=False,
+            prefix=f"{prefix}.qkv_proj",
+        )
+        self.kv_proj_ctx = MergedColumnParallelLinear(
+            hidden,
+            [config.num_key_value_heads * self.head_dim] * 2,
+            bias=False,
+            prefix=f"{prefix}.kv_proj_ctx",
+        )
+        self.o_proj = RowParallelLinear(
+            config.num_attention_heads * self.head_dim,
+            hidden,
+            bias=False,
+            prefix=f"{prefix}.o_proj",
+        )
+        self.q_norm = _RMSNorm(self.head_dim, self.eps)
+        self.k_norm = _RMSNorm(self.head_dim, self.eps)
+        self.k_norm_ctx = _RMSNorm(self.head_dim, self.eps)
+        # Owns the paged KV cache only; the same spec as the target's layers
+        # (the scheduler keeps the last sliding_window_size positions before
+        # the block, which is what the draft reads).
+        self.attn = Attention(
+            self.num_heads,
+            self.head_dim,
+            self.head_dim**-0.5,
+            num_kv_heads=self.num_kv_heads,
+            per_layer_sliding_window=config.sliding_window_size if is_local else None,
+            prefix=f"{prefix}.attn",
+            attn_backend=FlashAttentionBackend,
+        )
+        # Keys a block sees: itself and, if local, the window before it.
+        self.window = config.sliding_window_size + self.block if is_local else 0
+        vllm_config = get_current_vllm_config()
+        self.fp8_kv = vllm_config.cache_config.cache_dtype in ("fp8", "fp8_e4m3")
+        if is_sm80() and self.fp8_kv:
+            from vllm.utils.torch_utils import kv_cache_dtype_str_to_dtype
+
+            self.attn.kv_cache_dtype = vllm_config.cache_config.cache_dtype
+            self.attn.kv_cache_torch_dtype = kv_cache_dtype_str_to_dtype(
+                vllm_config.cache_config.cache_dtype, vllm_config.model_config
+            )
+        max_num_seqs = vllm_config.scheduler_config.max_num_seqs
+        self.register_buffer(
+            "cu_seqlens_q",
+            torch.arange(max_num_seqs + 1, dtype=torch.int32) * self.block,
+            persistent=False,
+        )
+
+    def _split_kv_cache(self) -> tuple[torch.Tensor, torch.Tensor]:
+        kv = self.attn.kv_cache
+        if kv.element_size() == 1:
+            kv = kv.view(
+                torch.float8_e4m3fn
+                if current_platform.has_device_capability(89)
+                else torch.uint8
+            )
+        return kv.transpose(1, 2).split(self.head_dim, dim=-1)
+
+    def _metadata(self) -> FlashAttentionMetadata | None:
+        attn_metadata = get_forward_context().attn_metadata
+        if not isinstance(attn_metadata, dict) or self.attn.kv_cache.numel() == 0:
+            return None
+        return cast(FlashAttentionMetadata, attn_metadata[self.attn.layer_name])
+
+    def _write_kv(
+        self, k: torch.Tensor, v: torch.Tensor, slot_mapping: torch.Tensor
+    ) -> None:
+        if is_sm80():
+            kv = self.attn.kv_cache
+            n = slot_mapping.shape[0]
+            if kv.numel() == 0 or n == 0:
+                return
+            hd = self.head_dim
+            key_cache, value_cache = self._split_kv_cache()
+            heads = key_cache.shape[2]
+            kv_k = k.reshape(-1, heads, hd)
+            kv_v = v.reshape(-1, heads, hd)
+            _dspark_write_kv_kernel[(n,)](
+                kv_k,
+                kv_v,
+                key_cache,
+                value_cache,
+                slot_mapping,
+                kv_k.stride(0),
+                kv_k.stride(1),
+                kv_v.stride(0),
+                kv_v.stride(1),
+                key_cache.stride(0),
+                key_cache.stride(1),
+                key_cache.stride(2),
+                BS=key_cache.shape[1],
+                H=heads,
+                D=hd,
+                num_warps=4,
+            )
+            return
+        impl = cast(FlashAttentionImpl, self.attn.impl)
+        impl.do_kv_cache_update(self.attn, k, v, self.attn.kv_cache, slot_mapping)
+
+    def forward(
+        self, positions: torch.Tensor, x: torch.Tensor, cos_sin_cache: torch.Tensor
+    ) -> torch.Tensor:
+        qkv_h = getattr(self, "qkv_humming", None)
+        qkv = qkv_h(x) if qkv_h is not None else linear(x, self.qkv_proj.weight)
+        md = self._metadata()
+        sm80_fused = (
+            is_sm80()
+            and md is not None
+            and self.attn.kv_cache.numel() > 0
+            and md.slot_mapping.shape[0] >= qkv.shape[0]
+            and (self.head_dim & (self.head_dim - 1)) == 0
+        )
+        if sm80_fused:
+            key_cache, value_cache = self._split_kv_cache()
+            if qkv.shape[0]:
+                _qk_norm_rope_write_kv_kernel[
+                    (qkv.shape[0], self.num_heads + self.num_kv_heads)
+                ](
+                    qkv,
+                    self.q_norm.weight,
+                    self.k_norm.weight,
+                    cos_sin_cache,
+                    positions,
+                    key_cache,
+                    value_cache,
+                    md.slot_mapping[: qkv.shape[0]],
+                    qkv.stride(0),
+                    self.q_size,
+                    self.kv_size,
+                    key_cache.stride(0),
+                    key_cache.stride(1),
+                    key_cache.stride(2),
+                    BS=key_cache.shape[1],
+                    NHQ=self.num_heads,
+                    D=self.head_dim,
+                    EPS=self.eps,
+                    num_warps=4,
+                )
+            q = qkv[:, : self.q_size]
+        else:
+            qk_norm_rope_(
+                qkv,
+                positions,
+                self.q_norm.weight,
+                self.k_norm.weight,
+                cos_sin_cache,
+                self.num_heads,
+                self.num_kv_heads,
+                self.eps,
+            )
+            q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+            if md is not None:
+                self._write_kv(
+                    k.view(-1, self.num_kv_heads, self.head_dim),
+                    v.view(-1, self.num_kv_heads, self.head_dim),
+                    md.slot_mapping[: q.shape[0]],
+                )
+                key_cache, value_cache = self._split_kv_cache()
+        if md is not None:
+            num_reqs = min(q.shape[0] // self.block, md.seq_lens.shape[0])
+            num_tokens = num_reqs * self.block
+            out = (
+                q.new_empty((q.shape[0], self.q_size))
+                if num_tokens == q.shape[0]
+                else q.new_zeros((q.shape[0], self.q_size))
+            )
+            # The plan's 0 (FA4, for very large target batches) is one split
+            # here.
+            num_splits = max(
+                1,
+                plan_decode_attention(
+                    self.is_local,
+                    num_reqs,
+                    self.block,
+                    self.num_heads,
+                    self.num_kv_heads,
+                    self.window,
+                ),
+            )
+            block_decode_attention(
+                q[:num_tokens].view(num_tokens, self.num_heads, self.head_dim),
+                canonicalize_singleton_dim_strides(key_cache),
+                canonicalize_singleton_dim_strides(value_cache),
+                out[:num_tokens],
+                block_table=md.block_table[:num_reqs],
+                cache_seqlens=md.seq_lens[:num_reqs],
+                cu_seqlens_q=self.cu_seqlens_q[: num_reqs + 1],
+                block=self.block,
+                window=self.window,
+                num_splits=num_splits,
+            )
+        else:
+            out = q.new_zeros((q.shape[0], self.q_size))
+        o_h = getattr(self, "o_humming", None)
+        return o_h(out) if o_h is not None else linear(out, self.o_proj.weight)
+
+    def store_context_kv(
+        self,
+        context: torch.Tensor,
+        positions: torch.Tensor,
+        cos_sin_cache: torch.Tensor,
+        slot_mapping: torch.Tensor | None,
+    ) -> None:
+        kv = linear(context, self.kv_proj_ctx.weight)
+        if (
+            is_sm80()
+            and slot_mapping is not None
+            and self.attn.kv_cache.numel() > 0
+            and slot_mapping.shape[0] >= kv.shape[0]
+            and (self.head_dim & (self.head_dim - 1)) == 0
+        ):
+            if kv.shape[0]:
+                key_cache, value_cache = self._split_kv_cache()
+                _k_norm_rope_write_kv_kernel[(kv.shape[0], self.num_kv_heads)](
+                    kv,
+                    self.k_norm_ctx.weight,
+                    cos_sin_cache,
+                    positions,
+                    key_cache,
+                    value_cache,
+                    slot_mapping[: kv.shape[0]],
+                    kv.stride(0),
+                    self.kv_size,
+                    key_cache.stride(0),
+                    key_cache.stride(1),
+                    key_cache.stride(2),
+                    BS=key_cache.shape[1],
+                    D=self.head_dim,
+                    EPS=self.eps,
+                    num_warps=4,
+                )
+            return
+        k, v = kv.split([self.kv_size, self.kv_size], -1)
+        k = self.k_norm_ctx(k.reshape(-1, self.head_dim))
+        k = k.view(-1, self.num_kv_heads, self.head_dim)
+        rope_(k, positions, cos_sin_cache)
+        if slot_mapping is not None and self.attn.kv_cache.numel() > 0:
+            self._write_kv(
+                k, v.view(-1, self.num_kv_heads, self.head_dim), slot_mapping
+            )
+
+
+class Inkling2DraftMLP(nn.Module):
+    def __init__(self, config: Inkling2DSparkConfig, prefix: str) -> None:
+        super().__init__()
+        self.gate_up_proj = MergedColumnParallelLinear(
+            config.hidden_size,
+            [config.intermediate_size] * 2,
+            bias=False,
+            prefix=f"{prefix}.gate_up_proj",
+        )
+        self.down_proj = RowParallelLinear(
+            config.intermediate_size,
+            config.hidden_size,
+            bias=False,
+            prefix=f"{prefix}.down_proj",
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        gu_h = getattr(self, "gate_up_humming", None)
+        gu = gu_h(x) if gu_h is not None else linear(x, self.gate_up_proj.weight)
+        x = silu_and_mul(gu)
+        dn_h = getattr(self, "down_humming", None)
+        return dn_h(x) if dn_h is not None else linear(x, self.down_proj.weight)
+
+
+class Inkling2DraftLayer(nn.Module):
+    def __init__(
+        self, config: Inkling2DSparkConfig, is_local: bool, prefix: str
+    ) -> None:
+        super().__init__()
+        hidden, eps = config.hidden_size, config.rms_norm_eps
+        self.input_layernorm = _RMSNorm(hidden, eps)
+        self.post_attention_layernorm = _RMSNorm(hidden, eps)
+        self.dflare_norm = _RMSNorm(hidden, eps)
+        self.self_attn = Inkling2DraftSelfAttention(
+            config, is_local, f"{prefix}.self_attn"
+        )
+        self.mlp = Inkling2DraftMLP(config, f"{prefix}.mlp")
+
+    def forward(
+        self,
+        positions: torch.Tensor,
+        x: torch.Tensor,
+        residual: torch.Tensor | None,
+        cos_sin_cache: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Returns this rank's partial MLP output and the residual."""
+        if residual is None:
+            residual = x
+            x = self.input_layernorm(x)
+        else:
+            x = all_reduce_add_rmsnorm(x, residual, self.input_layernorm)
+        x = self.self_attn(positions, x, cos_sin_cache)
+        x = all_reduce_add_rmsnorm(x, residual, self.post_attention_layernorm)
+        return self.mlp(x), residual
+
+
+class Inkling2MarkovHead(nn.Module):
+    """Recurrent (`rnn_hidden`) correction of the draft's base logits.
+
+    Its rank-`r` latent goes through `hidden_out` and the shared LM head,
+    folded once into a `(vocab, r)` projection. The `[hidden, f_rnn]`
+    columns of `rnn_proj` (and its bias) are applied to all draft steps at
+    once in fp32; each step adds the `[state, previous]` columns and rounds.
+    """
+
+    def __init__(self, config: Inkling2DSparkConfig) -> None:
+        super().__init__()
+        hidden, rank = config.hidden_size, config.markov_rank
+        self.markov_rank = rank
+        self.markov_w1 = nn.Embedding(
+            config.padded_vocab_size,
+            rank,
+            _weight=torch.empty(config.padded_vocab_size, rank),
+            _freeze=True,
+        )
+        self.rnn_proj = ReplicatedLinear(2 * rank + 2 * hidden, 3 * rank, bias=True)
+        self.hidden_out = ReplicatedLinear(rank, hidden, bias=True)
+        self.dflare_norm = _RMSNorm(hidden, config.rms_norm_eps)
+        self.fold_weight: torch.Tensor | None = None
+        self.fold_bias: torch.Tensor | None = None
+        self.rnn_bias: torch.Tensor | None = None
+        self.rnn_w_step: torch.Tensor | None = None
+
+    @torch.no_grad()
+    def fold(self, lm_head_weight: torch.Tensor) -> None:
+        """Fold `hidden_out` into the (TP-local) LM head rows in fp64. Later
+        calls refill the same tensors, which CUDA graphs keep pointing at."""
+        projection = self.hidden_out.weight.double()
+        bias = self.hidden_out.bias.double()
+        num_rows = lm_head_weight.shape[0]
+        if self.fold_weight is None or self.fold_bias is None:
+            self.fold_weight = lm_head_weight.new_empty((num_rows, self.markov_rank))
+            self.fold_bias = lm_head_weight.new_empty((num_rows,))
+        for start in range(0, num_rows, 4096):
+            rows = slice(start, start + 4096)
+            head = lm_head_weight[rows].double()
+            self.fold_weight[rows].copy_(head @ projection)
+            self.fold_bias[rows].copy_(head @ bias)
+
+    def context(self, hidden: torch.Tensor, f_rnn: torch.Tensor) -> torch.Tensor:
+        """fp32 `rnn_proj` bias plus its `[hidden, f_rnn]` term for the
+        `(req, step)`-ordered `hidden`; returns `(step, req, 3 * r)`."""
+        assert self.rnn_bias is not None
+        num_reqs, width = f_rnn.shape
+        hidden = hidden.view(num_reqs, -1, width).transpose(0, 1)
+        inputs = torch.cat([hidden, f_rnn.expand_as(hidden)], dim=-1)
+        weight = self.rnn_proj.weight[:, 2 * self.markov_rank :]
+        out = torch.addmm(
+            self.rnn_bias, inputs.flatten(0, 1), weight.T, out_dtype=torch.float32
+        )
+        return out.view(hidden.shape[0], num_reqs, -1)
+
+    def step(
+        self, state: torch.Tensor, prev_tokens: torch.Tensor, context: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """One recurrence step; returns the new state and the TP-local bias."""
+        assert self.fold_weight is not None and self.fold_bias is not None
+        if (
+            is_sm80()
+            and self.markov_rank == 256
+            and self.rnn_w_step is not None
+            and state.dtype == torch.bfloat16
+        ):
+            from ..sm80_ops_v2 import markov_rnn_gate_256
+
+            state, latent = markov_rnn_gate_256(
+                state, prev_tokens, self.markov_w1.weight, context, self.rnn_w_step
+            )
+            if use_sm80_bf16_ll_gemm(latent, self.fold_weight, self.fold_bias):
+                return state, sm80_bf16_ll_gemm(
+                    latent, self.fold_weight, self.fold_bias
+                )
+            return state, torch.addmm(self.fold_bias, latent, self.fold_weight.T)
+        inputs = torch.cat([state, self.markov_w1(prev_tokens)], dim=-1)
+        weight = self.rnn_proj.weight[:, : 2 * self.markov_rank]
+        raw = torch.addmm(context, inputs, weight.T, out_dtype=torch.float32)
+        state, latent = markov_gate(raw, state)
+        return state, torch.addmm(self.fold_bias, latent, self.fold_weight.T)
+
+
+class Inkling2DSparkDecoder(nn.Module):
+    def __init__(
+        self, config: Inkling2DSparkConfig, max_model_len: int, prefix: str
+    ) -> None:
+        super().__init__()
+        self.config = config
+        hidden = config.hidden_size
+        self.layers = nn.ModuleList(
+            Inkling2DraftLayer(
+                config, i in config.local_layer_ids, f"{prefix}.layers.{i}"
+            )
+            for i in range(config.num_hidden_layers)
+        )
+        self.norm = _RMSNorm(hidden, config.rms_norm_eps)
+        self.markov_head = Inkling2MarkovHead(config)
+        self.fuse_weight = nn.Parameter(
+            torch.zeros(config.num_hidden_layers + 1, len(config.target_layer_ids)),
+            requires_grad=False,
+        )
+        self.mask_embed = nn.Parameter(torch.zeros(hidden), requires_grad=False)
+        self.register_buffer("fuse_alpha", torch.empty_like(self.fuse_weight))
+        # fp32 [cos | sin] table, read directly by the draft's RoPE kernels.
+        self.cos_sin_cache = get_rope(
+            config.head_dim,
+            max_position=max_model_len,
+            rope_parameters={"rope_type": "default", "rope_theta": config.rope_theta},
+            dtype=torch.float32,
+        ).cos_sin_cache
+        # Shared with the target model (see Inkling2DSparkModel.attach_target).
+        self.embed_tokens: nn.Module | None = None
+        self.embed_norm: nn.Module | None = None
+
+    def mix(self, features: torch.Tensor, row: int, norm: _RMSNorm) -> torch.Tensor:
+        targets = features.view(features.shape[0], -1, self.config.hidden_size)
+        return mix_rmsnorm(targets, self.fuse_alpha[row], norm.weight, norm.eps)
+
+    def embed_block(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Normalized target embedding of each block's anchor, then masks."""
+        assert self.embed_tokens is not None and self.embed_norm is not None
+        block = self.config.draft_block_size
+        ids = input_ids.view(-1, block)
+        if (
+            is_sm80()
+            and ids.shape[0] >= 1
+            and getattr(self.embed_tokens, "tp_size", 1) == 1
+            and hasattr(self.embed_tokens, "weight")
+            and hasattr(self.embed_norm, "weight")
+            and self.embed_tokens.weight.dtype == self.mask_embed.dtype == torch.bfloat16
+        ):
+            num_blocks = ids.shape[0]
+            hidden = self.config.hidden_size
+            out = self.mask_embed.new_empty((num_blocks * block, hidden))
+            if num_blocks:
+                eps = getattr(self.embed_norm, "eps", self.config.rms_norm_eps)
+                _dspark_embed_block_kernel[(num_blocks, block)](
+                    ids,
+                    self.embed_tokens.weight,
+                    self.embed_norm.weight,
+                    self.mask_embed,
+                    out,
+                    ids.stride(0),
+                    ids.stride(1),
+                    self.embed_tokens.weight.stride(0),
+                    BLOCK_SIZE=block,
+                    HIDDEN=hidden,
+                    BLOCK_H=_triton.next_power_of_2(hidden),
+                    EPS=eps,
+                    num_warps=8,
+                )
+            return out
+        x = self.mask_embed.expand(ids.shape[0], block, -1).clone()
+        x[:, 0] = self.embed_norm(self.embed_tokens(ids[:, 0].contiguous()))
+        return x.view(-1, self.config.hidden_size)
+
+    def forward(self, input_ids: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
+        x = self.embed_block(input_ids)
+        residual = None
+        for layer in self.layers:
+            x, residual = layer(positions, x, residual, self.cos_sin_cache)
+        assert residual is not None
+        return all_reduce_add_rmsnorm(x, residual, self.norm)
+
+
+class Inkling2DSparkModel(nn.Module):
+    """DSpark draft for Inkling2; plugged in by `Inkling2DSparkSpeculator`."""
+
+    # The speculator this is a draft model of (see SpeculativeDraftModel).
+    speculator_config_class = Inkling2DSparkSpeculatorConfig
+    allow_patterns_overrides = ["mtp.safetensors"]
+    has_own_embed_tokens = False
+    has_own_lm_head = False
+    draft_id_to_target_id = None
+
+    _stacked = (
+        (".q_proj.", ".qkv_proj.", "q"),
+        (".k_proj.", ".qkv_proj.", "k"),
+        (".v_proj.", ".qkv_proj.", "v"),
+        (".k_proj_ctx.", ".kv_proj_ctx.", 0),
+        (".v_proj_ctx.", ".kv_proj_ctx.", 1),
+        (".gate_proj.", ".gate_up_proj.", 0),
+        (".up_proj.", ".gate_up_proj.", 1),
+    )
+
+    def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
+        super().__init__()
+        assert vllm_config.speculative_config is not None
+        config = vllm_config.speculative_config.draft_model_config.hf_config
+        assert isinstance(config, Inkling2DSparkConfig)
+        num_spec = vllm_config.speculative_config.num_speculative_tokens
+        if not (1 <= num_spec <= config.draft_block_size - 1):
+            raise ValueError(
+                "Inkling2 DSpark requires 1 <= num_speculative_tokens <= "
+                f"{config.draft_block_size - 1} (the checkpoint's block size - 1), "
+                f"got {num_spec}"
+            )
+        if config.draft_block_size != num_spec + 1:
+            config.draft_block_size = num_spec + 1
+            config.dspark_block_size = num_spec
+        if vllm_config.model_config.max_model_len > config.max_position_embeddings:
+            raise ValueError(
+                "Inkling2 DSpark drafts up to max_position_embeddings="
+                f"{config.max_position_embeddings} positions; set --max-model-len "
+                "to at most that"
+            )
+        self.config = config
+        self.model = Inkling2DSparkDecoder(
+            config, vllm_config.model_config.max_model_len, f"{prefix}model"
+        )
+        self.lm_head: nn.Module | None = None
+
+    @torch.no_grad()
+    def attach_target(self, target_model: nn.Module) -> None:
+        """Finish sharing the target's normalized embeddings and LM head (its
+        `embed_tokens` and `lm_head` are aliased by `load_dspark_model`)
+        and derive the weights that depend on them."""
+        assert self.lm_head is not None and self.lm_head.weight.dtype == torch.bfloat16
+        self.model.embed_norm = target_model.model.embed_norm
+        head = self.model.markov_head
+        head.rnn_bias = torch.empty_like(head.rnn_proj.bias, dtype=torch.float32)
+        self.keep_ids: torch.Tensor | None = None
+        self.pruned_lm_weight: torch.Tensor | None = None
+        self.pruned_lm_humming: HummingDenseLinear | None = None
+        pruned_vocab = 49152
+        if (
+            is_sm80()
+            and get_tensor_model_parallel_world_size() == 1
+            and self.config.vocab_size > pruned_vocab
+        ):
+            v_unpadded = self.config.vocab_size
+            norms = head.markov_w1.weight[:v_unpadded].float().norm(dim=-1)
+            norms[:256] = float("inf")
+            norms[199998:v_unpadded] = float("inf")
+            self.keep_ids = (
+                torch.topk(norms, pruned_vocab, largest=True)
+                .indices.sort()
+                .values.to(torch.int64)
+            )
+            self.pruned_lm_weight = torch.empty(
+                (pruned_vocab, self.config.hidden_size),
+                dtype=torch.bfloat16,
+                device=self.lm_head.weight.device,
+            )
+        self.refresh_derived_weights()
+
+    @torch.no_grad()
+    def refresh_derived_weights(self) -> None:
+        """Re-derive, in place, the weights computed from the target's LM head
+        and the draft's own weights; called again after the target's weights
+        are replaced (reload, RL weight transfer)."""
+        assert self.lm_head is not None
+        head = self.model.markov_head
+        assert head.rnn_bias is not None
+        quant_mode = (
+            "bf16"
+            if os.environ.get("VLLM_SM80_NO_HUMMING_DSPARK") == "1"
+            else os.environ.get("VLLM_SM80_DSPARK_QUANT", "bf16").strip().lower()
+        )
+        use_humming_dspark = (
+            is_sm80()
+            and get_tensor_model_parallel_world_size() == 1
+            and quant_mode in ("hybrid", "nvfp4", "mxfp8")
+        )
+        if self.keep_ids is not None:
+            if use_humming_dspark:
+                tmp_pruned = self.lm_head.weight.index_select(0, self.keep_ids)
+                head.fold(tmp_pruned)
+                lm_mode = "nvfp4" if quant_mode in ("hybrid", "nvfp4") else "mxfp8"
+                self.pruned_lm_humming = HummingDenseLinear(tmp_pruned, lm_mode)
+                del tmp_pruned
+                if self.pruned_lm_weight is not None:
+                    self.pruned_lm_weight = None
+            elif self.pruned_lm_weight is not None:
+                self.pruned_lm_weight.copy_(
+                    self.lm_head.weight.index_select(0, self.keep_ids)
+                )
+                head.fold(self.pruned_lm_weight)
+        else:
+            head.fold(self.lm_head.weight)
+        if use_humming_dspark:
+            bb_mode = "mxfp8" if quant_mode in ("hybrid", "mxfp8") else "nvfp4"
+            freed = False
+            for layer in self.model.layers:
+                sa = layer.self_attn
+                mlp = layer.mlp
+                if sa.qkv_proj.weight.numel() > 0:
+                    sa.qkv_humming = HummingDenseLinear(sa.qkv_proj.weight.data, bb_mode)
+                    sa.qkv_proj.weight.data = sa.qkv_proj.weight.data.new_empty(0)
+                    freed = True
+                if sa.o_proj.weight.numel() > 0:
+                    sa.o_humming = HummingDenseLinear(sa.o_proj.weight.data, bb_mode)
+                    sa.o_proj.weight.data = sa.o_proj.weight.data.new_empty(0)
+                    freed = True
+                if mlp.gate_up_proj.weight.numel() > 0:
+                    mlp.gate_up_humming = HummingDenseLinear(
+                        mlp.gate_up_proj.weight.data, bb_mode
+                    )
+                    mlp.gate_up_proj.weight.data = mlp.gate_up_proj.weight.data.new_empty(
+                        0
+                    )
+                    freed = True
+                if mlp.down_proj.weight.numel() > 0:
+                    mlp.down_humming = HummingDenseLinear(
+                        mlp.down_proj.weight.data, bb_mode
+                    )
+                    mlp.down_proj.weight.data = mlp.down_proj.weight.data.new_empty(0)
+                    freed = True
+            if freed:
+                torch.cuda.empty_cache()
+        head.rnn_bias.copy_(head.rnn_proj.bias)
+        if is_sm80():
+            head.rnn_w_step = head.rnn_proj.weight[
+                :, : 2 * head.markov_rank
+            ].contiguous()
+        self.model.fuse_alpha.copy_(
+            torch.softmax(self.model.fuse_weight.float(), dim=-1)
+        )
+        ws_list = [layer.dflare_norm.weight for layer in self.model.layers] + [
+            head.dflare_norm.weight
+        ]
+        stacked_ws = torch.stack(ws_list, dim=0)
+        if getattr(self.model, "dflare_ws", None) is None:
+            self.model.dflare_ws = stacked_ws.contiguous()
+        else:
+            self.model.dflare_ws.copy_(stacked_ws)
+
+    def get_draft_kv_cache_layer_names(self) -> list[str]:
+        return [layer.self_attn.attn.layer_name for layer in self.model.layers]
+
+    def combine_hidden_states(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # Each draft layer mixes the raw target features itself.
+        return hidden_states
+
+    def precompute_and_store_context_kv(
+        self,
+        context_states: torch.Tensor,
+        context_positions: torch.Tensor,
+        context_slot_mappings: list[torch.Tensor | None] | None = None,
+    ) -> None:
+        pending_frnn = getattr(self, "_pending_frnn", None)
+        if pending_frnn is not None:
+            self._pending_frnn = None
+        dflare_ws = getattr(self.model, "dflare_ws", None)
+        if is_sm80() and dflare_ws is not None and len(self.model.layers) == 3:
+            if pending_frnn is not None:
+                frnn_base, num_reqs, qsl, num_rej, out_frnn_buf = pending_frnn
+                contexts, _ = sm80_mix_rmsnorm_4x(
+                    context_states,
+                    frnn_base,
+                    self.model.fuse_alpha,
+                    dflare_ws,
+                    self.config.rms_norm_eps,
+                    qsl=qsl,
+                    num_rej=num_rej,
+                    out_frnn_buf=out_frnn_buf,
+                    num_reqs=num_reqs,
+                )
+            else:
+                contexts, _ = sm80_mix_rmsnorm_4x(
+                    context_states,
+                    None,
+                    self.model.fuse_alpha,
+                    dflare_ws,
+                    self.config.rms_norm_eps,
+                )
+            for i, layer in enumerate(self.model.layers):
+                layer.self_attn.store_context_kv(
+                    contexts[i],
+                    context_positions,
+                    self.model.cos_sin_cache,
+                    None if context_slot_mappings is None else context_slot_mappings[i],
+                )
+            return
+        if pending_frnn is not None:
+            frnn_base, num_reqs, qsl, num_rej, out_frnn_buf = pending_frnn
+            ends = qsl[1 : num_reqs + 1] - num_rej[:num_reqs]
+            rows = frnn_base[(ends - 1).clamp_min(0).long()]
+            out_frnn_buf.copy_(self.compute_f_rnn(rows))
+        for i, layer in enumerate(self.model.layers):
+            context = self.model.mix(context_states, i, layer.dflare_norm)
+            layer.self_attn.store_context_kv(
+                context,
+                context_positions,
+                self.model.cos_sin_cache,
+                None if context_slot_mappings is None else context_slot_mappings[i],
+            )
+
+    def compute_f_rnn(self, features: torch.Tensor) -> torch.Tensor:
+        """Recurrent-head context from the last committed token's features."""
+        return self.model.mix(features, -1, self.model.markov_head.dflare_norm)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        positions: torch.Tensor,
+        inputs_embeds: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        return self.model(input_ids, positions)
+
+    def compute_base_logits(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """TP-local bf16 base logits (bf16 GEMM, or pruned vocab on SM80 TP=1)."""
+        if self.pruned_lm_humming is not None:
+            return self.pruned_lm_humming(hidden_states)
+        assert self.lm_head is not None
+        w = (
+            self.pruned_lm_weight
+            if self.pruned_lm_weight is not None
+            else self.lm_head.weight
+        )
+        return linear(hidden_states, w)
+
+    def markov_step(
+        self, state: torch.Tensor, prev_tokens: torch.Tensor, context: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance the recurrent head; return the state and TP-local bias."""
+        return self.model.markov_head.step(state, prev_tokens, context)
+
+    def markov_step_logits(
+        self,
+        state: torch.Tensor,
+        prev_tokens: torch.Tensor,
+        context: torch.Tensor,
+        base_logits_step: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        head = self.model.markov_head
+        if (
+            is_sm80()
+            and self.keep_ids is not None
+            and state.shape[0] == 1
+            and head.markov_rank == 256
+            and head.rnn_w_step is not None
+            and head.fold_weight is not None
+            and head.fold_bias is not None
+            and state.dtype == torch.bfloat16
+        ):
+            from ..sm80_ops_v2 import markov_fold_softcap_r1, markov_rnn_gate_256
+
+            state, latent = markov_rnn_gate_256(
+                state, prev_tokens, head.markov_w1.weight, context, head.rnn_w_step
+            )
+            logits = markov_fold_softcap_r1(
+                latent,
+                head.fold_weight,
+                head.fold_bias,
+                base_logits_step,
+                self.config.final_logit_softcapping,
+            )
+            return state, logits
+        state, bias = self.markov_step(state, prev_tokens, context)
+        return state, self.markov_logits(base_logits_step, bias)
+
+    def markov_logits(
+        self, base_logits: torch.Tensor, bias: torch.Tensor
+    ) -> torch.Tensor:
+        """Softcapped logits (pruned draft vocab when keep_ids is active, else
+        full vocab)."""
+        logits = add_softcap(base_logits, bias, self.config.final_logit_softcapping)
+        if self.keep_ids is not None:
+            return logits
+        logits = tensor_model_parallel_all_gather(logits)
+        return logits[:, : self.config.vocab_size]
+
+    def markov_argmax(
+        self, base_logits: torch.Tensor, bias: torch.Tensor
+    ) -> torch.Tensor:
+        """`markov_logits(...).argmax(-1)`, mapped back to target ids when pruned."""
+        idx = greedy_argmax(self.markov_logits(base_logits, bias))
+        return self.keep_ids[idx] if self.keep_ids is not None else idx
+
+    def map_draft_to_target(self, draft_ids: torch.Tensor) -> torch.Tensor:
+        return self.keep_ids[draft_ids] if self.keep_ids is not None else draft_ids
+
+    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+        params = dict(self.named_parameters())
+        loaded: set[str] = set()
+        for name, weight in weights:
+            name, shard = f"model.{name}", None
+            for old, new, shard_id in self._stacked:
+                if old in name:
+                    name, shard = name.replace(old, new), shard_id
+                    break
+            param = params[name]
+            if weight.dtype != param.dtype:
+                raise ValueError(f"{name}: expected {param.dtype}, got {weight.dtype}")
+            if shard is None:
+                getattr(param, "weight_loader", default_weight_loader)(param, weight)
+            else:
+                param.weight_loader(param, weight, shard)
+            loaded.add(name)
+        return loaded

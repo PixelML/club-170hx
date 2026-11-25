@@ -1,0 +1,6 @@
+commit	c1_metric	c16_metric	vram_gb	status	description
+4d1bc4f	7.6252	8.5248	0.552	baseline	Round-5 base (pre-existing eval_kernels combine_conv_out bug; linears_c1=3.5799 woud=25.09us qkvr=59.39us dspark_c1=0.8504 dspark_c16=1.0783)
+e4d7bda	7.5919	8.5545	0.568	keep	Exp B1: fix wo_ud split-K regression (bn=32 split=1), preallocate partials, dynamic num_sms (linears_c1=3.5144 woud=24.58us qkvr=58.37us)
+d3d9953	7.2054	8.3159	0.568	keep	Exp B1b: SM80 autotune bn/nw/ns (parity_ok=1, linears_c1=3.2686 woud=24.58us qkvr=52.22us dspark_c1=0.8402 dspark_c16=1.0414)
+271d926	7.0610	8.1864	0.568	keep	Exp B2: sm80_mix_rmsnorm_4x + fused draft KV prologue/epilogue + embed_block (parity_ok=1, dspark_c1=0.6958 dspark_c16=0.9119)
+fa1c324	7.0963	7.8930	0.568	keep	Exp B3: sm80_markov_sample_batch for c=16 (parity_ok=1, markov_c16_tokens diff=0, dspark_c16=0.6676)
